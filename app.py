@@ -571,14 +571,22 @@ def create_app() -> Flask:
         # NOTE: Role assignment is minimal for now.
         role = 'admin' if telegram_user_id in admin_ids() else 'client'
 
-        # If this Telegram user is linked as nanny, assign nanny role (SQL mode only)
-        if use_sql and role != 'admin':
-            try:
-                n = Nanny.query.filter_by(telegram_user_id=telegram_user_id).first()
-                if n:
-                    role = 'nanny'
-            except Exception:
-                pass
+        # If this Telegram user is linked as nanny, assign nanny role
+        if role != 'admin':
+            if use_sql:
+                try:
+                    n = Nanny.query.filter_by(telegram_user_id=telegram_user_id).first()
+                    if n:
+                        role = 'nanny'
+                except Exception:
+                    pass
+            else:
+                # JSON mode: check nannies.json
+                nannies_list = _read_json(NANNIES_FILE, [])
+                for _n in nannies_list:
+                    if str(_n.get('telegram_user_id') or '') == str(telegram_user_id):
+                        role = 'nanny'
+                        break
         if use_sql:
             u = User.query.filter_by(telegram_user_id=telegram_user_id).first()
             if not u:
