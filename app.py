@@ -72,6 +72,10 @@ def create_app() -> Flask:
     os.makedirs(app.config['UPLOAD_DIR'], exist_ok=True)
 
     app.jinja_env.globals['current_year'] = datetime.datetime.utcnow().year
+    # Cache-busting version for static assets (update on deploy)
+    import importlib.metadata as _imeta
+    _static_ver = os.environ.get('APP_VERSION') or str(int(time.time() // 86400))
+    app.jinja_env.globals['static_ver'] = _static_ver
 
     def nanny_photo_src(photo: str | None) -> str:
         if not photo:
@@ -93,6 +97,28 @@ def create_app() -> Flask:
             if proto == 'http':
                 url = request.url.replace('http://', 'https://', 1)
                 return redirect(url, code=301)
+
+    @app.after_request
+    def security_headers(resp):
+        # Prevent MIME sniffing
+        resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        # Allow framing only from same origin (admin panel, etc.)
+        # Telegram Mini App embeds via t.me — don't block that
+        # resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+        # Referrer policy
+        resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        # Permissions policy — disable unused features
+        resp.headers.setdefault('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+        # Cache static assets aggressively, everything else no-cache
+        if request.path.startswith('/static/'):
+            resp.headers.setdefault('Cache-Control', 'public, max-age=31536000, immutable')
+        elif request.path.startswith('/uploads/'):
+            resp.headers.setdefault('Cache-Control', 'public, max-age=86400')
+        elif request.path in ('/sitemap.xml', '/robots.txt'):
+            resp.headers.setdefault('Cache-Control', 'public, max-age=3600')
+        elif not request.path.startswith('/api/'):
+            resp.headers.setdefault('Cache-Control', 'no-cache, must-revalidate')
+        return resp
 
     @app.route('/healthz')
     def healthz():
@@ -613,8 +639,9 @@ def create_app() -> Flask:
                 lead_uname = str(lead.get('telegram_username') or '').lstrip('@')
                 if (lead_tg and lead_tg == tg_id_str) or \
                    (tg_username and lead_uname and lead_uname.lower() == tg_username.lower()):
-                    if lead.get('portal_token'):
-                        lk_url = f"/lk/{lead['portal_token']}"
+                    # /client/<token> is the correct route
+                    if lead.get('token'):
+                        lk_url = f"/client/{lead['token']}"
                         break
 
         return {
@@ -1903,8 +1930,13 @@ def create_app() -> Flask:
 
         return {'ok': True, 'sent': sent, 'tz': tzname}
 
-    @app.route('/uploads/<filename>')
+    @app.route('/uploads/<path:filename>')
     def uploads(filename):
+        # Whitelist allowed extensions to prevent serving unexpected files
+        allowed_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.mp4', '.mov', '.webm'}
+        _, ext = os.path.splitext(filename.lower())
+        if ext not in allowed_exts:
+            return jsonify({'error': 'forbidden'}), 403
         return send_from_directory(app.config['UPLOAD_DIR'], filename)
 
 
@@ -1927,15 +1959,31 @@ def create_app() -> Flask:
             return jsonify({'error': 'forbidden'}), 403
         return render_template('404.html'), 403
 
+    @app.errorhandler(413)
+    def request_entity_too_large(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Файл слишком большой. Максимум 16 МБ.'}), 413
+        return render_template('404.html'), 413
+
+    @app.errorhandler(429)
+    def too_many_requests(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Слишком много запросов. Попробуйте позже.'}), 429
+        return render_template('404.html'), 429
+
     @app.route('/robots.txt')
     def robots_txt():
-        # Allow indexing of public landing only
         lines = [
             "User-agent: *",
             "Allow: /",
+            "Allow: /blog",
+            "Allow: /nanny/",        # public nanny profiles
             "Disallow: /admin",
-            "Disallow: /nanny",
+            "Disallow: /nanny/app",
+            "Disallow: /nanny/login",
+            "Disallow: /nanny/portal",
             "Disallow: /client",
+            "Disallow: /api/",
             "Sitemap: " + request.url_root.rstrip('/') + "/sitemap.xml",
         ]
         return Response("\n".join(lines) + "\n", mimetype="text/plain")
@@ -1944,16 +1992,43 @@ def create_app() -> Flask:
 
     @app.route('/sitemap.xml')
     def sitemap_xml():
+        import html as _html
         base = request.url_root.rstrip('/')
         articles = _read_json(ARTICLES_FILE, [])
-        urls = [base + "/", base + "/blog"]
+        nannies_list = load_nannies()
+        today = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+
+        entries = [
+            {'loc': base + '/', 'priority': '1.0', 'changefreq': 'weekly', 'lastmod': today},
+            {'loc': base + '/blog', 'priority': '0.8', 'changefreq': 'weekly', 'lastmod': today},
+        ]
         for a in articles:
             if a.get('published') and a.get('slug'):
-                urls.append(base + "/blog/" + a['slug'])
+                lastmod = (a.get('updated_at') or a.get('created_at') or today)[:10]
+                entries.append({
+                    'loc': base + '/blog/' + a['slug'],
+                    'priority': '0.7',
+                    'changefreq': 'monthly',
+                    'lastmod': lastmod,
+                })
+        for n in nannies_list:
+            if n.get('portal_token'):
+                entries.append({
+                    'loc': base + '/nanny/' + _html.escape(str(n['portal_token'])),
+                    'priority': '0.6',
+                    'changefreq': 'monthly',
+                    'lastmod': today,
+                })
+
         xml = ['<?xml version="1.0" encoding="UTF-8"?>',
                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
-        for u in urls:
-            xml.append("<url><loc>%s</loc></url>" % u)
+        for e in entries:
+            xml.append(
+                f"<url><loc>{_html.escape(e['loc'])}</loc>"
+                f"<lastmod>{e['lastmod']}</lastmod>"
+                f"<changefreq>{e['changefreq']}</changefreq>"
+                f"<priority>{e['priority']}</priority></url>"
+            )
         xml.append("</urlset>")
         return Response("\n".join(xml), mimetype="application/xml")
 
@@ -2093,15 +2168,18 @@ def create_app() -> Flask:
     def api_articles_latest():
         arts = sorted(_articles_published(),
                       key=lambda a: a.get('created_at', ''), reverse=True)[:3]
-        return jsonify([{
+        resp = jsonify([{
             'slug': a['slug'], 'title': a['title'],
             'excerpt': a.get('excerpt',''), 'cover_url': a.get('cover_url',''),
             'created_at': a.get('created_at','')
         } for a in arts])
+        resp.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
+        return resp
 
     return app
 
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8000)), debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8000)),
+            debug=os.environ.get('FLASK_DEBUG') == '1')

@@ -8,14 +8,8 @@
            style="width:72px;height:72px;border-radius:50%;margin-bottom:14px;">
       <h3 style="margin:0 0 6px">Авторизация</h3>
       <div id="tgStatus" class="muted" style="font-size:15px;">Проверяем Telegram…</div>
-
-      <!-- Debug block — always visible для диагностики -->
-      <div id="tgDebug" style="margin-top:16px;font-size:12px;text-align:left;
-                               background:#f4f4f4;padding:12px;border-radius:8px;
-                               white-space:pre-wrap;word-break:break-all;display:none;"></div>
-
       <!-- Manual buttons shown after auth -->
-      <div id="tgButtons" style="display:none;margin-top:20px;display:flex;flex-direction:column;gap:10px;"></div>
+      <div id="tgButtons" style="display:none;margin-top:20px;flex-direction:column;gap:10px;"></div>
     </div>
   </div>
 </section>
@@ -23,15 +17,8 @@
 <script>
 (function () {
   var statusEl  = document.getElementById('tgStatus');
-  var debugEl   = document.getElementById('tgDebug');
   var buttonsEl = document.getElementById('tgButtons');
-  var log = [];
 
-  function addLog(msg) {
-    log.push(msg);
-    debugEl.style.display = 'block';
-    debugEl.textContent = log.join('\n');
-  }
   function setStatus(txt, color) {
     statusEl.textContent = txt;
     statusEl.style.color = color || '';
@@ -48,10 +35,7 @@
   }
 
   function doAuth(initData) {
-    setStatus('Авторизуемся на сервере…');
-    addLog('→ POST /api/auth/telegram');
-    addLog('initData length: ' + initData.length);
-
+    setStatus('Авторизуемся…');
     fetch('/api/auth/telegram', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -59,29 +43,20 @@
       credentials: 'include',
     })
       .then(function (r) {
-        addLog('← HTTP ' + r.status);
-        return r.json().then(function (d) { return { status: r.status, ok: r.ok, data: d }; });
+        return r.json().then(function (d) { return { ok: r.ok, data: d }; });
       })
       .then(function (res) {
-        addLog('Response: ' + JSON.stringify(res.data));
-
         if (!res.ok) {
-          setStatus('Ошибка авторизации', '#e74c3c');
-          addLog('ERROR: ' + (res.data.error || 'unknown'));
-          addLog('\nПроверьте Railway Variables:\n- TELEGRAM_BOT_TOKEN\n- ADMIN_IDS (числовой ID)');
+          setStatus('Ошибка авторизации. Попробуйте ещё раз.', '#e74c3c');
+          addButton('Открыть главную', '/', false);
           return;
         }
 
         var role      = res.data.role || 'client';
         var authToken = res.data.auth_token || '';
-        var tgId      = res.data.telegram_user_id || '?';
-
-        addLog('role: ' + role);
-        addLog('telegram_user_id: ' + tgId);
-        addLog('auth_token: ' + (authToken ? authToken.substring(0,8)+'…' : 'MISSING'));
-
-        var lkUrl   = res.data.lk_url || '';
+        var lkUrl     = res.data.lk_url || '';
         var dest;
+
         if (role === 'admin') {
           dest = '/admin';
           if (authToken) dest += '?_t=' + encodeURIComponent(authToken);
@@ -89,55 +64,37 @@
           dest = '/nanny/app';
           if (authToken) dest += '?_t=' + encodeURIComponent(authToken);
         } else {
-          // client: if has LK — go there, otherwise show lead form
-          if (lkUrl) {
-            dest = lkUrl;
-          } else {
-            dest = '/';  // lead form for new clients
-          }
+          dest = lkUrl || '/';
         }
 
-        addLog('→ redirect: ' + dest);
-        setStatus('Готово! role=' + role + '. Перехожу…');
-
-        // Show manual button in case auto-redirect fails
-        addButton('Перейти вручную → ' + dest.split('?')[0], dest, true);
-
-        setTimeout(function () {
-          window.location.href = dest;
-        }, 800);
+        setStatus('Готово! Перехожу…');
+        addButton('Перейти →', dest, true);
+        setTimeout(function () { window.location.href = dest; }, 600);
       })
-      .catch(function (e) {
-        setStatus('Сетевая ошибка', '#e74c3c');
-        addLog('FETCH ERROR: ' + e.message);
+      .catch(function () {
+        setStatus('Сетевая ошибка. Попробуйте позже.', '#e74c3c');
+        addButton('Открыть главную', '/', false);
       });
   }
 
   // Wait for Telegram SDK
-  addLog('Waiting for Telegram SDK…');
   var tries = 0;
   var timer = setInterval(function () {
     tries++;
     if (window.Telegram && window.Telegram.WebApp) {
       clearInterval(timer);
-      addLog('SDK loaded (tries=' + tries + ')');
       var tg = window.Telegram.WebApp;
       tg.ready();
       tg.expand();
       var initData = tg.initData || '';
-      addLog('initData: ' + (initData ? 'present (' + initData.length + ' chars)' : 'EMPTY'));
       if (!initData) {
-        setStatus('initData пустой', '#e67e22');
-        addLog('Откройте через кнопку Menu Button в @Nannynhatrang_bot');
-        addLog('\nВход в браузере:\n' + window.location.origin + '/admin?dev_token=ВАШ_ADMIN_TOKEN');
+        setStatus('Откройте через кнопку в @Nannynhatrang_bot', '#e67e22');
         addButton('Открыть главную', '/', false);
         return;
       }
       doAuth(initData);
     } else if (tries > 50) {
       clearInterval(timer);
-      addLog('Telegram SDK не найден — не внутри Telegram');
-      addLog('Редирект на главную через 2 сек…');
       setStatus('Не внутри Telegram', '#e67e22');
       addButton('Открыть главную', '/', false);
       setTimeout(function () { window.location.href = '/'; }, 2000);

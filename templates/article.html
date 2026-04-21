@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ art.seo_title or art.title }} — Nanny Nha Trang{% endblock %}
 {% block head_extra %}
-{% if art.seo_description %}<meta name="description" content="{{ art.seo_description }}">{% endif %}
+{% if art.seo_description %}<meta name="description" content="{{ art.seo_description }}">{% elif art.excerpt %}<meta name="description" content="{{ art.excerpt[:160] }}">{% endif %}
 {% if art.seo_keywords %}<meta name="keywords" content="{{ art.seo_keywords }}">{% endif %}
 <meta property="og:title" content="{{ art.seo_title or art.title }}">
 {% if art.seo_description %}<meta property="og:description" content="{{ art.seo_description }}">{% endif %}

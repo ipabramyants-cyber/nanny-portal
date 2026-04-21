@@ -18,5 +18,20 @@
     "bio": "Педагог по образованию. Работала в детских садах Москвы и Нячанга.",
     "photo": "img/nanny_placeholder.jpg",
     "telegram_user_id": null
+  },
+  {
+    "id": "n001",
+    "name": "Мария Иванова",
+    "exp_short": "3 года опыта",
+    "portal_token": "nanny_test_token_001",
+    "photo": "",
+    "telegram_user_id": "111111",
+    "status": "active",
+    "bio": "Опытная няня с педагогическим образованием",
+    "age": 28,
+    "languages": [
+      "Русский",
+      "Английский"
+    ]
   }
 ]
