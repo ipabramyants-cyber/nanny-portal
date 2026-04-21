@@ -11,7 +11,8 @@
   window.__LK__ = {
     token: "{{ lead.token }}",
     meeting_date: "{{ lead.meeting_date or '' }}",
-    work_dates: {{ lead.work_dates | tojson }}
+    work_dates: {{ lead.work_dates | tojson }},
+    client_rate: {{ lead.client_rate_per_hour | default(130000) }}
   };
 </script>
 
@@ -161,6 +162,17 @@
         🟩 <strong>Даты работы</strong> &nbsp;·&nbsp; 🟣 <strong>Знакомство</strong><br>
         Нажмите на выделенную дату — увидите чеки.
       </p>
+
+      <!-- Cost calculator (client view) -->
+      <div id="calcBox" style="margin-top:var(--s4); padding:var(--s4); background:var(--c-teal-lt); border-radius:var(--r-md); border:1.5px solid rgba(17,138,138,.15); display:none;">
+        <h3 style="margin:0 0 var(--s3); font-size:14px; color:var(--c-teal-dk);">💰 Расчёт стоимости</h3>
+        <div id="calcRows" style="font-size:13px; display:flex; flex-direction:column; gap:6px; margin-bottom:var(--s3);"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:var(--s2); border-top:1px solid rgba(17,138,138,.2);">
+          <strong style="font-size:14px;">Итого:</strong>
+          <strong id="calcTotal" style="font-size:18px; color:var(--c-teal-dk);"></strong>
+        </div>
+        <p class="hint" style="margin-top:var(--s2); font-size:11px;">Ставка: <span id="calcRate"></span> ₫/ч · Предварительный расчёт</p>
+      </div>
     </div>
 
   </div>
@@ -180,9 +192,46 @@ function openTgLink(path) {
 
 (function(){
   const LK = window.__LK__ || {};
-  const WORK_DATES = LK.work_dates || {};   // { "2025-06-10": {...}, ... }
+  const WORK_DATES = LK.work_dates || {};   // { "2025-06-10": {"time":"HH:MM-HH:MM"}, ... }
   const MEETING_DATE = LK.meeting_date || '';
   const TOKEN = LK.token || '';
+  const CLIENT_RATE = LK.client_rate || 130000;
+
+  // ---- Cost calculator ----
+  (function buildCalc(){
+    function parseHours(timeStr){
+      // "09:00-17:00" → 8
+      if(!timeStr || typeof timeStr !== 'string') return 0;
+      const parts = timeStr.split('-');
+      if(parts.length < 2) return 0;
+      function toMins(t){ const [h,m]=(t||'').split(':'); return (parseInt(h)||0)*60+(parseInt(m)||0); }
+      const diff = toMins(parts[1].trim()) - toMins(parts[0].trim());
+      return diff > 0 ? diff/60 : 0;
+    }
+    const box = document.getElementById('calcBox');
+    const rowsEl = document.getElementById('calcRows');
+    const totalEl = document.getElementById('calcTotal');
+    const rateEl = document.getElementById('calcRate');
+    const dates = Object.keys(WORK_DATES).sort();
+    if(!dates.length){ return; }
+    box.style.display = 'block';
+    rateEl.textContent = CLIENT_RATE.toLocaleString('ru-RU');
+    let totalHours = 0;
+    const rows = [];
+    dates.forEach(function(d){
+      const slot = WORK_DATES[d] || {};
+      const timeStr = slot.time || '';
+      const h = parseHours(timeStr);
+      if(h > 0){
+        totalHours += h;
+        rows.push(`<div style="display:flex;justify-content:space-between;"><span>${d.split('-').reverse().join('.')}${timeStr?' ('+timeStr+')':''}</span><span>${h}ч × ${CLIENT_RATE.toLocaleString('ru-RU')} = <strong>${(h*CLIENT_RATE).toLocaleString('ru-RU')} ₫</strong></span></div>`);
+      } else {
+        rows.push(`<div style="color:var(--c-text-muted);">${d.split('-').reverse().join('.')} — время не указано</div>`);
+      }
+    });
+    rowsEl.innerHTML = rows.join('');
+    totalEl.textContent = (totalHours * CLIENT_RATE).toLocaleString('ru-RU') + ' ₫';
+  })();
 
   const receiptsBox = document.getElementById('receiptsBox');
   const monthLabel  = document.getElementById('monthLabel');

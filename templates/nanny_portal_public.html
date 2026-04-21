@@ -12,7 +12,8 @@
     nanny: {{ nanny | tojson }},
     clients: {{ clients | tojson }},
     events: {{ events | tojson }},
-    today: "{{ today }}"
+    today: "{{ today }}",
+    default_nanny_rate: {{ default_nanny_rate | default(110000) }}
   };
 </script>
 
@@ -105,6 +106,17 @@
       </div>
     </div>
 
+    <!-- Earnings calculator (nanny view) -->
+    <div class="panel" id="earningsPanel" style="display:none;">
+      <h3>💵 Мой заработок</h3>
+      <div id="earningsRows" style="font-size:13px; display:flex; flex-direction:column; gap:6px; margin-bottom:var(--s3);"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding-top:var(--s2); border-top:1px solid rgba(17,138,138,.2);">
+        <strong style="font-size:14px;">Итого:</strong>
+        <strong id="earningsTotal" style="font-size:18px; color:var(--c-teal-dk);"></strong>
+      </div>
+      <p class="hint" style="margin-top:var(--s2); font-size:11px;">Предварительный расчёт на основе запланированного времени</p>
+    </div>
+
     <!-- Instagram -->
     <div class="panel">
       <h3>Instagram</h3>
@@ -117,7 +129,48 @@
 
 <script>
 (function(){
-  const {nanny, clients, events, today} = window.__NANNY__;
+  const {nanny, clients, events, today, default_nanny_rate} = window.__NANNY__;
+
+  // ---- Earnings calculator ----
+  (function buildEarnings(){
+    function parseHours(timeStr){
+      if(!timeStr || typeof timeStr !== 'string') return 0;
+      const parts = timeStr.split('-');
+      if(parts.length < 2) return 0;
+      function toMins(t){ const [h,m]=(t||'').split(':'); return (parseInt(h)||0)*60+(parseInt(m)||0); }
+      const diff = toMins(parts[1].trim()) - toMins(parts[0].trim());
+      return diff > 0 ? diff/60 : 0;
+    }
+    const panel = document.getElementById('earningsPanel');
+    const rowsEl = document.getElementById('earningsRows');
+    const totalEl = document.getElementById('earningsTotal');
+    if(!events || !events.length){ return; }
+    let totalEarnings = 0;
+    const rows = [];
+    // Group by date
+    const byDate = {};
+    events.forEach(function(ev){
+      if(!byDate[ev.date]) byDate[ev.date] = [];
+      byDate[ev.date].push(ev);
+    });
+    Object.keys(byDate).sort().forEach(function(d){
+      byDate[d].forEach(function(ev){
+        const timeStr = ev.time || '';
+        const h = parseHours(timeStr);
+        const rate = ev.nanny_rate || default_nanny_rate || 110000;
+        const dateStr = d.split('-').reverse().join('.');
+        if(h > 0){
+          totalEarnings += h * rate;
+          rows.push(`<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span>${dateStr}${ev.child_name?' — '+ev.child_name:''}${timeStr?' ('+timeStr+')':''}</span><strong>${(h*rate).toLocaleString('ru-RU')} ₫</strong></div>`);
+        } else {
+          rows.push(`<div style="color:var(--c-text-muted);">${dateStr}${ev.child_name?' — '+ev.child_name:''} — время не указано</div>`);
+        }
+      });
+    });
+    rowsEl.innerHTML = rows.join('');
+    totalEl.textContent = totalEarnings.toLocaleString('ru-RU') + ' ₫';
+    panel.style.display = 'block';
+  })();
   const monthNames=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
   const dow=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
   const pad=n=>String(n).padStart(2,'0');

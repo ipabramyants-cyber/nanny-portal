@@ -92,6 +92,7 @@
               <th>Статус</th>
               <th>ЛК</th>
               <th>Назначить</th>
+              <th>Ставки / Маржа</th>
             </tr>
           </thead>
           <tbody>
@@ -141,9 +142,30 @@
                   <button type="submit" class="btn" style="padding:5px 12px; font-size:12px; margin-top:0; background:var(--c-teal); color:#fff;">ОК</button>
                 </form>
               </td>
+              <td style="min-width:200px;">
+                <div class="rate-editor" data-token="{{ lead.token }}"
+                     data-cr="{{ lead.client_rate_per_hour | default(130000) }}"
+                     data-nr="{{ lead.nanny_rate_per_hour | default(110000) }}"
+                     data-work-dates="{{ lead.work_dates | tojson | e }}">
+                  <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                    <div>
+                      <div style="font-size:10px; color:var(--c-text-muted); margin-bottom:2px;">Клиент ₫/ч</div>
+                      <input class="rate-cr" type="number" value="{{ lead.client_rate_per_hour | default(130000) }}"
+                             style="width:90px; padding:4px 6px; border:1px solid var(--c-border-str); border-radius:var(--r-sm); font-size:12px;" />
+                    </div>
+                    <div>
+                      <div style="font-size:10px; color:var(--c-text-muted); margin-bottom:2px;">Няня ₫/ч</div>
+                      <input class="rate-nr" type="number" value="{{ lead.nanny_rate_per_hour | default(110000) }}"
+                             style="width:90px; padding:4px 6px; border:1px solid var(--c-border-str); border-radius:var(--r-sm); font-size:12px;" />
+                    </div>
+                    <button class="btn rate-save" style="padding:4px 10px; font-size:11px; margin-top:14px; background:var(--c-teal); color:#fff;">💾</button>
+                  </div>
+                  <div class="rate-calc" style="margin-top:6px; font-size:12px; color:var(--c-text-2);"></div>
+                </div>
+              </td>
             </tr>
           {% else %}
-            <tr><td colspan="9" style="padding:24px; text-align:center; opacity:.5;">Заявок пока нет</td></tr>
+            <tr><td colspan="10" style="padding:24px; text-align:center; opacity:.5;">Заявок пока нет</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -739,6 +761,61 @@
     const q = this.value.toLowerCase();
     document.querySelectorAll('#leadsTable tbody tr[data-search]').forEach(tr => {
       tr.style.display = tr.dataset.search.includes(q) ? '' : 'none';
+    });
+  });
+})();
+
+// Rate editor + profit calculator
+(function(){
+  function parseHours(timeStr){
+    if(!timeStr) return 0;
+    const parts = timeStr.split('-');
+    if(parts.length < 2) return 0;
+    function toMins(t){ const [h,m]=(t||'').split(':'); return (parseInt(h)||0)*60+(parseInt(m)||0); }
+    const diff = toMins(parts[1].trim()) - toMins(parts[0].trim());
+    return diff > 0 ? diff/60 : 0;
+  }
+
+  function updateCalc(editor){
+    const cr = parseInt(editor.querySelector('.rate-cr').value) || 0;
+    const nr = parseInt(editor.querySelector('.rate-nr').value) || 0;
+    let wd = {};
+    try{ wd = JSON.parse(editor.dataset.workDates || '{}'); } catch(e){}
+    const dates = Object.keys(wd);
+    const calcEl = editor.querySelector('.rate-calc');
+    if(!dates.length){ calcEl.textContent = ''; return; }
+    let totalH = 0;
+    dates.forEach(function(d){ totalH += parseHours((wd[d]||{}).time||''); });
+    if(totalH <= 0){ calcEl.innerHTML = `<span style="opacity:.6">${dates.length} дат, время не указано</span>`; return; }
+    const clientTotal = totalH * cr;
+    const nannyTotal = totalH * nr;
+    const margin = clientTotal - nannyTotal;
+    const fmt = n => n.toLocaleString('ru-RU');
+    calcEl.innerHTML = `
+      <div>📅 ${dates.length} дат · ${totalH}ч</div>
+      <div>👤 Клиент: <strong>${fmt(clientTotal)} ₫</strong></div>
+      <div>👩 Няня: <strong>${fmt(nannyTotal)} ₫</strong></div>
+      <div>💰 Маржа: <strong style="color:${margin>=0?'var(--c-teal-dk)':'var(--c-danger)'};">${fmt(margin)} ₫</strong></div>`;
+  }
+
+  document.querySelectorAll('.rate-editor').forEach(function(editor){
+    updateCalc(editor);
+    editor.querySelector('.rate-cr').addEventListener('input', ()=>updateCalc(editor));
+    editor.querySelector('.rate-nr').addEventListener('input', ()=>updateCalc(editor));
+    editor.querySelector('.rate-save').addEventListener('click', async function(){
+      const token = editor.dataset.token;
+      const cr = parseInt(editor.querySelector('.rate-cr').value) || 0;
+      const nr = parseInt(editor.querySelector('.rate-nr').value) || 0;
+      this.textContent = '…';
+      try{
+        const r = await fetch(`/api/admin/lead/${token}/rates`, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({client_rate_per_hour: cr, nanny_rate_per_hour: nr})
+        });
+        const d = await r.json();
+        if(d.ok){ this.textContent = '✅'; setTimeout(()=>this.textContent='💾', 2000); }
+        else{ this.textContent = '❌'; setTimeout(()=>this.textContent='💾', 2000); }
+      } catch(e){ this.textContent = '❌'; setTimeout(()=>this.textContent='💾', 2000); }
     });
   });
 })();

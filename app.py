@@ -64,6 +64,11 @@ def create_app() -> Flask:
             db.create_all()
 
     BASE_DIR = os.path.dirname(__file__)
+
+    # Default hourly rates (VND) — can be overridden per lead
+    DEFAULT_CLIENT_RATE_VND = 130_000
+    DEFAULT_NANNY_RATE_VND  = 110_000
+
     app.config['DATA_DIR'] = os.path.join(BASE_DIR, 'data')
     app.config['UPLOAD_DIR'] = os.path.join(BASE_DIR, 'uploads')
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
@@ -511,6 +516,8 @@ def create_app() -> Flask:
                 'meeting_date': meeting_date,
                 'work_dates': work_dates if isinstance(work_dates, dict) else {},
                 'assigned_nanny_id': assigned_nanny_id,
+                'client_rate_per_hour': item.get('client_rate_per_hour') or DEFAULT_CLIENT_RATE_VND,
+                'nanny_rate_per_hour': item.get('nanny_rate_per_hour') or DEFAULT_NANNY_RATE_VND,
                 'submitted_at': item.get('submitted_at') or datetime.datetime.utcnow().isoformat(),
                 'documents': docs,
             }
@@ -1061,6 +1068,8 @@ def create_app() -> Flask:
                 'meeting_date': meeting_date,
                 'work_dates': work_dates,
                 'assigned_nanny_id': None,
+                'client_rate_per_hour': DEFAULT_CLIENT_RATE_VND,
+                'nanny_rate_per_hour': DEFAULT_NANNY_RATE_VND,
                 'submitted_at': datetime.datetime.utcnow().isoformat(),
                 'documents': {'receipts': {}},
             }
@@ -1207,20 +1216,24 @@ def create_app() -> Flask:
         leads = load_leads()
         # Clients assigned to this nanny
         clients = [l for l in leads if l.get('assigned_nanny_id') == nanny.get('id')]
-        # Build a flat list of all work assignments for calendar rendering
-        events = []
+        # Build event list with nanny_rate so JS can compute earnings per shift
+        events_with_rate = []
         for l in clients:
+            rate = l.get('nanny_rate_per_hour') or DEFAULT_NANNY_RATE_VND
             for d, info in (l.get('work_dates') or {}).items():
-                events.append({
+                events_with_rate.append({
                     'date': d,
                     'child_name': l.get('child_name'),
                     'child_age': l.get('child_age'),
                     'client_token': l.get('token'),
                     'time': (info or {}).get('time') if isinstance(info, dict) else None,
+                    'nanny_rate': rate,
                 })
-        events.sort(key=lambda x: x.get('date') or '')
+        events_with_rate.sort(key=lambda x: x.get('date') or '')
         today = datetime.datetime.utcnow().date().isoformat()
-        return render_template('nanny_portal_public.html', nanny=nanny, clients=clients, events=events, today=today)
+        return render_template('nanny_portal_public.html', nanny=nanny, clients=clients,
+                               events=events_with_rate, today=today,
+                               default_nanny_rate=DEFAULT_NANNY_RATE_VND)
 
     @app.route('/nanny/<portal_token>')
     def nanny_profile(portal_token: str):
@@ -1813,6 +1826,11 @@ def create_app() -> Flask:
             flash('Заявка не найдена', 'error')
             return redirect(url_for('admin'))
         lead['assigned_nanny_id'] = nanny_id or None
+        # Update rates if provided
+        _cr = (request.form.get('client_rate_per_hour') or '').strip()
+        _nr = (request.form.get('nanny_rate_per_hour') or '').strip()
+        if _cr.isdigit(): lead['client_rate_per_hour'] = int(_cr)
+        if _nr.isdigit(): lead['nanny_rate_per_hour'] = int(_nr)
         save_leads(leads)
 
         if nanny_id:
@@ -2050,6 +2068,7 @@ def create_app() -> Flask:
         entries = [
             {'loc': base + '/', 'priority': '1.0', 'changefreq': 'weekly', 'lastmod': today},
             {'loc': base + '/blog', 'priority': '0.8', 'changefreq': 'weekly', 'lastmod': today},
+            {'loc': base + '/faq', 'priority': '0.7', 'changefreq': 'monthly', 'lastmod': today},
         ]
         for a in articles:
             if a.get('published') and a.get('slug'):
@@ -2085,6 +2104,42 @@ def create_app() -> Flask:
     def _articles_published():
         arts = _read_json(ARTICLES_FILE, [])
         return [a for a in arts if a.get('published')]
+
+
+
+    @app.route('/api/admin/lead/<token>/rates', methods=['POST'])
+    @require_admin
+    def api_admin_lead_rates(token: str):
+        """Update client_rate_per_hour and nanny_rate_per_hour for a lead."""
+        data = request.get_json(force=True) or {}
+        try:
+            cr = int(data.get('client_rate_per_hour') or 0)
+            nr = int(data.get('nanny_rate_per_hour') or 0)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'invalid rates'}), 400
+        if cr < 0 or nr < 0:
+            return jsonify({'error': 'rates must be non-negative'}), 400
+
+        if use_sql:
+            lead_row = Lead.query.filter_by(token=token).first()
+            if not lead_row:
+                return jsonify({'error': 'not found'}), 404
+            if cr: lead_row.client_rate_per_hour = cr
+            if nr: lead_row.nanny_rate_per_hour = nr
+            db.session.commit()
+        else:
+            leads = load_leads()
+            lead = next((x for x in leads if x.get('token') == token), None)
+            if not lead:
+                return jsonify({'error': 'not found'}), 404
+            if cr: lead['client_rate_per_hour'] = cr
+            if nr: lead['nanny_rate_per_hour'] = nr
+            save_leads(leads)
+        return jsonify({'ok': True})
+
+    @app.route('/faq')
+    def faq():
+        return render_template('faq.html')
 
     @app.route('/blog')
     def blog():
