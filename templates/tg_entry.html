@@ -1,63 +1,89 @@
 {% extends "base.html" %}
-{% block scripts_pre %}<script src="https://telegram.org/js/telegram-web-app.js"></script>{% endblock %}
 {% block title %}Вход{% endblock %}
 {% block content %}
 <section class="section">
   <div class="container">
-    <div class="panel" style="max-width:780px;margin:0 auto;">
-      <h3 style="margin-top:0">Открыто через Telegram</h3>
-      <p class="muted" style="margin-top:6px">Сейчас проверяем ваш Telegram‑аккаунт и покажем доступные разделы.</p>
-
-      <div id="tgStatus" class="flash info" style="display:inline-block">Проверяем…</div>
-      <div id="tgDebug" class="muted" style="margin-top:10px; display:none"></div>
-
-      <div id="tgLinks" style="display:none; margin-top:14px">
-        <div class="features" style="grid-template-columns:1fr; gap:10px">
-          <a class="btn primary" id="tgClient" href="/client/app" style="text-decoration:none; display:flex; justify-content:center">Личный кабинет клиента</a>
-          <a class="btn secondary" id="tgAdmin" href="/admin" style="text-decoration:none; display:none; justify-content:center">Админ‑панель</a>
-          <a class="btn secondary" id="tgNanny" href="/nanny" style="text-decoration:none; display:none; justify-content:center">Кабинет няни</a>
-        </div>
-        <div class="hint" style="margin-top:10px">Если вы админ/няня и вас не пускает — вы увидите свой Telegram ID и сможете добавить его в ADMIN_TELEGRAM_IDS или привязать няню в админке.</div>
-      </div>
-
-      <div style="margin-top:14px">
-        <a class="action-link" href="/">Открыть главную</a>
-      </div>
+    <div class="panel" style="max-width:480px;margin:40px auto;text-align:center;">
+      <img src="/static/img/logo.png" alt="Няня на час" style="width:72px;height:72px;border-radius:50%;margin-bottom:14px;">
+      <h3 style="margin:0 0 6px">Входим…</h3>
+      <div id="tgStatus" class="muted">Проверяем Telegram‑аккаунт</div>
+      <div id="tgDebug" style="margin-top:12px;font-size:13px;opacity:.7;display:none;white-space:pre-wrap;text-align:left;"></div>
     </div>
   </div>
 </section>
 
 <script>
 (function(){
-  const status = document.getElementById('tgStatus');
-  const debug = document.getElementById('tgDebug');
-  const links = document.getElementById('tgLinks');
-  const adminBtn = document.getElementById('tgAdmin');
-  const nannyBtn = document.getElementById('tgNanny');
+  var status  = document.getElementById('tgStatus');
+  var debugEl = document.getElementById('tgDebug');
 
-  function showError(text){ status.className = 'flash error'; status.textContent = text; }
-  function showOk(text){ status.className = 'flash success'; status.textContent = text; }
+  function setStatus(text, color) {
+    status.textContent = text;
+    status.style.color = color || '';
+  }
+  function showDebug(text) {
+    debugEl.style.display = 'block';
+    debugEl.textContent = text;
+  }
 
-  let tries = 0;
-  const t = setInterval(() => {
+  function doAuth(initData) {
+    setStatus('Авторизуемся…');
+    fetch('/api/auth/telegram', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({init_data: initData}),
+      credentials: 'include'
+    })
+    .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+    .then(function(res){
+      if (!res.ok) {
+        setStatus('Ошибка авторизации: ' + (res.data.error || '?'), '#e74c3c');
+        showDebug('Убедитесь что TELEGRAM_BOT_TOKEN добавлен в переменные Railway.\nError: ' + JSON.stringify(res.data));
+        return;
+      }
+      var role = res.data.role || 'client';
+      window.__TG_AUTH__ = Object.assign({ok: true}, res.data);
+
+      // Авторедирект по роли
+      if (role === 'admin') {
+        setStatus('Добро пожаловать, администратор! Открываю панель…');
+        window.location.href = '/admin';
+      } else if (role === 'nanny') {
+        setStatus('Добро пожаловать, няня! Открываю кабинет…');
+        window.location.href = '/nanny/app';
+      } else {
+        setStatus('Добро пожаловать! Открываю личный кабинет…');
+        window.location.href = '/client/app';
+      }
+    })
+    .catch(function(e){
+      setStatus('Ошибка сети', '#e74c3c');
+      showDebug(e.message);
+    });
+  }
+
+  // Ждём загрузки Telegram SDK
+  var tries = 0;
+  var timer = setInterval(function(){
     tries++;
-    const res = window.__TG_AUTH__;
-    if (!res && tries < 30) return;
-    clearInterval(t);
-    if (!res || !res.ok) {
-      const err = (res && res.error) ? res.error : 'Не удалось подтвердить Telegram WebApp.';
-      showError(err);
-      debug.style.display = 'block';
-      debug.textContent = 'Подсказка: убедитесь, что вы открываете сайт кнопкой WebApp внутри бота (а не "Открыть в браузере").';
-      return;
+    if (window.Telegram && window.Telegram.WebApp) {
+      clearInterval(timer);
+      var tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      var initData = tg.initData || '';
+      if (!initData) {
+        setStatus('initData пустой — откройте через кнопку в боте', '#e67e22');
+        showDebug('Telegram ID узнайте у @userinfobot\nЕсли вы открываете в браузере — зайдите напрямую:\n/admin?dev_token=YOUR_ADMIN_TOKEN');
+        return;
+      }
+      doAuth(initData);
+    } else if (tries > 40) {
+      clearInterval(timer);
+      // Не внутри Telegram — редирект на главную
+      window.location.href = '/';
     }
-    showOk('Готово: вы вошли как ' + (res.role || 'client'));
-    debug.style.display = 'block';
-    debug.textContent = 'Ваш Telegram ID: ' + res.telegram_user_id;
-    links.style.display = 'block';
-    if (res.role === 'admin') adminBtn.style.display = 'flex';
-    if (res.role === 'nanny') nannyBtn.style.display = 'flex';
-  }, 120);
+  }, 100);
 })();
 </script>
 {% endblock %}
