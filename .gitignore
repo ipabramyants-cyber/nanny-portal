@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+uploads/
+*.zip
+*.png
+*.jpg
+*.gif
+*.webp
+data/leads.json
+data/users.json
+data/assignments.json
+data/receipts.json
+node_modules/
+.DS_Store
+/tmp/

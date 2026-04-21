@@ -1,0 +1,22 @@
+[
+  {
+    "id": "anna",
+    "portal_token": "nanny-anna",
+    "name": "Анна",
+    "age": 28,
+    "exp_short": "5 лет опыта",
+    "bio": "Люблю детей, опыт с детьми от 0 до 8 лет. Знаю базовый английский.",
+    "photo": "img/nanny_placeholder.jpg",
+    "telegram_user_id": null
+  },
+  {
+    "id": "marina",
+    "portal_token": "nanny-marina",
+    "name": "Марина",
+    "age": 32,
+    "exp_short": "7 лет опыта",
+    "bio": "Педагог по образованию. Работала в детских садах Москвы и Нячанга.",
+    "photo": "img/nanny_placeholder.jpg",
+    "telegram_user_id": null
+  }
+]

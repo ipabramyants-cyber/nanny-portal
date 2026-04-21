@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block head_meta %}
+<meta name="robots" content="noindex, nofollow">
+{% endblock %}
+{% block title %}Кабинет няни — {{ nanny.name }}{% endblock %}
+
+
+{% block content %}
+
+<script>
+  window.__NANNY__ = {
+    nanny: {{ nanny | tojson }},
+    clients: {{ clients | tojson }},
+    events: {{ events | tojson }},
+    today: "{{ today }}"
+  };
+</script>
+
+<!-- Page header -->
+<div style="background:var(--grad-hero); padding:var(--s6) 0;">
+  <div class="container" style="display:flex; align-items:center; gap:var(--s4);">
+    <img src="{{ nanny_photo_src(nanny.photo) }}" alt="{{ nanny.name }}"
+         style="width:72px;height:72px;border-radius:var(--r-lg);object-fit:cover;border:3px solid rgba(255,255,255,.4);"
+         onerror="this.src='/static/img/nanny_placeholder.jpg'" />
+    <div>
+      <h1 style="color:#fff; margin:0;">{{ nanny.name }}</h1>
+      <p style="color:rgba(255,255,255,.8); margin:4px 0 0; font-size:14px;">{{ nanny.exp_short }}</p>
+    </div>
+  </div>
+</div>
+
+<section class="container" style="padding-bottom:60px;position:relative;">
+  <img src="/static/img/sticker2.png" class="page-sticker page-sticker--left" aria-hidden="true" alt="" width="110" height="110">
+  <div class="hero-grid" style="margin-top:var(--s5);">
+
+    <!-- Profile panel -->
+    <div class="panel">
+      <h3>Профиль</h3>
+      {% if nanny.bio %}
+        <div style="font-size:13px; color:var(--c-text-2); line-height:1.6; white-space:pre-line;">{{ nanny.bio }}</div>
+      {% endif %}
+
+      <hr class="divider" />
+      <h3 style="font-size:14px; color:var(--c-text-muted); margin-bottom:8px;">Назначенные клиенты</h3>
+      <div id="clientList" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+
+    <!-- Calendar panel -->
+    <div class="panel">
+      <div class="calendar-head">
+        <button type="button" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
+        <div id="monthLabel"></div>
+        <button type="button" id="nextMonth" aria-label="Следующий месяц">›</button>
+      </div>
+      <div id="calendar" class="calendar"></div>
+      <p class="hint" style="margin-top:8px;">Нажмите на дату для просмотра назначений, загрузки чека или отметки выходного.</p>
+      <div id="selectedBox" style="margin-top:14px;"></div>
+    </div>
+
+    <!-- Actions panel -->
+    <div class="panel">
+      <h3>Чек за смену</h3>
+      <div style="display:grid; gap:10px;">
+        <div>
+          <label>Дата</label>
+          <input id="uploadDate" disabled placeholder="Сначала выберите дату в календаре" />
+        </div>
+        <div>
+          <label>Клиент</label>
+          <select id="uploadClient" disabled></select>
+        </div>
+        <div>
+          <label>Комментарий</label>
+          <textarea id="uploadComment" rows="2" placeholder="Например: чек за такси / игрушки"></textarea>
+        </div>
+        <div>
+          <label>Файл</label>
+          <input type="file" id="uploadFile" accept="image/*,application/pdf" />
+        </div>
+        <button type="button" id="uploadBtn" class="btn primary" style="margin-top:0;" disabled>Загрузить чек</button>
+        <div class="hint" id="uploadHint"></div>
+      </div>
+
+      <hr class="divider" />
+
+      <h3>Отметить выходной</h3>
+      <div style="display:grid; gap:10px;">
+        <div>
+          <label>Дата</label>
+          <input id="offDate" disabled placeholder="Выберите дату в календаре" />
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div><label>С</label><input id="offStart" type="time" /></div>
+          <div><label>До</label><input id="offEnd" type="time" /></div>
+        </div>
+        <div>
+          <label>Комментарий</label>
+          <textarea id="offNote" rows="2" placeholder="Например: личная встреча / выходной"></textarea>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" id="saveOffBtn" class="btn secondary" disabled>Сохранить выходной</button>
+          <button type="button" id="deleteOffBtn" class="btn danger" style="width:auto; margin-top:0;" disabled>Удалить</button>
+        </div>
+        <div class="hint" id="offStatus">Выберите дату в календаре.</div>
+      </div>
+    </div>
+
+    <!-- Instagram -->
+    <div class="panel">
+      <h3>Instagram</h3>
+      <div id="igGrid" class="ig-grid"></div>
+      <a class="action-link ig-link" href="https://www.instagram.com/nanny_nya_trang/" target="_blank" rel="noopener noreferrer">Открыть Instagram →</a>
+    </div>
+
+  </div>
+</section>
+
+<script>
+(function(){
+  const {nanny, clients, events, today} = window.__NANNY__;
+  const monthNames=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+  const dow=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  const pad=n=>String(n).padStart(2,'0');
+  const formatRu=ymd=>{if(!ymd||ymd.length!==10)return ymd;const[y,m,d]=ymd.split('-');return`${d}.${m}.${y}`;};
+
+  const byDate={};
+  events.forEach(e=>{if(!e.date)return;byDate[e.date]=byDate[e.date]||[];byDate[e.date].push(e);});
+
+  const clientListEl=document.getElementById('clientList');
+  const selectedBox=document.getElementById('selectedBox');
+  const cal=document.getElementById('calendar');
+  const mlabel=document.getElementById('monthLabel');
+  const uploadDate=document.getElementById('uploadDate');
+  const uploadClient=document.getElementById('uploadClient');
+  const uploadFile=document.getElementById('uploadFile');
+  const uploadComment=document.getElementById('uploadComment');
+  const uploadBtn=document.getElementById('uploadBtn');
+  const uploadHint=document.getElementById('uploadHint');
+  const offDate=document.getElementById('offDate');
+  const offStart=document.getElementById('offStart');
+  const offEnd=document.getElementById('offEnd');
+  const offNote=document.getElementById('offNote');
+  const saveOffBtn=document.getElementById('saveOffBtn');
+  const deleteOffBtn=document.getElementById('deleteOffBtn');
+  const offStatus=document.getElementById('offStatus');
+
+  let cur=new Date();cur.setDate(1);
+  let selectedIso=null;
+  let selectedOffId=null;
+  let blocksEnabled=false;
+  let blocksByDate={};
+
+  function renderClients(){
+    clientListEl.innerHTML='';
+    if(!clients.length){
+      clientListEl.innerHTML='<div class="hint">Нет назначенных клиентов.</div>';
+      return;
+    }
+    clients.forEach(l=>{
+      const wd=Object.keys(l.work_dates||{}).sort();
+      const el=document.createElement('div');
+      el.style.cssText='padding:10px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);';
+      el.innerHTML=`<div style="font-weight:800;font-size:14px;">${l.child_name||'Ребёнок'}<span style="font-weight:400;font-size:12px;color:var(--c-text-muted);margin-left:4px;">(${l.child_age||'-'})</span></div>
+        <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">Родитель: ${l.parent_name||'-'}</div>
+        <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">Дат: ${wd.length?wd.map(formatRu).join(', '):'—'}</div>`;
+      clientListEl.appendChild(el);
+    });
+  }
+
+  function renderCalendar(){
+    const y=cur.getFullYear(),m=cur.getMonth();
+    mlabel.textContent=`${monthNames[m]} ${y}`;cal.innerHTML='';
+    const dowRow=document.createElement('div');dowRow.className='cal-row';
+    dow.forEach(d=>{const c=document.createElement('div');c.className='cal-cell dow';c.textContent=d;dowRow.appendChild(c);});
+    cal.appendChild(dowRow);
+    const first=new Date(y,m,1);const startDow=(first.getDay()+6)%7;const dim=new Date(y,m+1,0).getDate();
+    let day=1;
+    for(let r=0;r<6;r++){
+      if(day>dim)break;
+      const row=document.createElement('div');row.className='cal-row';
+      for(let c=0;c<7;c++){
+        const cell=document.createElement('div');cell.className='cal-cell';
+        if((r===0&&c<startDow)||day>dim){cell.classList.add('muted');row.appendChild(cell);continue;}
+        const iso=`${y}-${pad(m+1)}-${pad(day)}`;
+        const items=byDate[iso]||[];const block=blocksByDate[iso]||null;
+        cell.innerHTML=`<div class="cal-num">${day}</div>`;
+        if(iso===today)cell.classList.add('today');
+        if(items.length){cell.classList.add('work');const m2=document.createElement('div');m2.style.cssText='font-size:10px;font-weight:700;margin-top:3px;color:var(--c-teal-dk);';m2.textContent=`${items.length} назн.`;cell.appendChild(m2);}
+        if(block){cell.classList.add('dayoff');const mb=document.createElement('div');mb.style.cssText='font-size:10px;font-weight:700;margin-top:2px;color:var(--c-danger);';mb.textContent='выходной';cell.appendChild(mb);}
+        if(selectedIso===iso)cell.style.outline='3px solid var(--c-teal)';
+        cell.addEventListener('click',()=>selectDate(iso));
+        row.appendChild(cell);day++;
+      }
+      cal.appendChild(row);
+    }
+  }
+
+  function fillClientSelect(items){
+    uploadClient.innerHTML='';
+    items.forEach(e=>{const opt=document.createElement('option');opt.value=e.client_token;opt.textContent=`${e.child_name||'Ребёнок'} (${e.child_age||'-'})${e.time?' — '+e.time:''}`;uploadClient.appendChild(opt);});
+  }
+
+  function selectDate(iso){
+    selectedIso=iso;
+    const items=byDate[iso]||[];const block=blocksByDate[iso]||null;
+    const isPast=!!(today&&iso<=today);
+    renderCalendar();
+    uploadDate.value=formatRu(iso);offDate.value=iso;
+    offStart.value=block?.start||'';offEnd.value=block?.end||'';offNote.value=block?.note||'';
+    selectedOffId=block?.id||null;
+    deleteOffBtn.disabled=!selectedOffId||!blocksEnabled;
+    fillClientSelect(items);
+    const canUpload=items.length>0&&isPast;
+    uploadClient.disabled=!canUpload;uploadBtn.disabled=!canUpload;
+    uploadHint.textContent=!items.length?'На выбранную дату нет назначений.'
+      :!isPast?'Чек можно загрузить только для прошедшей даты.'
+      :`Загрузить чек за ${formatRu(iso)}.`;
+    const assignmentsHtml=items.length?items.map(e=>`
+      <div style="padding:10px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <strong>${e.child_name||'Ребёнок'} (${e.child_age||'-'})</strong>
+          <span class="text-small text-muted">${e.time||'время уточняется'}</span>
+        </div>
+        <div class="text-small text-muted" style="margin-top:2px;">Клиент: ${clients.find(x=>x.token===e.client_token)?.parent_name||'-'}</div>
+        <a class="action-link text-small" href="/client/${e.client_token}" target="_blank" style="margin-top:4px;display:inline-block;">Открыть ЛК →</a>
+      </div>`).join(''):'<div class="hint">Назначений на эту дату нет.</div>';
+    const blockHtml=block?`<div style="margin-top:8px;padding:8px 12px;border-radius:var(--r-md);background:rgba(239,68,68,.08);border:1px dashed rgba(239,68,68,.35);">
+      <strong style="color:var(--c-danger);">Выходной</strong>
+      <span class="text-small text-muted" style="margin-left:6px;">${block.start||'--:--'}–${block.end||'--:--'} ${block.note?'· '+block.note:''}</span>
+      </div>`:'';
+    selectedBox.innerHTML=`<div style="font-weight:800;margin-bottom:8px;color:var(--c-teal);">${formatRu(iso)}</div>${assignmentsHtml}${blockHtml}`;
+    offStatus.textContent=blocksEnabled
+      ?(block?'Выходной найден. Можно удалить или изменить.':'Можно отметить как выходной.')
+      :'Отметка выходного работает только в SQL-режиме.';
+  }
+
+  async function loadBlocks(){
+    blocksByDate={};blocksEnabled=false;
+    try{
+      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks`);
+      const data=await res.json();if(!res.ok||!data.ok)throw new Error(data?.error||'err');
+      (data.items||[]).forEach(b=>{if(b&&b.date)blocksByDate[b.date]=b;});
+      blocksEnabled=true;saveOffBtn.disabled=false;
+    }catch(e){blocksEnabled=false;saveOffBtn.disabled=true;deleteOffBtn.disabled=true;}
+  }
+
+  saveOffBtn.addEventListener('click',async()=>{
+    if(!blocksEnabled){alert('Отметка выходного доступна только в SQL-режиме.');return;}
+    if(!offDate.value){alert('Сначала выберите дату.');return;}
+    if(selectedOffId)await deleteOff();
+    const payload={date:offDate.value,start:offStart.value||null,end:offEnd.value||null,note:offNote.value||null};
+    offStatus.textContent='Сохраняю…';
+    try{
+      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const data=await res.json();if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка');
+      await loadBlocks();selectDate(offDate.value);offStatus.textContent='Выходной сохранён ✓';
+    }catch(e){offStatus.textContent='Ошибка: '+(e.message||e);}
+  });
+
+  async function deleteOff(){
+    if(!blocksEnabled||!selectedOffId)return;
+    const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks/${selectedOffId}`,{method:'DELETE'});
+    const data=await res.json().catch(()=>({}));if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка');
+    await loadBlocks();
+  }
+
+  deleteOffBtn.addEventListener('click',async()=>{
+    if(!selectedOffId){alert('На выбранную дату выходной не найден.');return;}
+    try{await deleteOff();selectDate(offDate.value);offStatus.textContent='Выходной удалён.';}
+    catch(e){offStatus.textContent='Ошибка: '+(e.message||e);}
+  });
+
+  uploadBtn.addEventListener('click',async()=>{
+    if(uploadBtn.disabled)return;
+    if(!selectedIso){alert('Сначала выберите дату.');return;}
+    if(!uploadClient.value){alert('Выберите клиента.');return;}
+    if(!uploadFile.files||!uploadFile.files[0]){alert('Выберите файл.');return;}
+    const fd=new FormData();
+    fd.append('client_token',uploadClient.value);
+    fd.append('date',selectedIso);
+    fd.append('comment',uploadComment.value||'');
+    fd.append('file',uploadFile.files[0]);
+    uploadBtn.disabled=true;uploadBtn.textContent='Загрузка…';
+    const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/upload_receipt`,{method:'POST',body:fd});
+    const data=await res.json().catch(()=>({}));
+    uploadBtn.disabled=false;uploadBtn.textContent='Загрузить чек';
+    if(!res.ok){alert(data?.error||'Ошибка загрузки');return;}
+    alert('Чек успешно загружен ✓');uploadFile.value='';uploadComment.value='';
+  });
+
+  document.getElementById('prevMonth').addEventListener('click',()=>{cur.setMonth(cur.getMonth()-1);renderCalendar();});
+  document.getElementById('nextMonth').addEventListener('click',()=>{cur.setMonth(cur.getMonth()+1);renderCalendar();});
+
+  (async function(){
+    renderClients();
+    await loadBlocks();
+    renderCalendar();
+    const initialDate=today||Object.keys(byDate).sort()[0];
+    if(initialDate)selectDate(initialDate);
+  })();
+})();
+</script>
+
+{% endblock %}
+

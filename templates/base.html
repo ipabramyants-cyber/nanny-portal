@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  {% block head_meta %}
+  <meta name="robots" content="index, follow">
+  {% endblock %}
+  <meta name="theme-color" content="#016b82">
+  <link rel="manifest" href="/static/site.webmanifest">
+  <link rel="icon" href="/static/img/logo.png">
+  <link rel="apple-touch-icon" href="/static/img/logo.png">
+  <link rel="preconnect" href="https://telegram.org">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  {% block head_extra %}{% endblock %}
+  <title>{% block title %}Няня на час — Нячанг{% endblock %}</title>
+</head>
+<body>
+  <!-- Scroll progress bar -->
+  <div id="scroll-progress"></div>
+
+  <!-- Particles canvas -->
+  <canvas id="particles-canvas" aria-hidden="true"></canvas>
+
+  <!-- Splash loader -->
+  <div id="splash" class="splash" aria-hidden="true">
+    <div class="splash-card">
+      <div class="splash-ring"></div>
+      <div class="splash-ring"></div>
+      <div class="splash-ring"></div>
+      <img src="/static/img/splash.gif" alt="" class="splash-media" decoding="async" loading="eager" onerror="this.style.display='none'" />
+      <div class="splash-text">Няня на час</div>
+      <div class="splash-dots"><span></span><span></span><span></span></div>
+    </div>
+  </div>
+
+  <!-- header removed -->
+
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-messages">
+        {% for cat, msg in messages %}
+          <div class="flash {{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+
+  <footer class="footer">
+    <div class="container footer-container">
+      <p>&copy; {{ current_year }} Няня на час — Нячанг. Все права защищены.</p>
+      <div class="social-links">
+        <a href="https://www.instagram.com/nanny_nya_trang" target="_blank" rel="noopener" class="social-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          Instagram
+        </a>
+        <a href="https://t.me/nanny_nya_trang" target="_blank" rel="noopener" class="social-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8l-1.68 7.92c-.12.56-.46.7-.94.43l-2.58-1.9-1.24 1.2c-.14.13-.26.24-.53.24l.19-2.64 4.84-4.37c.21-.19-.05-.29-.32-.1L8.38 14.3l-2.54-.8c-.55-.17-.56-.55.12-.82l9.94-3.83c.46-.17.86.11.74.95z"/></svg>
+          Telegram
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <a href="https://t.me/Nastasja_Ageyeva" target="_blank" class="chat-button" aria-label="Написать в чат">
+    <span class="chat-label">Написать в чат</span>
+  </a>
+
+  <!-- Scripts -->
+  <script src="/static/js/loader.js"></script>
+  {% block scripts_pre %}{% endblock %}
+  <script src="/static/js/tg_webapp.js"></script>
+  <script src="/static/js/calendar.js"></script>
+  <script src="/static/js/instagram.js"></script>
+
+  <!-- Scroll reveal -->
+  <script>
+  (function(){
+    if ('IntersectionObserver' in window) {
+      const obs = new IntersectionObserver((entries) => {
+        entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+      }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+      document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+
+      // Section sticker reveal
+      const sObs = new IntersectionObserver((entries) => {
+        entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in-view'); sObs.unobserve(e.target); } });
+      }, { threshold: 0.08 });
+      document.querySelectorAll('.section-sticker').forEach(el => sObs.observe(el));
+    } else {
+      document.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+      document.querySelectorAll('.section-sticker').forEach(el => el.classList.add('in-view'));
+    }
+
+    // Telegram Mini App body class
+    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+      document.body.classList.add('tg-app');
+    }
+  })();
+  </script>
+
+  {% block scripts %}{% endblock %}
+
+  <!-- Scroll progress -->
+  <script>
+  (function(){
+    var bar = document.getElementById('scroll-progress');
+    if (!bar) return;
+    window.addEventListener('scroll', function(){
+      var p = window.scrollY / Math.max(1, document.body.scrollHeight - window.innerHeight);
+      bar.style.width = (p * 100) + '%';
+    }, { passive: true });
+  })();
+  </script>
+
+  <!-- Floating particles -->
+  <script>
+  (function(){
+    var canvas = document.getElementById('particles-canvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var W, H, particles = [];
+
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize, { passive: true });
+
+    var colors = ['rgba(10,181,212,', 'rgba(46,156,56,', 'rgba(255,255,255,'];
+    for (var i = 0; i < 38; i++) {
+      particles.push({
+        x: Math.random() * 1000,
+        y: Math.random() * 1000,
+        r: 1.5 + Math.random() * 3,
+        dx: (Math.random() - 0.5) * 0.35,
+        dy: -0.2 - Math.random() * 0.4,
+        alpha: 0.15 + Math.random() * 0.35,
+        color: colors[Math.floor(Math.random() * colors.length)]
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      particles.forEach(function(p) {
+        p.x += p.dx;
+        p.y += p.dy;
+        if (p.y < -10) { p.y = H + 10; p.x = Math.random() * W; }
+        if (p.x < -10) p.x = W + 10;
+        if (p.x > W + 10) p.x = -10;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = p.color + p.alpha + ')';
+        ctx.fill();
+      });
+      requestAnimationFrame(draw);
+    }
+    draw();
+  })();
+  </script>
+  {% block extra_body %}{% endblock %}
+</body>
+</html>

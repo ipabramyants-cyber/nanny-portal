@@ -1,0 +1,509 @@
+{% extends "base.html" %}
+{% block head_meta %}
+<meta name="robots" content="noindex, nofollow">
+{% endblock %}
+{% block title %}Админ-панель — Няня на час{% endblock %}
+
+{% block content %}
+
+<!-- Admin Header -->
+<div class="admin-header">
+  <div class="container">
+    <h1>Панель администратора</h1>
+    <p>Управление заявками, нянями и отзывами</p>
+  </div>
+</div>
+
+<div class="container" style="padding-bottom: 60px;">
+
+  <!-- KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-icon">📋</div>
+      <div class="kpi-value">{{ crm.leads_total }}</div>
+      <div class="kpi-label">Заявок</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon">✅</div>
+      <div class="kpi-value">{{ crm.assigned_total }}</div>
+      <div class="kpi-label">Назначено</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon">⏳</div>
+      <div class="kpi-value">{{ crm.unassigned_total }}</div>
+      <div class="kpi-label">Без няни</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon">📅</div>
+      <div class="kpi-value">{{ crm.shifts_total }}</div>
+      <div class="kpi-label">Смен</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon">⭐</div>
+      <div class="kpi-value">{{ crm.reviews_total }}</div>
+      <div class="kpi-label">Отзывов</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon">🗓️</div>
+      <div class="kpi-value">{{ crm.work_dates_total }}</div>
+      <div class="kpi-label">Рабочих дней</div>
+    </div>
+  </div>
+
+  <!-- MASTER CALENDAR -->
+  <div class="admin-section">
+    <div class="panel">
+      <h2>📅 Сводный календарь всех смен</h2>
+      <p style="font-size:13px;color:var(--c-text-muted);margin-bottom:var(--s4);">
+        Все даты работы из всех заявок. 🟢 назначена няня &nbsp;·&nbsp; 🟡 ожидает назначения
+      </p>
+      <div style="display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3);">
+        <button type="button" id="calPrev" class="btn secondary" style="padding:6px 14px;font-size:13px;">‹</button>
+        <strong id="calMonthLabel" style="min-width:160px;text-align:center;"></strong>
+        <button type="button" id="calNext" class="btn secondary" style="padding:6px 14px;font-size:13px;">›</button>
+      </div>
+      <div id="masterCal" class="calendar" style="max-width:440px;"></div>
+      <div id="calDayDetail" style="margin-top:var(--s4);display:none;">
+        <h4 id="calDayTitle" style="margin-bottom:var(--s2);"></h4>
+        <div id="calDayList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEADS -->
+  <div class="admin-section">
+    <div class="panel">
+      <h2>📋 Заявки ({{ leads|length }})</h2>
+
+      <div class="search-bar">
+        <input type="text" id="leadsSearch" placeholder="Поиск по имени, Telegram…" />
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="data-table" id="leadsTable">
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Клиент</th>
+              <th>Telegram</th>
+              <th>Ребёнок</th>
+              <th>Встреча</th>
+              <th>Дат</th>
+              <th>Статус</th>
+              <th>ЛК</th>
+              <th>Назначить</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for lead in leads %}
+            <tr class="{% if not lead.assigned_nanny_id %}row--warning{% else %}row--success{% endif %}"
+                data-search="{{ (lead.parent_name ~ ' ' ~ lead.telegram ~ ' ' ~ lead.child_name)|lower }}">
+              <td style="white-space:nowrap; font-size:12px; color:var(--c-text-muted);">{{ lead.submitted_at[:10] | fmt_date }}</td>
+              <td><strong>{{ lead.parent_name }}</strong></td>
+              <td style="font-size:12px;">
+                {{ lead.telegram }}
+                {% if lead.telegram | is_numeric_tg_id %}
+                  <span title="Числовой Telegram ID — уведомления клиенту работают" style="color:var(--c-success);font-size:10px;margin-left:2px;">✓</span>
+                {% elif lead.telegram %}
+                  <span title="Не числовой ID — уведомление клиенту НЕ отправится. Нужен числовой Telegram ID." style="color:var(--c-danger);font-size:10px;margin-left:2px;cursor:help;">⚠ не ID</span>
+                {% endif %}
+              </td>
+              <td style="font-size:13px;">{{ lead.child_name }}, {{ lead.child_age }}</td>
+              <td style="font-size:13px; white-space:nowrap;">{{ lead.meeting_date | fmt_date if lead.meeting_date else '—' }}</td>
+              <td style="text-align:center;">
+                {% if lead.work_dates|length > 0 %}
+                  <span class="badge badge--info">{{ lead.work_dates|length }}</span>
+                {% else %}
+                  <span style="opacity:.4">0</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if lead.assigned_nanny_id %}
+                  {% for n in nannies %}{% if n.id|string == lead.assigned_nanny_id|string %}
+                    <span class="badge badge--success">✓ {{ n.name }}</span>
+                  {% endif %}{% endfor %}
+                {% else %}
+                  <span class="badge badge--warning">не назначена</span>
+                {% endif %}
+              </td>
+              <td>
+                <a class="action-link" href="/client/{{ lead.token }}" target="_blank" title="Открыть ЛК">ЛК →</a>
+              </td>
+              <td>
+                <form method="POST" action="/admin/assign" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                  <input type="hidden" name="token" value="{{ lead.token }}" />
+                  <select name="nanny_id" style="padding:5px 8px; border-radius:var(--r-sm); border:1.5px solid var(--c-border-str); font-size:12px; width:auto;">
+                    <option value="">— снять —</option>
+                    {% for n in nannies %}
+                    <option value="{{ n.id }}" {% if n.id|string == lead.assigned_nanny_id|string %}selected{% endif %}>{{ n.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="submit" class="btn" style="padding:5px 12px; font-size:12px; margin-top:0; background:var(--c-teal); color:#fff;">ОК</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="9" style="padding:24px; text-align:center; opacity:.5;">Заявок пока нет</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHIFTS (SQL mode only) -->
+  {% if shifts %}
+  <div class="admin-section">
+    <div class="panel">
+      <h2>📅 Смены ({{ shifts|length }})</h2>
+      <div class="overflow-x-auto">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Дата / Время</th>
+              <th>Клиент</th>
+              <th>Няня</th>
+              <th>Статус</th>
+              <th>Факт клиент</th>
+              <th>Факт няня</th>
+              <th>Итог</th>
+              <th>Оплата клиент</th>
+              <th>Выплата няне</th>
+              <th>Маржа</th>
+              <th>Действие</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for s in shifts %}
+            <tr class="{% if s.status == 'dispute' %}row--danger{% elif s.status == 'confirmed' %}row--success{% endif %}">
+              <td style="font-size:12px; opacity:.6;">{{ s.id }}</td>
+              <td style="white-space:nowrap; font-size:13px;">
+                {{ s.date | fmt_date }}<br>
+                <span style="font-size:11px; color:var(--c-text-muted);">{{ s.planned_start }}–{{ s.planned_end }}</span>
+              </td>
+              <td>{{ s.client_name }}</td>
+              <td>{{ s.nanny_name or '—' }}</td>
+              <td>
+                {% if s.status == 'confirmed' %}<span class="badge badge--success">✓ {{ s.status }}</span>
+                {% elif s.status == 'dispute' %}<span class="badge badge--danger">⚠ {{ s.status }}</span>
+                {% else %}<span class="badge badge--neutral">{{ s.status }}</span>
+                {% endif %}
+              </td>
+              <td style="font-size:12px;">{{ (s.client_actual_start ~ '–' ~ s.client_actual_end) if s.client_actual_start else '—' }}</td>
+              <td style="font-size:12px;">{{ (s.nanny_actual_start ~ '–' ~ s.nanny_actual_end) if s.nanny_actual_start else '—' }}</td>
+              <td style="font-size:12px;">{{ (s.resolved_start ~ '–' ~ s.resolved_end) if s.resolved_start else '—' }}</td>
+              <td style="font-size:12px; white-space:nowrap;">{{ '{:,}'.format(s.client_total_vnd) ~ ' ₫' if s.client_total_vnd else '—' }}</td>
+              <td style="font-size:12px; white-space:nowrap;">{{ '{:,}'.format(s.nanny_total_vnd) ~ ' ₫' if s.nanny_total_vnd else '—' }}</td>
+              <td style="font-size:12px; white-space:nowrap; font-weight:700; color:var(--c-teal);">{{ '{:,}'.format(s.margin_vnd) ~ ' ₫' if s.margin_vnd else '—' }}</td>
+              <td>
+                {% if s.status == 'dispute' %}
+                <form method="POST" action="/admin/shift/resolve" style="display:grid; gap:4px; min-width:100px;">
+                  <input type="hidden" name="shift_id" value="{{ s.id }}" />
+                  <input name="resolved_start" placeholder="ЧЧ:ММ" style="padding:4px 8px; border-radius:6px; border:1px solid var(--c-border-str); width:80px; font-size:12px;" />
+                  <input name="resolved_end" placeholder="ЧЧ:ММ" style="padding:4px 8px; border-radius:6px; border:1px solid var(--c-border-str); width:80px; font-size:12px;" />
+                  <button type="submit" class="btn" style="padding:4px 10px; font-size:12px; margin-top:0; background:var(--c-teal); color:#fff;">Решить</button>
+                </form>
+                {% else %}
+                  <span style="opacity:.4; font-size:12px;">—</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if clients %}
+      <details style="margin-top:20px;">
+        <summary>+ Создать смену</summary>
+        <form method="POST" action="/admin/shift/create" style="display:grid; gap:12px; margin-top:14px; max-width:640px; padding:16px; background:var(--c-surface-2); border-radius:var(--r-md); border:1px solid var(--c-border);">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <label>Клиент</label>
+              <select name="client_id" required>
+                {% for c in clients %}<option value="{{ c.id }}">{{ c.parent_name }} ({{ c.child_name or '-' }})</option>{% endfor %}
+              </select>
+            </div>
+            <div>
+              <label>Няня</label>
+              <select name="nanny_id" required>
+                {% for n in nannies %}<option value="{{ n.id }}">{{ n.name }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+            <div><label>Дата</label><input name="date" type="date" required /></div>
+            <div><label>Начало</label><input name="planned_start" type="time" required /></div>
+            <div><label>Конец</label><input name="planned_end" type="time" required /></div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div><label>Ставка клиент (₫/ч)</label><input name="client_rate_per_hour" type="number" required placeholder="250000" /></div>
+            <div><label>Ставка няня (₫/ч)</label><input name="nanny_rate_per_hour" type="number" required placeholder="180000" /></div>
+          </div>
+          <div><button type="submit" class="btn primary" style="width:auto; margin-top:0;">Создать смену</button></div>
+        </form>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- CLIENTS (SQL mode) -->
+  {% if clients %}
+  <div class="admin-section">
+    <div class="panel">
+      <h2>👤 Клиенты ({{ clients|length }})</h2>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Имя</th>
+            <th>Ребёнок</th>
+            <th>Telegram ID</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for c in clients %}
+          <tr>
+            <td style="font-size:12px; opacity:.6;">{{ c.id }}</td>
+            <td><strong>{{ c.parent_name }}</strong></td>
+            <td>{{ c.child_name or '—' }}{% if c.child_age %}, {{ c.child_age }}{% endif %}</td>
+            <td style="font-size:12px; font-family:monospace; opacity:.8;">{{ c.telegram_user_id or '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+
+      <details style="margin-top:20px;">
+        <summary>+ Добавить клиента</summary>
+        <form method="POST" action="/admin/client/save" style="display:grid; gap:12px; margin-top:14px; max-width:500px; padding:16px; background:var(--c-surface-2); border-radius:var(--r-md); border:1px solid var(--c-border);">
+          <div><label>Имя (родителя)</label><input name="parent_name" required /></div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div><label>Имя ребёнка</label><input name="child_name" /></div>
+            <div><label>Возраст</label><input name="child_age" /></div>
+          </div>
+          <div><label>Telegram ID</label><input name="telegram_user_id" placeholder="числовой ID" /></div>
+          <div><button type="submit" class="btn primary" style="width:auto; margin-top:0;">Добавить</button></div>
+        </form>
+      </details>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- NANNIES -->
+  <div class="admin-section">
+    <div class="panel">
+      <h2>👩 Няни ({{ nannies|length }})</h2>
+      <div style="display:grid; gap:10px;">
+      {% for nanny in nannies %}
+        <details>
+          <summary>
+            <img src="{{ nanny_photo_src(nanny.photo) }}" alt="{{ nanny.name }}" style="width:40px;height:40px;border-radius:var(--r-sm);object-fit:cover;vertical-align:middle;margin-right:6px;" onerror="this.src='/static/img/nanny_placeholder.jpg'" />
+            <span style="font-weight:800; color:var(--clr-text);">{{ nanny.name }}</span>
+            <span class="badge badge--info" style="margin-left:8px;">{{ nanny.exp_short }}</span>
+          </summary>
+          <form method="POST" action="/admin/nanny/save" enctype="multipart/form-data"
+                style="display:grid; gap:12px; padding:16px; margin-top:8px; background:var(--c-surface-2); border-radius:var(--r-md); border:1px solid var(--c-border); max-width:640px;">
+            <input type="hidden" name="id" value="{{ nanny.id }}" />
+            <div><label>Имя</label><input name="name" value="{{ nanny.name }}" required /></div>
+            <div><label>Краткий опыт</label><input name="exp_short" value="{{ nanny.exp_short or '' }}" /></div>
+            <div><label>Bio</label><textarea name="bio" rows="4">{{ nanny.bio or '' }}</textarea></div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div><label>Фото URL</label><input name="photo" value="{{ nanny.photo or '' }}" placeholder="https://…" /></div>
+              <div><label>Загрузить фото</label><input type="file" name="photo_file" accept="image/*" /></div>
+            </div>
+            <div><label>Telegram ID</label><input name="telegram_user_id" value="{{ nanny.telegram_user_id or '' }}" placeholder="числовой ID" /></div>
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+              <button type="submit" class="btn primary" style="width:auto; margin-top:0;">Сохранить</button>
+              <a class="action-link" href="/nanny/portal/{{ nanny.portal_token }}" target="_blank">Открыть портал →</a>
+            </div>
+          </form>
+        </details>
+      {% endfor %}
+      </div>
+
+      <details style="margin-top:20px;">
+        <summary>+ Добавить няню</summary>
+        <form method="POST" action="/admin/nanny/save" enctype="multipart/form-data"
+              style="display:grid; gap:12px; margin-top:14px; max-width:500px; padding:16px; background:var(--c-surface-2); border-radius:var(--r-md); border:1px solid var(--c-border);">
+          <div><label>Имя</label><input name="name" required /></div>
+          <div><label>Краткий опыт</label><input name="exp_short" /></div>
+          <div><label>Bio</label><textarea name="bio" rows="4"></textarea></div>
+          <div><label>Загрузить фото</label><input type="file" name="photo_file" accept="image/*" /></div>
+          <div><label>Telegram ID</label><input name="telegram_user_id" placeholder="числовой ID" /></div>
+          <div><button type="submit" class="btn primary" style="width:auto; margin-top:0;">Добавить</button></div>
+        </form>
+      </details>
+    </div>
+  </div>
+
+  <!-- REVIEWS -->
+  <div class="admin-section" style="padding-bottom:40px;">
+    <div class="panel">
+      <h2>⭐ Отзывы ({{ reviews|length }})</h2>
+      <div style="display:grid; gap:10px;">
+      {% for review in reviews %}
+        <details>
+          <summary>
+            <span class="stars" style="font-size:13px; letter-spacing:1px;">{% for i in range(review.stars) %}★{% endfor %}</span>
+            <strong style="color:var(--clr-text);">{{ review.author }}</strong>
+            <span class="text-muted text-small" style="margin-left:6px;">— {{ review.text[:55] }}{% if review.text|length > 55 %}…{% endif %}</span>
+          </summary>
+          <div style="padding:16px; border:1px solid var(--c-border); border-radius:var(--r-md); margin-top:8px; background:var(--c-surface-2); display:flex; flex-direction:column; gap:12px; max-width:540px;">
+            <form method="POST" action="/admin/review/save" style="display:grid; gap:10px;">
+              <input type="hidden" name="id" value="{{ review.id }}" />
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <div><label>Автор</label><input name="author" value="{{ review.author }}" /></div>
+                <div><label>Роль</label><input name="role" value="{{ review.role }}" /></div>
+              </div>
+              <div><label>Текст</label><textarea name="text" rows="3">{{ review.text }}</textarea></div>
+              <div>
+                <label>Звёзды</label>
+                <select name="stars" style="width:auto; padding:8px 12px; border-radius:var(--r-sm); border:1.5px solid var(--c-border-str);">
+                  {% for i in range(1,6) %}<option value="{{ i }}" {% if review.stars == i %}selected{% endif %}>{{ i }} ★</option>{% endfor %}
+                </select>
+              </div>
+              <button type="submit" class="btn primary" style="width:auto; margin-top:0;">Сохранить</button>
+            </form>
+            <form method="POST" action="/admin/review/delete">
+              <input type="hidden" name="id" value="{{ review.id }}" />
+              <button type="submit" class="btn danger" style="width:auto;" onclick="return confirm('Удалить отзыв?')">Удалить</button>
+            </form>
+          </div>
+        </details>
+      {% endfor %}
+      </div>
+
+      <details style="margin-top:20px;">
+        <summary>+ Добавить отзыв</summary>
+        <form method="POST" action="/admin/review/save" style="display:grid; gap:12px; margin-top:14px; max-width:500px; padding:16px; background:var(--c-surface-2); border-radius:var(--r-md); border:1px solid var(--c-border);">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div><label>Автор</label><input name="author" required /></div>
+            <div><label>Роль</label><input name="role" placeholder="Мама Миши, 3 года" /></div>
+          </div>
+          <div><label>Текст</label><textarea name="text" rows="4" required></textarea></div>
+          <div>
+            <label>Звёзды</label>
+            <select name="stars" style="width:auto; padding:8px 12px; border-radius:var(--r-sm); border:1.5px solid var(--c-border-str);">
+              <option value="5" selected>5 ★</option>
+              <option value="4">4 ★</option>
+              <option value="3">3 ★</option>
+              <option value="2">2 ★</option>
+              <option value="1">1 ★</option>
+            </select>
+          </div>
+          <div><button type="submit" class="btn primary" style="width:auto; margin-top:0;">Добавить</button></div>
+        </form>
+      </details>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── Master calendar ──────────────────────────────────────
+(function(){
+  const EVENTS = {{ events | tojson }};
+  // Build lookup: date -> [{child_name, nanny_id, token, time}, ...]
+  const byDate = {};
+  EVENTS.forEach(e => {
+    if(!byDate[e.date]) byDate[e.date] = [];
+    byDate[e.date].push(e);
+  });
+
+  const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь',
+                  'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const DOW = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  const today = new Date().toISOString().slice(0,10);
+
+  // Start at earliest upcoming event month, or today
+  const futureDates = Object.keys(byDate).filter(d => d >= today).sort();
+  const startDate = futureDates[0] || today;
+  let cur = new Date(startDate.slice(0,7) + '-01');
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+
+  function render(){
+    const y = cur.getFullYear(), m = cur.getMonth();
+    document.getElementById('calMonthLabel').textContent = MONTHS[m] + ' ' + y;
+    const cal = document.getElementById('masterCal');
+    cal.innerHTML = '';
+
+    // header
+    const hr = document.createElement('div'); hr.className = 'cal-row';
+    DOW.forEach(d => { const c=document.createElement('div');c.className='cal-cell dow';c.textContent=d;hr.appendChild(c); });
+    cal.appendChild(hr);
+
+    const firstDow = (new Date(y,m,1).getDay()+6)%7;
+    const dim = new Date(y,m+1,0).getDate();
+    let day = 1;
+    for(let r=0;r<6;r++){
+      if(day>dim) break;
+      const row=document.createElement('div');row.className='cal-row';
+      for(let c=0;c<7;c++){
+        const cell=document.createElement('div');cell.className='cal-cell';
+        if((r===0&&c<firstDow)||day>dim){ cell.classList.add('muted');row.appendChild(cell);continue; }
+        const iso=`${y}-${pad(m+1)}-${pad(day)}`;
+        cell.innerHTML=`<div class="cal-num">${day}</div>`;
+        if(iso===today) cell.classList.add('today');
+
+        const dayEvts = byDate[iso];
+        if(dayEvts && dayEvts.length){
+          const allAssigned = dayEvts.every(e => e.nanny_id);
+          cell.classList.add(allAssigned ? 'work' : 'dayoff');
+          const badge = document.createElement('div');
+          badge.style.cssText='font-size:10px;font-weight:700;margin-top:2px;';
+          badge.style.color = allAssigned ? 'var(--c-teal-dk)' : '#b45309';
+          badge.textContent = dayEvts.length + (dayEvts.length===1?' смена':' смен');
+          cell.appendChild(badge);
+          cell.style.cursor='pointer';
+          cell.addEventListener('click',()=>showDay(iso,dayEvts));
+        }
+        row.appendChild(cell); day++;
+      }
+      cal.appendChild(row);
+    }
+  }
+
+  function showDay(iso, evts){
+    const detail = document.getElementById('calDayDetail');
+    const title  = document.getElementById('calDayTitle');
+    const list   = document.getElementById('calDayList');
+    const [y,m,d] = iso.split('-');
+    title.textContent = `${d}.${m}.${y} — ${evts.length} запис.`;
+    list.innerHTML = evts.map(e =>
+      `<div style="padding:8px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);margin-bottom:6px;font-size:13px;">
+        <strong>${e.child_name||'Ребёнок'}${e.child_age?', '+e.child_age:''}</strong>
+        ${e.time?`<span style="color:var(--c-text-muted);margin-left:8px;">${e.time}</span>`:''}
+        <br>
+        ${e.nanny_id
+          ? `<span style="color:var(--c-teal-dk);">✅ Няня #${e.nanny_id}</span>`
+          : `<span style="color:#b45309;">⏳ Ожидает назначения</span>`}
+        &nbsp;·&nbsp;
+        <a class="action-link" href="/client/${e.token}" target="_blank" style="font-size:12px;">ЛК →</a>
+      </div>`
+    ).join('');
+    detail.style.display = 'block';
+    detail.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+
+  render();
+  document.getElementById('calPrev').addEventListener('click',()=>{ cur.setMonth(cur.getMonth()-1); render(); });
+  document.getElementById('calNext').addEventListener('click',()=>{ cur.setMonth(cur.getMonth()+1); render(); });
+})();
+
+// Live search for leads table
+(function(){
+  const inp = document.getElementById('leadsSearch');
+  if (!inp) return;
+  inp.addEventListener('input', function(){
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#leadsTable tbody tr[data-search]').forEach(tr => {
+      tr.style.display = tr.dataset.search.includes(q) ? '' : 'none';
+    });
+  });
+})();
+</script>
+
+{% endblock %}

@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block scripts_pre %}<script src="https://telegram.org/js/telegram-web-app.js"></script>{% endblock %}
+{% block title %}Кабинет клиента — Telegram{% endblock %}
+
+{% block content %}
+<!-- Page header -->
+<div style="background:var(--grad-hero); padding:var(--s5) 0; position:relative; overflow:hidden;">
+  <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.05) 1px,transparent 1px);background-size:24px 24px;"></div>
+  <div class="container" style="position:relative;z-index:1;text-align:center;">
+    <h1 style="color:#fff; margin:0; font-size:1.5rem;">👨‍👧 Кабинет клиента</h1>
+    <p id="statusHeader" style="color:rgba(255,255,255,.8); margin-top:6px; font-size:13px;">Загрузка…</p>
+  </div>
+</div>
+
+<div class="container" style="padding: var(--s5) 0 var(--s16);">
+
+  <!-- Auth error -->
+  <div id="authError" style="display:none;" class="panel">
+    <div style="text-align:center; padding:var(--s8);">
+      <div style="font-size:40px; margin-bottom:var(--s4);">🔒</div>
+      <h3 style="color:var(--c-teal-dk);">Требуется авторизация</h3>
+      <p class="hint" style="margin-top:var(--s2);">Откройте эту страницу через Telegram Mini App.</p>
+    </div>
+  </div>
+
+  <!-- Shift list -->
+  <div id="shiftList" style="display:none; margin-top:var(--s4);">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--s4);">
+      <h2 style="margin:0; font-size:1.2rem; color:var(--c-teal-dk);">Мои смены</h2>
+      <span id="shiftCount" class="badge badge--info"></span>
+    </div>
+    <div id="shiftItems" style="display:flex; flex-direction:column; gap:var(--s3);"></div>
+    <p id="shiftEmpty" class="hint" style="display:none; text-align:center; padding:var(--s8);">Смен пока нет</p>
+  </div>
+
+  <!-- Shift detail -->
+  <div id="shiftDetail" style="display:none; margin-top:var(--s4);">
+    <button type="button" id="backBtn" class="btn secondary" style="margin-bottom:var(--s4); width:auto;">← Назад</button>
+    <div id="shiftDetailContent"></div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const statusHeader = document.getElementById('statusHeader');
+  const authError = document.getElementById('authError');
+  const shiftList = document.getElementById('shiftList');
+  const shiftItems = document.getElementById('shiftItems');
+  const shiftCount = document.getElementById('shiftCount');
+  const shiftEmpty = document.getElementById('shiftEmpty');
+  const shiftDetail = document.getElementById('shiftDetail');
+  const shiftDetailContent = document.getElementById('shiftDetailContent');
+  const backBtn = document.getElementById('backBtn');
+
+  const fmtMoney = v => v == null ? '—' : Number(v).toLocaleString('ru-RU') + ' ₫';
+  const fmtDate = ymd => { if(!ymd||ymd.length!==10)return ymd; const[y,m,d]=ymd.split('-'); return `${d}.${m}.${y}`; };
+
+  const STATUS_LABELS = {
+    assigned: { label: 'Няня назначена', cls: 'badge--info' },
+    waiting_client: { label: 'Ожидает вашего подтверждения', cls: 'badge--warning' },
+    confirmed: { label: 'Подтверждена', cls: 'badge--success' },
+    dispute: { label: 'Разбирается администратор', cls: 'badge--danger' },
+    cancelled: { label: 'Отменена', cls: 'badge--neutral' },
+  };
+
+  function statusBadge(status) {
+    const s = STATUS_LABELS[status] || { label: status, cls: 'badge--neutral' };
+    return `<span class="badge ${s.cls}">${s.label}</span>`;
+  }
+
+  async function ensureAuth() {
+    if (!window.Telegram || !Telegram.WebApp) {
+      statusHeader.textContent = 'Не найден Telegram WebApp';
+      authError.style.display = 'block';
+      throw new Error('no telegram webapp');
+    }
+    Telegram.WebApp.ready();
+    Telegram.WebApp.expand();
+    const initData = Telegram.WebApp.initData || '';
+    if (!initData) {
+      statusHeader.textContent = 'initData пустой';
+      authError.style.display = 'block';
+      throw new Error('empty initData');
+    }
+    const resp = await fetch('/api/auth/telegram', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ init_data: initData }),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) {
+      statusHeader.textContent = 'Ошибка авторизации: ' + (data?.error || '');
+      authError.style.display = 'block';
+      throw new Error('auth failed');
+    }
+    return data;
+  }
+
+  async function loadShifts() {
+    statusHeader.textContent = 'Загружаем смены…';
+    const resp = await fetch('/api/client/me/shifts');
+    const data = await resp.json();
+    if (!resp.ok) {
+      statusHeader.textContent = data?.error || 'Ошибка загрузки';
+      return;
+    }
+    statusHeader.textContent = 'Всё актуально';
+    shiftList.style.display = 'block';
+    const items = data.items || [];
+    shiftCount.textContent = items.length + ' смен';
+    if (!items.length) { shiftEmpty.style.display = 'block'; return; }
+
+    shiftItems.innerHTML = '';
+    items.forEach(s => {
+      const needsAction = s.status === 'waiting_client';
+      const card = document.createElement('div');
+      card.className = 'panel';
+      card.style.cursor = 'pointer';
+      card.style.padding = 'var(--s4)';
+      if (needsAction) card.style.borderColor = 'var(--c-warn)';
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:var(--s3); flex-wrap:wrap;">
+          <div>
+            <div style="font-weight:800; font-size:15px; color:var(--c-teal-dk);">${fmtDate(s.date)}</div>
+            <div style="font-size:13px; color:var(--c-text-2); margin-top:2px;">${s.planned_start||'—'}–${s.planned_end||'—'}</div>
+            ${needsAction ? '<div style="font-size:11px;color:var(--c-orange);font-weight:700;margin-top:4px;">⚡ Требуется ваше подтверждение</div>' : ''}
+          </div>
+          <div style="text-align:right;">
+            ${statusBadge(s.status)}
+            <div style="font-size:12px; color:var(--c-text-muted); margin-top:4px;">К оплате: <strong>${fmtMoney(s.client_total_vnd)}</strong></div>
+          </div>
+        </div>
+      `;
+      card.addEventListener('click', () => showShiftDetail(s));
+      shiftItems.appendChild(card);
+    });
+  }
+
+  function showShiftDetail(s) {
+    shiftList.style.display = 'none';
+    shiftDetail.style.display = 'block';
+    const canAct = s.status === 'waiting_client';
+
+    shiftDetailContent.innerHTML = `
+      <div class="panel">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:var(--s3);">
+          <h3 style="margin:0;">Смена #${s.id}</h3>
+          ${statusBadge(s.status)}
+        </div>
+        <hr class="divider"/>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--s4); font-size:14px;">
+          <div><div class="hint">Дата</div><strong>${fmtDate(s.date)}</strong></div>
+          <div><div class="hint">Время (план)</div><strong>${s.planned_start||'—'}–${s.planned_end||'—'}</strong></div>
+          <div><div class="hint">К оплате (оценка)</div><strong style="color:var(--c-teal);">${fmtMoney(s.client_total_vnd)}</strong></div>
+          <div><div class="hint">Няня</div><strong>${s.nanny_name||'Подбирается…'}</strong></div>
+        </div>
+        ${canAct ? `
+        <hr class="divider"/>
+        <div style="background:rgba(245,158,11,.1); border:1px solid rgba(245,158,11,.3); border-radius:var(--r-md); padding:var(--s4); margin-bottom:var(--s4);">
+          <strong>⚡ Няня уже отправила своё время.</strong> Пожалуйста, подтвердите фактическое время смены.
+        </div>
+        <h3>Ваше фактическое время</h3>
+        <form id="actualForm" style="display:grid; gap:var(--s4);">
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--s3);">
+            <div><label>Начало (ЧЧ:ММ)</label><input name="actual_start" type="time" required /></div>
+            <div><label>Конец (ЧЧ:ММ)</label><input name="actual_end" type="time" required /></div>
+          </div>
+          <div>
+            <label>Комментарий (опционально)</label>
+            <textarea name="note" rows="2" placeholder="Например: ребёнок уснул в 21:15…"></textarea>
+          </div>
+          <button class="btn primary" type="submit" style="margin-top:0;">Подтвердить время</button>
+          <p class="hint">Администратор сверит данные и зафиксирует итог.</p>
+        </form>
+        ` : `<div class="hint" style="margin-top:var(--s4); padding:var(--s4); background:var(--c-teal-lt); border-radius:var(--r-md);">Действий не требуется. Статус: ${STATUS_LABELS[s.status]?.label || s.status}</div>`}
+      </div>
+    `;
+
+    if (canAct) {
+      document.getElementById('actualForm').addEventListener('submit', async e => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const btn = e.target.querySelector('button[type=submit]');
+        btn.disabled = true; btn.textContent = 'Отправляем…';
+        const resp = await fetch(`/api/client/shifts/${s.id}/actual`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            actual_start: fd.get('actual_start'),
+            actual_end: fd.get('actual_end'),
+            note: fd.get('note'),
+          }),
+        });
+        const data = await resp.json().catch(() => null);
+        if (!resp.ok) { alert(data?.error || 'Ошибка'); btn.disabled = false; btn.textContent = 'Подтвердить время'; return; }
+        alert('✅ Подтверждение отправлено!');
+        backBtn.click();
+        await loadShifts();
+      });
+    }
+  }
+
+  backBtn.addEventListener('click', () => {
+    shiftDetail.style.display = 'none';
+    shiftList.style.display = 'block';
+  });
+
+  (async function() {
+    try {
+      await ensureAuth();
+      await loadShifts();
+    } catch(e) {
+      console.error(e);
+    }
+  })();
+})();
+</script>
+{% endblock %}

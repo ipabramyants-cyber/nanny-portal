@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block head_meta %}
+  <link rel="canonical" href="{{ request.url_root }}" />
+  <meta name="robots" content="index, follow">
+  <meta name="description" content="Няня на час в Нячанге — безопасный уход за детьми от 0 до 8 лет. Проверенные специалисты, быстрый подбор за 5–15 минут, прозрачный онлайн-кабинет. Оставьте заявку прямо сейчас!" />
+  <meta name="keywords" content="няня на час Нячанг, няня Нячанг, babysitter Nha Trang, нянь на час, няня для детей Вьетнам, детский сад Нячанг, babysitter Vietnam" />
+  <meta property="og:title" content="Няня на час — Нячанг | Надёжный уход за детьми" />
+  <meta property="og:description" content="Проверенные няни для детей от 0 до 8 лет в Нячанге. Подбор за 15 минут, личный кабинет, полная прозрачность." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="{{ request.url_root }}" />
+  <meta property="og:image" content="{{ request.url_root }}static/img/logo-full.png" />
+  <meta property="og:locale" content="ru_RU" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Няня на час — Нячанг" />
+  <meta name="twitter:description" content="Проверенные няни в Нячанге. Подбор за 15 минут." />
+  <meta name="twitter:image" content="{{ request.url_root }}static/img/logo-full.png" />
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    "name": "Няня на час — Нячанг",
+    "description": "Профессиональный подбор нянь для детей от 0 до 8 лет в Нячанге, Вьетнам.",
+    "url": "{{ request.url_root }}",
+    "logo": "{{ request.url_root }}static/img/logo.png",
+    "image": "{{ request.url_root }}static/img/logo-full.png",
+    "telephone": "",
+    "areaServed": "Nha Trang",
+    "address": { "@type": "PostalAddress", "addressLocality": "Nha Trang", "addressCountry": "VN" },
+    "sameAs": ["https://www.instagram.com/nanny_nya_trang", "https://t.me/nanny_nya_trang"],
+    "priceRange": "$$",
+    "aggregateRating": { "@type": "AggregateRating", "ratingValue": "5", "reviewCount": "{{ reviews|length }}" }
+  }</script>
+{% endblock %}
+
+{% block title %}Няня на час — Нячанг | Проверенные няни для детей 0–8 лет{% endblock %}
+
+{% block content %}
+
+<!-- ═══ HERO ═══════════════════════════════════════════════ -->
+<div style="position:relative;">
+<section class="hero-banner" aria-label="Главный баннер">
+  <div class="hero-dots" aria-hidden="true"></div>
+
+  <!-- Floating bubbles -->
+  <div class="hero-bubbles" aria-hidden="true">
+    <div class="bubble" style="left:5%;width:18px;height:18px;animation-duration:7s;animation-delay:0s;"></div>
+    <div class="bubble" style="left:15%;width:12px;height:12px;animation-duration:9s;animation-delay:1.5s;"></div>
+    <div class="bubble" style="left:28%;width:24px;height:24px;animation-duration:8s;animation-delay:0.8s;"></div>
+    <div class="bubble" style="left:42%;width:10px;height:10px;animation-duration:11s;animation-delay:2s;"></div>
+    <div class="bubble" style="left:57%;width:20px;height:20px;animation-duration:7.5s;animation-delay:0.3s;"></div>
+    <div class="bubble" style="left:68%;width:14px;height:14px;animation-duration:10s;animation-delay:1.2s;"></div>
+    <div class="bubble" style="left:78%;width:28px;height:28px;animation-duration:8.5s;animation-delay:0.6s;"></div>
+    <div class="bubble" style="left:88%;width:16px;height:16px;animation-duration:6.5s;animation-delay:1.8s;"></div>
+    <div class="bubble" style="left:93%;width:10px;height:10px;animation-duration:12s;animation-delay:0.4s;"></div>
+  </div>
+
+
+
+  <div class="container hero-banner__content">
+
+    <!-- Логотип в герое -->
+    <div class="hero-logo-wrap">
+      <img src="/static/img/logo.png" alt="Няня на час" class="hero-logo" />
+    </div>
+
+    <div class="hero-badge">🌊 Нячанг, Вьетнам</div>
+    <h1>Надёжная няня<br>рядом с вами</h1>
+    <p>Для детей от <strong>0 до 8 лет</strong> · Быстрый подбор · Проверенные специалисты</p>
+
+    <div class="hero-cta">
+      <a href="#leadForm" class="btn btn-hero-primary"
+         onclick="document.getElementById('parentName').focus(); return false;">
+        📅 Оставить заявку
+      </a>
+      <a href="https://t.me/Nastasja_Ageyeva" class="btn btn-hero-ghost"
+         target="_blank" rel="noopener">
+        ✈️ Написать в Telegram
+      </a>
+    </div>
+
+    <div class="hero-stats">
+      <div class="hero-stat">
+        <div class="hero-stat__value">4+</div>
+        <div class="hero-stat__label">Проверенных нянь</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat__value">5★</div>
+        <div class="hero-stat__label">Рейтинг</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat__value">15мин</div>
+        <div class="hero-stat__label">Быстрый подбор</div>
+      </div>
+      <div class="hero-stat">
+        <div class="hero-stat__value">0–8</div>
+        <div class="hero-stat__label">Лет детям</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wave separator -->
+  <div class="hero-wave" aria-hidden="true">
+    <svg viewBox="0 0 1440 60" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <path d="M0,30 C240,70 480,0 720,35 C960,70 1200,5 1440,30 L1440,60 L0,60 Z" fill="var(--c-bg)"/>
+    </svg>
+  </div>
+</section>
+  <!-- Стикеры поверх hero — снаружи overflow:hidden -->
+  <img src="/static/img/sticker2.png" class="hero-sticker hero-sticker--left"  aria-hidden="true" alt="">
+  <img src="/static/img/sticker4.png" class="hero-sticker hero-sticker--right" aria-hidden="true" alt="">
+</div>
+
+<main class="page">
+
+<!-- ═══ MAIN GRID ═════════════════════════════════════════ -->
+<section class="hero-grid container" aria-label="Заявка и календарь">
+
+  <!-- Lead form -->
+  <div class="panel panel--lead panel--accent">
+    <h3>Оставить заявку</h3>
+    <p class="hint" style="margin-top:-4px; margin-bottom:12px;">Выберите даты — подберём доступную няню.</p>
+    <form id="leadForm" onsubmit="return false;" autocomplete="on">
+      <label for="parentName">Имя и Фамилия</label>
+      <input id="parentName" name="parent_name" required autocomplete="name" placeholder="Мария Иванова" />
+
+      <label for="telegramField">Telegram для связи</label>
+      <input id="telegramField" name="telegram" required placeholder="@username или номер" autocomplete="off" />
+
+      <label for="childName">Имя ребёнка</label>
+      <input id="childName" name="child_name" required placeholder="Миша" />
+
+      <label for="childAge">Возраст ребёнка</label>
+      <input id="childAge" name="child_age" required placeholder="3 года" />
+
+      <label for="notes">Особые пожелания</label>
+      <textarea id="notes" name="notes" rows="2" placeholder="Аллергии, режим, пожелания…"></textarea>
+
+      <button type="button" id="saveBtn" class="btn primary">✉ Отправить заявку</button>
+
+      <a id="lkLink" href="#" style="display:none; margin-top:12px; font-weight:800; text-decoration:underline; text-align:center;" target="_blank" rel="noopener noreferrer">
+        Перейти в личный кабинет →
+      </a>
+      <a id="continueLK" class="btn secondary" href="/client/app" style="display:none; margin-top:10px; width:100%; justify-content:center;">Продолжить в личном кабинете</a>
+    </form>
+  </div>
+
+  <!-- Calendar -->
+  <div class="panel panel--calendar">
+    <div class="calendar-head">
+      <button type="button" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
+      <div id="monthLabel"></div>
+      <button type="button" id="nextMonth" aria-label="Следующий месяц">›</button>
+    </div>
+    <div id="calendar" class="calendar" role="grid" aria-label="Календарь выбора дат"></div>
+    <p class="hint" style="margin-top:10px;">
+      🗓 Тап/клик — выбрать дату работы. Повторный тап — убрать.
+    </p>
+  </div>
+
+  <!-- Instagram -->
+  <div class="panel panel--ig">
+    <h3>📸 Instagram</h3>
+    <p class="hint" style="margin-bottom:10px;">Фото и атмосфера нашей работы.</p>
+    <div id="igGrid" class="ig-grid" aria-label="Лента Instagram"></div>
+    <a class="action-link ig-link" href="https://www.instagram.com/nanny_nya_trang/" target="_blank" rel="noopener noreferrer">Открыть Instagram →</a>
+  </div>
+
+  <!-- Nannies -->
+  <div class="panel panel--nannies">
+    <h3>👩‍👧 Наши няни</h3>
+    <div class="nanny-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:12px;">
+      {% for nanny in nannies_preview %}
+        <a class="nanny-card reveal reveal-delay-{{ loop.index }}" href="/nanny/{{ nanny.portal_token }}" aria-label="Профиль няни {{ nanny.name }}">
+          <img src="{{ nanny_photo_src(nanny.photo) }}" alt="Няня {{ nanny.name }}" loading="lazy" width="58" height="58" onerror="this.src='/static/img/nanny_placeholder.jpg'" />
+          <div>
+            <div class="nanny-name">{{ nanny.name }}{% if nanny.age %}, {{ nanny.age }}{% endif %}</div>
+            <div class="nanny-exp">{{ nanny.exp_short }}</div>
+            <div class="nanny-hint">Подробнее →</div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+    <p class="hint" style="margin-top:12px;">Окончательный выбор подтверждает администратор по расписанию.</p>
+  </div>
+</section>
+
+</main>
+
+<!-- ═══ WHY US ═════════════════════════════════════════════ -->
+<section class="section section--alt" aria-labelledby="features-heading" style="position:relative;overflow:hidden;">
+  <img src="/static/img/sticker1.png" class="section-sticker section-sticker--br" aria-hidden="true" alt="">
+  <div class="container">
+    <div class="section-title reveal">
+      <span class="section-title__sub">Наши преимущества</span>
+      <h2 id="features-heading">Почему выбирают нас</h2>
+      <div class="section-title__line"><span></span><span></span><span></span></div>
+    </div>
+    <div class="features">
+      <div class="feature reveal reveal-delay-1">
+        <div class="feature-icon">👩‍👧</div>
+        <h3>Проверенные няни</h3>
+        <p>Отбор по опыту, рекомендациям и личному интервью. Только те, кому мы сами доверили бы своих детей.</p>
+      </div>
+      <div class="feature reveal reveal-delay-2">
+        <div class="feature-icon">⚡</div>
+        <h3>Подбор за 5–15 минут</h3>
+        <p>Выбираете даты и время — администратор сверяет график и подтверждает лучшую доступную няню.</p>
+      </div>
+      <div class="feature reveal reveal-delay-3">
+        <div class="feature-icon">📱</div>
+        <h3>Прозрачность и контроль</h3>
+        <p>Личный кабинет: заявки, смены, подтверждения и чеки. Всё в одном месте — удобно и спокойно.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ REVIEWS ════════════════════════════════════════════ -->
+<section class="section" aria-labelledby="reviews-heading" style="position:relative;overflow:hidden;">
+  <img src="/static/img/sticker3.png" class="section-sticker section-sticker--bl" aria-hidden="true" alt="">
+  <div class="container">
+    <div class="section-title reveal">
+      <span class="section-title__sub">Реальные отзывы</span>
+      <h2 id="reviews-heading">Отзывы родителей</h2>
+      <div class="section-title__line"><span></span><span></span><span></span></div>
+    </div>
+    <div class="reviews-grid">
+      {% for review in reviews %}
+      <div class="review reveal reveal-delay-{{ (loop.index0 % 3) + 1 }}" itemscope itemtype="https://schema.org/Review">
+        <div class="review__quote" aria-hidden="true">"</div>
+        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating">
+          <meta itemprop="ratingValue" content="{{ review.stars }}" />
+          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
+        </div>
+        <div class="review__author" itemprop="author" itemscope itemtype="https://schema.org/Person">
+          <span itemprop="name">{{ review.author }}</span>
+        </div>
+        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+        <div class="review__text" itemprop="reviewBody">{{ review.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{% endblock %}

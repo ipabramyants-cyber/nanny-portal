@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block scripts_pre %}<script src="https://telegram.org/js/telegram-web-app.js"></script>{% endblock %}
+{% block title %}Вход няни{% endblock %}
+{% block content %}
+<section class="container" style="padding-top: 14px;">
+  <h1 style="margin: 8px 0;">Кабинет няни</h1>
+  <p style="opacity:.8">Откройте страницу внутри Telegram Mini App.</p>
+
+  <div class="panel" style="margin-top:14px; padding:14px;">
+    <div id="status" style="opacity:.85;">Проверяю Telegram WebApp…</div>
+    <div id="debug" style="margin-top:10px; font-size:12px; opacity:.7; white-space:pre-wrap;"></div>
+  </div>
+</section>
+
+<script>
+(async function(){
+  const status = document.getElementById('status');
+  const debug = document.getElementById('debug');
+  try {
+    if (!window.Telegram || !Telegram.WebApp) {
+      status.textContent = 'Telegram WebApp не найден. Откройте страницу внутри Telegram.';
+      return;
+    }
+    Telegram.WebApp.ready();
+    const initData = Telegram.WebApp.initData || '';
+    if (!initData) {
+      status.textContent = 'initData пустой. Откройте Mini App из бота.';
+      return;
+    }
+    status.textContent = 'Авторизация…';
+    const resp = await fetch('/api/auth/telegram', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({init_data: initData})
+    });
+    const data = await resp.json().catch(()=>null);
+    if (!resp.ok) {
+      status.textContent = 'Ошибка авторизации.';
+      debug.textContent = JSON.stringify(data, null, 2);
+      return;
+    }
+    status.textContent = 'Готово. Переходим в кабинет…';
+    window.location.href = '/nanny';
+  } catch (e) {
+    status.textContent = 'Ошибка: ' + (e && e.message ? e.message : String(e));
+  }
+})();
+</script>
+{% endblock %}

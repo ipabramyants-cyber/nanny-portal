@@ -1,0 +1,11 @@
+{
+  "name": "Няня на час — Нячанг",
+  "short_name": "Няня",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#016b82",
+  "icons": [
+    { "src": "/static/img/logo.png", "sizes": "192x192", "type": "image/png" }
+  ]
+}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block head_meta %}
+  <link rel="canonical" href="{{ request.url }}" />
+  <meta name="robots" content="index, follow">
+  <meta name="description" content="Няня {{ nanny.name }} в Нячанге — {{ nanny.exp_short }}. Проверенная няня для детей 0–8 лет. Быстрый подбор, личный кабинет." />
+  <meta property="og:title" content="Няня {{ nanny.name }} — Нячанг" />
+  <meta property="og:description" content="{{ nanny.exp_short }}" />
+  <meta property="og:image" content="{{ request.url_root }}{{ nanny_photo_src(nanny.photo).lstrip('/') }}" />
+  <meta property="og:type" content="profile" />
+  <script type="application/ld+json">{
+    "@context":"https://schema.org",
+    "@type":"Person",
+    "name":"{{ nanny.name }}",
+    "jobTitle":"Няня",
+    "description":"{{ nanny.exp_short }}",
+    "worksFor":{"@type":"Organization","name":"Няня на час — Нячанг"}
+  }</script>
+{% endblock %}
+{% block title %}Няня {{ nanny.name }}{% if nanny.age %}, {{ nanny.age }} лет{% endif %} — Нячанг{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<div style="background:var(--grad-hero); padding:var(--s12) 0 var(--s8); position:relative; overflow:hidden;">
+  <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.05) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;"></div>
+  <div class="container" style="position:relative;z-index:1;">
+    <div style="display:flex; gap:var(--s6); align-items:center; flex-wrap:wrap;">
+      <img src="{{ nanny_photo_src(nanny.photo) }}" alt="Няня {{ nanny.name }}"
+           style="width:140px;height:140px;border-radius:var(--r-xl);object-fit:cover;border:4px solid rgba(255,255,255,.35);box-shadow:var(--sh-xl); flex-shrink:0;"
+           onerror="this.src='/static/img/nanny_placeholder.jpg'" />
+      <div style="animation:fade-up .5s both;">
+        <div class="hero-badge" style="margin-bottom:var(--s3);">🌴 Нячанг, Вьетнам</div>
+        <h1 style="color:#fff; margin-bottom:var(--s2);">
+          {{ nanny.name }}{% if nanny.age %}<span style="font-weight:400; opacity:.8">, {{ nanny.age }} лет</span>{% endif %}
+        </h1>
+        <div style="color:rgba(255,255,255,.85); font-weight:600; font-size:15px; margin-bottom:var(--s4);">{{ nanny.exp_short }}</div>
+        <div style="display:flex; gap:var(--s3); flex-wrap:wrap;">
+          <a href="/" class="btn btn-hero-primary" style="margin-top:0; width:auto; padding:10px 22px; font-size:14px;">Выбрать даты</a>
+          <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener" class="btn btn-hero-ghost"
+             style="margin-top:0; width:auto; padding:10px 22px; font-size:14px;">Написать в Telegram</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="container" style="padding:var(--s8) 0 var(--s16);position:relative;">
+  <img src="/static/img/sticker3.png" class="page-sticker" aria-hidden="true" alt="" width="110" height="110">
+  <a href="/" class="action-link" style="font-size:13px; display:inline-flex; align-items:center; gap:5px; margin-bottom:var(--s6);">← Все няни</a>
+
+  <div style="display:grid; gap:var(--s5); grid-template-columns:1fr 280px; align-items:start;">
+
+    <!-- Bio -->
+    <div class="panel reveal">
+      <h3>О себе</h3>
+      {% if nanny.bio %}
+        <div style="white-space:pre-line; line-height:1.75; color:var(--c-text-2); font-size:15px;">{{ nanny.bio }}</div>
+      {% else %}
+        <p class="text-muted">Подробная информация добавляется.</p>
+      {% endif %}
+    </div>
+
+    <!-- Sidebar -->
+    <div style="display:flex; flex-direction:column; gap:var(--s4);">
+
+      <div class="panel reveal reveal-delay-1" style="text-align:center;">
+        <div class="feature-icon" style="margin:0 auto var(--s3); background:rgba(34,197,94,.12); color:var(--c-success);">✅</div>
+        <div style="font-weight:800; font-size:14px; color:var(--c-teal-dk);">Проверена</div>
+        <div class="text-muted text-small" style="margin-top:4px;">Прошла отбор по опыту и личному интервью</div>
+      </div>
+
+      <div class="panel reveal reveal-delay-2" style="text-align:center;">
+        <div class="feature-icon" style="margin:0 auto var(--s3);">🌴</div>
+        <div style="font-weight:800; font-size:14px; color:var(--c-teal-dk);">Нячанг</div>
+        <div class="text-muted text-small" style="margin-top:4px;">Работает с туристами и экспатами</div>
+      </div>
+
+      <div class="panel reveal reveal-delay-3">
+        <div style="display:flex; flex-direction:column; gap:var(--s3);">
+          <a href="/" class="btn primary" style="margin-top:0;">📅 Выбрать даты</a>
+          <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener" class="btn secondary" style="margin-top:0;">
+            Вопросы в Telegram
+          </a>
+        </div>
+      </div>
+
+      <!-- Rating -->
+      <div class="panel reveal" style="text-align:center;">
+        <div style="font-size:28px; letter-spacing:3px; color:var(--c-yellow);">★★★★★</div>
+        <div style="font-weight:800; font-size:13px; margin-top:4px; color:var(--c-teal-dk);">5.0 / 5</div>
+        <div class="text-muted text-small">На основе отзывов родителей</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<style>
+@media (max-width: 720px) {
+  .container > div[style*="grid-template-columns:1fr 280px"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+</style>
+
+{% endblock %}
+
