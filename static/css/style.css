@@ -990,12 +990,19 @@ textarea { resize: vertical; }
 }
 
 .splash-media {
-  width: min(260px, 70vw);
+  width: min(160px, 55vw);
   height: auto;
   display: block;
-  border-radius: var(--r-xl);
-  box-shadow: var(--sh-xl);
-  animation: splash-float 3s ease-in-out infinite;
+  border-radius: 50%;
+  padding: 18px;
+  background: rgba(255,255,255,0.15);
+  box-shadow: 0 0 60px rgba(255,255,255,0.25), 0 8px 32px rgba(0,0,0,0.15);
+  animation: splash-float 3s ease-in-out infinite, splash-glow 2s ease-in-out infinite alternate;
+  backdrop-filter: blur(4px);
+}
+@keyframes splash-glow {
+  from { box-shadow: 0 0 30px rgba(255,255,255,0.2), 0 8px 32px rgba(0,0,0,0.15); }
+  to   { box-shadow: 0 0 80px rgba(255,255,255,0.45), 0 8px 32px rgba(0,0,0,0.15); }
 }
 
 @keyframes splash-float {
