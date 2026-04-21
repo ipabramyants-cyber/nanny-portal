@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Статьи — Nanny Nha Trang{% endblock %}
-{% block meta %}
+{% block head_extra %}
 <meta name="description" content="Полезные статьи о воспитании детей, выборе няни и жизни в Нячанге от агентства Nanny Nha Trang.">
+<meta property="og:title" content="Статьи — Nanny Nha Trang">
+<meta property="og:description" content="Полезные статьи о воспитании детей, выборе няни и жизни в Нячанге.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/blog">
 {% endblock %}
 {% block content %}
 

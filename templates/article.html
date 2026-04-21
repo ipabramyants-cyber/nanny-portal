@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ art.seo_title or art.title }} — Nanny Nha Trang{% endblock %}
-{% block meta %}
+{% block head_extra %}
 {% if art.seo_description %}<meta name="description" content="{{ art.seo_description }}">{% endif %}
 {% if art.seo_keywords %}<meta name="keywords" content="{{ art.seo_keywords }}">{% endif %}
-<!-- Open Graph -->
 <meta property="og:title" content="{{ art.seo_title or art.title }}">
 {% if art.seo_description %}<meta property="og:description" content="{{ art.seo_description }}">{% endif %}
 {% if art.cover_url %}<meta property="og:image" content="{{ art.cover_url }}">{% endif %}
 <meta property="og:type" content="article">
+<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/blog/{{ art.slug }}">
 {% endblock %}
 {% block content %}
 
