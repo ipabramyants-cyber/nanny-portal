@@ -6,7 +6,7 @@ import time
 import re
 import hashlib
 
-from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, Response
+from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, Response, jsonify
 from werkzeug.utils import secure_filename
 
 from auth_simple import require_admin, require_nanny
@@ -522,6 +522,7 @@ def create_app() -> Flask:
         return render_template('admin_login.html')
 
     @app.route('/nanny/app')
+    @require_nanny
     def nanny_app():
         return render_template('nanny_app.html')
 
@@ -1907,6 +1908,25 @@ def create_app() -> Flask:
         return send_from_directory(app.config['UPLOAD_DIR'], filename)
 
 
+    # ── ERROR HANDLERS ─────────────────────────────────────────────────────
+    @app.errorhandler(404)
+    def not_found(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'not found'}), 404
+        return render_template('404.html'), 404
+
+    @app.errorhandler(500)
+    def server_error(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'internal server error'}), 500
+        return render_template('404.html'), 500
+
+    @app.errorhandler(403)
+    def forbidden(e):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'forbidden'}), 403
+        return render_template('404.html'), 403
+
     @app.route('/robots.txt')
     def robots_txt():
         # Allow indexing of public landing only
@@ -1919,6 +1939,8 @@ def create_app() -> Flask:
             "Sitemap: " + request.url_root.rstrip('/') + "/sitemap.xml",
         ]
         return Response("\n".join(lines) + "\n", mimetype="text/plain")
+
+    ARTICLES_FILE = os.path.join(app.config['DATA_DIR'], 'articles.json')
 
     @app.route('/sitemap.xml')
     def sitemap_xml():
@@ -1936,8 +1958,6 @@ def create_app() -> Flask:
         return Response("\n".join(xml), mimetype="application/xml")
 
     # ── ARTICLES (public) ──────────────────────────────────────────────────
-    ARTICLES_FILE = os.path.join(app.config['DATA_DIR'], 'articles.json')
-
     def _articles_published():
         arts = _read_json(ARTICLES_FILE, [])
         return [a for a in arts if a.get('published')]

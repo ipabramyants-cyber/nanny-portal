@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}404 — Страница не найдена{% endblock %}
+{% block content %}
+<div style="min-height:60vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:var(--s8);">
+  <div>
+    <div style="font-size:72px;margin-bottom:var(--s4);">🙈</div>
+    <h1 style="font-size:2rem;color:var(--c-teal-dk);margin-bottom:var(--s3);">404</h1>
+    <p style="font-size:1.1rem;color:var(--c-text);margin-bottom:var(--s6);">Страница не найдена</p>
+    <div style="display:flex;gap:var(--s3);justify-content:center;flex-wrap:wrap;">
+      <a href="/" class="btn primary" style="width:auto;">На главную</a>
+      <a href="/blog" class="btn secondary" style="width:auto;">Статьи</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
