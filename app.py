@@ -73,7 +73,6 @@ def create_app() -> Flask:
 
     app.jinja_env.globals['current_year'] = datetime.datetime.utcnow().year
     # Cache-busting version for static assets (update on deploy)
-    import importlib.metadata as _imeta
     _static_ver = os.environ.get('APP_VERSION') or str(int(time.time() // 86400))
     app.jinja_env.globals['static_ver'] = _static_ver
 
@@ -1002,17 +1001,38 @@ def create_app() -> Flask:
         _lead_rate[ip] = hits
 
         data = request.get_json(force=True) or {}
-        parent_name = (data.get('parent_name') or '').strip()
-        telegram = (data.get('telegram') or '').strip()
-        child_name = (data.get('child_name') or '').strip()
-        child_age = (data.get('child_age') or '').strip()
-        notes = (data.get('notes') or '').strip()
-        meeting_date = data.get('meeting_date')
-        work_dates = data.get('work_dates') or {}
+        parent_name = (data.get('parent_name') or '').strip()[:100]
+        telegram = (data.get('telegram') or '').strip()[:100]
+        child_name = (data.get('child_name') or '').strip()[:100]
+        child_age = (data.get('child_age') or '').strip()[:20]
+        notes = (data.get('notes') or '').strip()[:1000]
+        meeting_date_raw = data.get('meeting_date')
+        work_dates_raw = data.get('work_dates') or {}
 
         if not parent_name or not telegram or not child_name or not child_age:
             return {'error': 'Заполните обязательные поля.'}, 400
 
+        # Validate meeting_date
+        _d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        meeting_date = meeting_date_raw if (
+            isinstance(meeting_date_raw, str) and re.match(_d_re, meeting_date_raw)
+        ) else None
+
+        # Validate work_dates: YYYY-MM-DD keys only, max 60 entries
+        def _val_work_dates(raw):
+            if not isinstance(raw, dict):
+                return {}
+            result = {}
+            for k, v in list(raw.items())[:60]:
+                if isinstance(k, str) and re.match(_d_re, k):
+                    if isinstance(v, dict):
+                        t = str(v.get('time') or '')[:20]
+                        result[k] = {'time': t} if t else {}
+                    else:
+                        result[k] = {}
+            return result
+
+        work_dates = _val_work_dates(work_dates_raw)
         token = secrets.token_urlsafe(16)
 
         if use_sql:
@@ -1075,13 +1095,38 @@ def create_app() -> Flask:
 
     @app.route('/api/client/<token>/update', methods=['POST'])
     def api_client_update(token: str):
+        # The token itself is the auth credential (secret URL)
         data = request.get_json(force=True) or {}
+
+        # Validate meeting_date
+        _d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        meeting_date_raw = data.get('meeting_date')
+        meeting_date = meeting_date_raw if (
+            isinstance(meeting_date_raw, str) and re.match(_d_re, meeting_date_raw)
+        ) else None
+
+        # Validate work_dates
+        def _val_wd(raw):
+            if not isinstance(raw, dict):
+                return {}
+            result = {}
+            for k, v in list(raw.items())[:60]:
+                if isinstance(k, str) and re.match(_d_re, k):
+                    if isinstance(v, dict):
+                        t = str(v.get('time') or '')[:20]
+                        result[k] = {'time': t} if t else {}
+                    else:
+                        result[k] = {}
+            return result
+
+        work_dates = _val_wd(data.get('work_dates') or {})
+
         if use_sql:
             lead = Lead.query.filter_by(token=token).first()
             if not lead:
                 return {'error': 'ЛК не найден'}, 404
-            lead.meeting_date = data.get('meeting_date')
-            lead.work_dates = data.get('work_dates') or {}
+            lead.meeting_date = meeting_date
+            lead.work_dates = work_dates
             db.session.commit()
             return {'ok': True}
 
@@ -1089,8 +1134,8 @@ def create_app() -> Flask:
         lead = next((x for x in leads if x.get('token') == token), None)
         if not lead:
             return {'error': 'ЛК не найден'}, 404
-        lead['meeting_date'] = data.get('meeting_date')
-        lead['work_dates'] = data.get('work_dates') or {}
+        lead['meeting_date'] = meeting_date
+        lead['work_dates'] = work_dates
         save_leads(leads)
         return {'ok': True}
 
@@ -1188,7 +1233,11 @@ def create_app() -> Flask:
 
     @app.route('/api/nanny/<portal_token>/upload_receipt', methods=['POST'])
     def api_nanny_upload_receipt(portal_token: str):
-        # Nanny attaches a receipt to a client/date (demo feature)
+        # Nanny attaches a receipt to a client/date
+        # Require session auth — nanny must have visited /nanny/portal/<portal_token>
+        session_token = session.get('nanny_portal_token') or ''
+        if session_token != portal_token:
+            return {'error': 'Forbidden'}, 403
         nannies = load_nannies()
         nanny = next((n for n in nannies if n.get('portal_token') == portal_token), None)
         if not nanny:
@@ -2087,7 +2136,7 @@ def create_app() -> Flask:
             'slug': slug,
             'title': (data.get('title') or '').strip(),
             'excerpt': (data.get('excerpt') or '').strip(),
-            'body': data.get('body') or '',
+            'body': _sanitize_html(data.get('body') or ''),
             'cover_url': (data.get('cover_url') or '').strip(),
             'video_url': (data.get('video_url') or '').strip(),
             'video_file': (data.get('video_file') or '').strip(),
@@ -2114,7 +2163,10 @@ def create_app() -> Flask:
                   'published','seo_title','seo_description','seo_keywords','slug']
         for f in fields:
             if f in data:
-                art[f] = data[f]
+                if f == 'body':
+                    art[f] = _sanitize_html(data[f])
+                else:
+                    art[f] = data[f]
         art['updated_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
         _write_json(ARTICLES_FILE, arts)
         return jsonify({'ok': True, 'article': art})
