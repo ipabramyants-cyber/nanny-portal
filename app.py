@@ -89,6 +89,9 @@ def create_app() -> Flask:
     # Cache-busting version for static assets (update on deploy)
     _static_ver = os.environ.get('APP_VERSION') or str(int(time.time() // 86400))
     app.jinja_env.globals['static_ver'] = _static_ver
+    # Canonical site URL for templates (sitemap, OG tags, canonical links)
+    _canonical = (os.environ.get('SITE_URL') or 'https://web-production-2ebe9.up.railway.app').rstrip('/')
+    app.jinja_env.globals['site_url'] = _canonical
 
     def nanny_photo_src(photo: str | None) -> str:
         if not photo:
@@ -1096,7 +1099,7 @@ def create_app() -> Flask:
             leads.insert(0, lead)
             save_leads(leads)
 
-        lk_url = request.host_url.rstrip('/') + '/client/' + token
+        lk_url = os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/') + '/client/' + token
 
         _notify_admins(
             "🆕 Новая заявка\n"
@@ -1824,7 +1827,7 @@ def create_app() -> Flask:
                         f"Клиент: {lead_row.parent_name}\n"
                         f"Ребёнок: {lead_row.child_name}, {lead_row.child_age}\n"
                         f"Даты: {dates_text}\n"
-                        f"ЛК: {request.host_url.rstrip('/')}/nanny/app"
+                        f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/nanny/app"
                     )
                 client_chat_id = _extract_chat_id(lead_row.telegram)
                 if client_chat_id:
@@ -1832,7 +1835,7 @@ def create_app() -> Flask:
                         client_chat_id,
                         "✅ По вашей заявке назначена няня.\n"
                         f"Даты: {dates_text}\n"
-                        f"ЛК: {request.host_url.rstrip('/')}/client/{lead_row.token}"
+                        f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{lead_row.token}"
                     )
 
             flash('Няня назначена', 'success')
@@ -1862,7 +1865,7 @@ def create_app() -> Flask:
                     f"Клиент: {lead.get('parent_name') or '-'}\n"
                     f"Ребёнок: {lead.get('child_name') or '-'}, {lead.get('child_age') or '-'}\n"
                     f"Даты: {dates_text}\n"
-                    f"ЛК: {request.host_url.rstrip('/')}/nanny/portal/{selected_nanny.get('portal_token')}"
+                    f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/nanny/portal/{selected_nanny.get('portal_token')}"
                 )
             client_chat_id = _extract_chat_id(lead.get('telegram'))
             if client_chat_id:
@@ -1870,7 +1873,7 @@ def create_app() -> Flask:
                     client_chat_id,
                     "✅ По вашей заявке назначена няня.\n"
                     f"Даты: {dates_text}\n"
-                    f"ЛК: {request.host_url.rstrip('/')}/client/{lead.get('token')}"
+                    f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{lead.get('token')}"
                 )
 
         flash('Няня назначена', 'success')
@@ -2061,12 +2064,16 @@ def create_app() -> Flask:
             return jsonify({'error': 'Слишком много запросов. Попробуйте позже.'}), 429
         return render_template('404.html'), 429
 
+    # Canonical production URL — used in sitemap.xml, robots.txt, OG tags
+    PRODUCTION_URL = 'https://web-production-2ebe9.up.railway.app'
+
     def _site_base() -> str:
-        """Return canonical site base URL. Use SITE_URL env if set (recommended for production)."""
+        """Return canonical site base URL.
+        Priority: SITE_URL env > PRODUCTION_URL constant > request.url_root (dev fallback)."""
         site_url = os.environ.get('SITE_URL', '').rstrip('/')
         if site_url:
             return site_url
-        return request.url_root.rstrip('/')
+        return PRODUCTION_URL
 
     @app.route('/robots.txt')
     def robots_txt():

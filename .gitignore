@@ -69,3 +69,5 @@ node_modules/
 .DS_Store
 website.config.json
 task.md
+.env.push
+.env.push

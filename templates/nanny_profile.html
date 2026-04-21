@@ -5,7 +5,7 @@
   <meta name="description" content="Няня {{ nanny.name }} в Нячанге — {{ nanny.exp_short }}. Проверенная няня для детей 0–8 лет. Быстрый подбор, личный кабинет." />
   <meta property="og:title" content="Няня {{ nanny.name }} — Нячанг" />
   <meta property="og:description" content="{{ nanny.exp_short }}" />
-  <meta property="og:image" content="{{ request.url_root }}{{ nanny_photo_src(nanny.photo).lstrip('/') }}" />
+  <meta property="og:image" content="{{ site_url }}/{{ nanny_photo_src(nanny.photo).lstrip('/') }}" />
   <meta property="og:type" content="profile" />
   <script type="application/ld+json">{
     "@context":"https://schema.org",
