@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}{{ art.seo_title or art.title }} — Nanny Nha Trang{% endblock %}
+{% block meta %}
+{% if art.seo_description %}<meta name="description" content="{{ art.seo_description }}">{% endif %}
+{% if art.seo_keywords %}<meta name="keywords" content="{{ art.seo_keywords }}">{% endif %}
+<!-- Open Graph -->
+<meta property="og:title" content="{{ art.seo_title or art.title }}">
+{% if art.seo_description %}<meta property="og:description" content="{{ art.seo_description }}">{% endif %}
+{% if art.cover_url %}<meta property="og:image" content="{{ art.cover_url }}">{% endif %}
+<meta property="og:type" content="article">
+{% endblock %}
+{% block content %}
+
+<!-- Hero with cover -->
+{% if art.cover_url %}
+<div style="position:relative;height:320px;overflow:hidden;background:#111;">
+  <img src="{{ art.cover_url }}" alt="{{ art.title }}"
+       style="width:100%;height:100%;object-fit:cover;opacity:.75;display:block;">
+  <div style="position:absolute;inset:0;background:linear-gradient(to bottom,transparent 30%,rgba(0,0,0,.7));"></div>
+  <div style="position:absolute;bottom:0;left:0;right:0;padding:var(--s6);">
+    <div class="container">
+      <nav style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:8px;">
+        <a href="/" style="color:rgba(255,255,255,.8);text-decoration:none;">Главная</a>
+        <span style="margin:0 6px;">›</span>
+        <a href="/blog" style="color:rgba(255,255,255,.8);text-decoration:none;">Статьи</a>
+        <span style="margin:0 6px;">›</span>
+        <span style="color:#fff;">{{ art.title[:40] }}{% if art.title|length > 40 %}…{% endif %}</span>
+      </nav>
+      <h1 style="color:#fff;margin:0;font-size:1.6rem;line-height:1.3;">{{ art.title }}</h1>
+      <div style="color:rgba(255,255,255,.7);font-size:13px;margin-top:8px;">
+        {{ art.created_at[:10] | replace('-', '.') if art.created_at else '' }}
+      </div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div style="background:var(--grad-hero);padding:var(--s6) 0;">
+  <div class="container">
+    <nav style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:8px;">
+      <a href="/" style="color:rgba(255,255,255,.8);text-decoration:none;">Главная</a>
+      <span style="margin:0 6px;">›</span>
+      <a href="/blog" style="color:rgba(255,255,255,.8);text-decoration:none;">Статьи</a>
+      <span style="margin:0 6px;">›</span>
+      <span style="color:#fff;">{{ art.title[:40] }}{% if art.title|length > 40 %}…{% endif %}</span>
+    </nav>
+    <h1 style="color:#fff;margin:0 0 8px;font-size:1.6rem;">{{ art.title }}</h1>
+    <div style="color:rgba(255,255,255,.7);font-size:13px;">
+      {{ art.created_at[:10] | replace('-', '.') if art.created_at else '' }}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="container" style="padding:var(--s6) 0 var(--s10);">
+  <div style="display:grid;grid-template-columns:1fr min(680px,100%);justify-content:center;">
+    <div></div>
+    <div>
+
+      <!-- Back button -->
+      <button onclick="history.back()" class="btn secondary"
+              style="margin-bottom:var(--s5);width:auto;display:inline-flex;align-items:center;gap:6px;font-size:13px;">
+        ← Назад
+      </button>
+
+      <!-- Excerpt -->
+      {% if art.excerpt %}
+      <p style="font-size:1.05rem;color:var(--c-teal-dk);font-weight:500;line-height:1.6;
+                border-left:3px solid var(--c-teal);padding-left:var(--s3);margin-bottom:var(--s5);">
+        {{ art.excerpt }}
+      </p>
+      {% endif %}
+
+      <!-- Body -->
+      <div class="article-body" style="line-height:1.8;font-size:15px;color:var(--c-text);">
+        {{ art.body | safe }}
+      </div>
+
+      <!-- Video -->
+      {% if art.video_url %}
+      <div style="margin-top:var(--s6);">
+        <h3 style="margin-bottom:var(--s3);">🎬 Видео</h3>
+        {% if 'youtube.com' in art.video_url or 'youtu.be' in art.video_url %}
+          {% set yt_id = art.video_url.split('v=')[-1].split('&')[0] if 'v=' in art.video_url else art.video_url.split('/')[-1].split('?')[0] %}
+          <div style="position:relative;padding-bottom:56.25%;height:0;border-radius:var(--r-md);overflow:hidden;">
+            <iframe src="https://www.youtube.com/embed/{{ yt_id }}"
+                    style="position:absolute;top:0;left:0;width:100%;height:100%;"
+                    frameborder="0" allowfullscreen loading="lazy"></iframe>
+          </div>
+        {% elif 'vimeo.com' in art.video_url %}
+          {% set vim_id = art.video_url.split('/')[-1].split('?')[0] %}
+          <div style="position:relative;padding-bottom:56.25%;height:0;border-radius:var(--r-md);overflow:hidden;">
+            <iframe src="https://player.vimeo.com/video/{{ vim_id }}"
+                    style="position:absolute;top:0;left:0;width:100%;height:100%;"
+                    frameborder="0" allowfullscreen loading="lazy"></iframe>
+          </div>
+        {% else %}
+          <a href="{{ art.video_url }}" class="action-link" target="_blank">▶ Смотреть видео</a>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if art.video_file %}
+      <div style="margin-top:var(--s5);">
+        <video controls style="width:100%;border-radius:var(--r-md);max-height:400px;">
+          <source src="{{ art.video_file }}">
+          Ваш браузер не поддерживает видео.
+        </video>
+      </div>
+      {% endif %}
+
+      <!-- Prev / Next -->
+      {% if prev_art or next_art %}
+      <div style="display:flex;gap:var(--s4);margin-top:var(--s8);padding-top:var(--s5);
+                  border-top:1px solid var(--c-border);">
+        {% if prev_art %}
+        <a href="/blog/{{ prev_art.slug }}" style="flex:1;text-decoration:none;">
+          <div class="panel" style="padding:var(--s3);font-size:13px;">
+            <div style="color:var(--c-muted);margin-bottom:4px;">← Предыдущая</div>
+            <div style="color:var(--c-teal-dk);font-weight:600;">{{ prev_art.title }}</div>
+          </div>
+        </a>
+        {% endif %}
+        {% if next_art %}
+        <a href="/blog/{{ next_art.slug }}" style="flex:1;text-decoration:none;">
+          <div class="panel" style="padding:var(--s3);font-size:13px;text-align:right;">
+            <div style="color:var(--c-muted);margin-bottom:4px;">Следующая →</div>
+            <div style="color:var(--c-teal-dk);font-weight:600;">{{ next_art.title }}</div>
+          </div>
+        </a>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Back to blog -->
+      <div style="text-align:center;margin-top:var(--s6);">
+        <a href="/blog" class="btn secondary" style="width:auto;display:inline-block;">← Все статьи</a>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<style>
+.article-body h2 { font-size:1.3rem; margin:1.5em 0 .5em; color:var(--c-teal-dk); }
+.article-body h3 { font-size:1.1rem; margin:1.2em 0 .4em; color:var(--c-teal-dk); }
+.article-body p  { margin:0 0 1em; }
+.article-body ul, .article-body ol { margin:0 0 1em 1.5em; }
+.article-body li { margin-bottom:.4em; }
+.article-body img { max-width:100%; border-radius:var(--r-md); margin:1em 0; }
+.article-body blockquote { border-left:3px solid var(--c-yellow); padding-left:var(--s3); color:var(--c-muted); font-style:italic; margin:1em 0; }
+.article-body a { color:var(--c-teal); }
+.article-body strong { color:var(--c-teal-dk); }
+</style>
+{% endblock %}

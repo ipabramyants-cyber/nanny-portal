@@ -1923,13 +1923,161 @@ def create_app() -> Flask:
     @app.route('/sitemap.xml')
     def sitemap_xml():
         base = request.url_root.rstrip('/')
-        urls = [base + "/"]
+        articles = _read_json(ARTICLES_FILE, [])
+        urls = [base + "/", base + "/blog"]
+        for a in articles:
+            if a.get('published') and a.get('slug'):
+                urls.append(base + "/blog/" + a['slug'])
         xml = ['<?xml version="1.0" encoding="UTF-8"?>',
                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
         for u in urls:
             xml.append("<url><loc>%s</loc></url>" % u)
         xml.append("</urlset>")
         return Response("\n".join(xml), mimetype="application/xml")
+
+    # ── ARTICLES (public) ──────────────────────────────────────────────────
+    ARTICLES_FILE = os.path.join(app.config['DATA_DIR'], 'articles.json')
+
+    def _articles_published():
+        arts = _read_json(ARTICLES_FILE, [])
+        return [a for a in arts if a.get('published')]
+
+    @app.route('/blog')
+    def blog():
+        articles = sorted(_articles_published(),
+                          key=lambda a: a.get('created_at', ''), reverse=True)
+        return render_template('blog.html', articles=articles)
+
+    @app.route('/blog/<slug>')
+    def article(slug):
+        arts = _read_json(ARTICLES_FILE, [])
+        art = next((a for a in arts if a.get('slug') == slug and a.get('published')), None)
+        if not art:
+            return render_template('404.html'), 404
+        # prev/next for navigation
+        published = sorted(_articles_published(),
+                           key=lambda a: a.get('created_at', ''), reverse=True)
+        idx = next((i for i, a in enumerate(published) if a['slug'] == slug), None)
+        prev_art = published[idx + 1] if idx is not None and idx + 1 < len(published) else None
+        next_art = published[idx - 1] if idx is not None and idx > 0 else None
+        return render_template('article.html', art=art, prev_art=prev_art, next_art=next_art)
+
+    # ── ARTICLES API (admin) ────────────────────────────────────────────────
+    @app.route('/api/admin/articles', methods=['GET'])
+    @require_admin
+    def api_articles_list():
+        arts = _read_json(ARTICLES_FILE, [])
+        arts = sorted(arts, key=lambda a: a.get('created_at', ''), reverse=True)
+        return jsonify(arts)
+
+    @app.route('/api/admin/articles', methods=['POST'])
+    @require_admin
+    def api_article_create():
+        data = request.get_json(force=True) or {}
+        import uuid as _uuid
+        slug = (data.get('slug') or '').strip()
+        if not slug:
+            # auto-generate from title
+            import re as _re
+            raw = (data.get('title') or 'article').lower()
+            slug = _re.sub(r'[^a-z0-9а-яёa-z]+', '-', raw).strip('-')[:80]
+            slug = slug + '-' + str(int(time.time()))[-5:]
+        arts = _read_json(ARTICLES_FILE, [])
+        # slug uniqueness
+        if any(a.get('slug') == slug for a in arts):
+            slug = slug + '-' + str(int(time.time()))[-4:]
+        now = time.strftime('%Y-%m-%dT%H:%M:%S')
+        art = {
+            'id': str(_uuid.uuid4()),
+            'slug': slug,
+            'title': (data.get('title') or '').strip(),
+            'excerpt': (data.get('excerpt') or '').strip(),
+            'body': data.get('body') or '',
+            'cover_url': (data.get('cover_url') or '').strip(),
+            'video_url': (data.get('video_url') or '').strip(),
+            'video_file': (data.get('video_file') or '').strip(),
+            'published': bool(data.get('published', True)),
+            'created_at': now,
+            'updated_at': now,
+            'seo_title': (data.get('seo_title') or '').strip(),
+            'seo_description': (data.get('seo_description') or '').strip(),
+            'seo_keywords': (data.get('seo_keywords') or '').strip(),
+        }
+        arts.append(art)
+        _write_json(ARTICLES_FILE, arts)
+        return jsonify({'ok': True, 'article': art})
+
+    @app.route('/api/admin/articles/<art_id>', methods=['PUT'])
+    @require_admin
+    def api_article_update(art_id):
+        data = request.get_json(force=True) or {}
+        arts = _read_json(ARTICLES_FILE, [])
+        art = next((a for a in arts if a['id'] == art_id), None)
+        if not art:
+            return jsonify({'error': 'not found'}), 404
+        fields = ['title','excerpt','body','cover_url','video_url','video_file',
+                  'published','seo_title','seo_description','seo_keywords','slug']
+        for f in fields:
+            if f in data:
+                art[f] = data[f]
+        art['updated_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
+        _write_json(ARTICLES_FILE, arts)
+        return jsonify({'ok': True, 'article': art})
+
+    @app.route('/api/admin/articles/<art_id>', methods=['DELETE'])
+    @require_admin
+    def api_article_delete(art_id):
+        arts = _read_json(ARTICLES_FILE, [])
+        arts = [a for a in arts if a['id'] != art_id]
+        _write_json(ARTICLES_FILE, arts)
+        return jsonify({'ok': True})
+
+    @app.route('/api/admin/articles/upload-cover', methods=['POST'])
+    @require_admin
+    def api_article_upload_cover():
+        f = request.files.get('file')
+        if not f:
+            return jsonify({'error': 'no file'}), 400
+        import uuid as _uuid
+        ext = (f.filename or 'img').rsplit('.', 1)[-1].lower()
+        if ext not in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+            return jsonify({'error': 'bad ext'}), 400
+        folder = os.path.join(app.config.get('UPLOAD_FOLDER', 'uploads'), 'articles')
+        os.makedirs(folder, exist_ok=True)
+        fname = str(_uuid.uuid4()) + '.' + ext
+        fpath = os.path.join(folder, fname)
+        f.save(fpath)
+        url = '/uploads/articles/' + fname
+        return jsonify({'ok': True, 'url': url})
+
+    @app.route('/api/admin/articles/upload-video', methods=['POST'])
+    @require_admin
+    def api_article_upload_video():
+        f = request.files.get('file')
+        if not f:
+            return jsonify({'error': 'no file'}), 400
+        import uuid as _uuid
+        ext = (f.filename or 'vid').rsplit('.', 1)[-1].lower()
+        if ext not in ('mp4', 'mov', 'webm', 'avi'):
+            return jsonify({'error': 'bad ext'}), 400
+        folder = os.path.join(app.config.get('UPLOAD_FOLDER', 'uploads'), 'articles')
+        os.makedirs(folder, exist_ok=True)
+        fname = str(_uuid.uuid4()) + '.' + ext
+        fpath = os.path.join(folder, fname)
+        f.save(fpath)
+        url = '/uploads/articles/' + fname
+        return jsonify({'ok': True, 'url': url})
+
+    # ── PUBLIC API: latest articles (for blocks on index/lk) ───────────────
+    @app.route('/api/articles/latest')
+    def api_articles_latest():
+        arts = sorted(_articles_published(),
+                      key=lambda a: a.get('created_at', ''), reverse=True)[:3]
+        return jsonify([{
+            'slug': a['slug'], 'title': a['title'],
+            'excerpt': a.get('excerpt',''), 'cover_url': a.get('cover_url',''),
+            'created_at': a.get('created_at','')
+        } for a in arts])
 
     return app
 

@@ -31,8 +31,68 @@
     "aggregateRating": { "@type": "AggregateRating", "ratingValue": "5", "reviewCount": "{{ reviews|length }}" }
   }</script>
 {% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  var grid = document.getElementById('articlesGrid');
+  if (!grid) return;
+  fetch('/api/articles/latest')
+    .then(function(r){ return r.json(); })
+    .then(function(arts){
+      if (!arts.length) {
+        grid.innerHTML = '<p class="hint" style="text-align:center;">Статьи скоро появятся</p>';
+        return;
+      }
+      grid.innerHTML = arts.map(function(a){
+        var date = a.created_at ? a.created_at.slice(0,10).split('-').reverse().join('.') : '';
+        var cover = a.cover_url
+          ? '<img src="'+a.cover_url+'" alt="'+a.title+'" style="width:72px;height:56px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
+          : '<div style="width:72px;height:56px;border-radius:var(--r-sm);background:var(--c-teal-lt);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">📝</div>';
+        return '<a href="/blog/'+a.slug+'" style="text-decoration:none;color:inherit;display:flex;gap:var(--s3);align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--c-border);">'
+          + cover
+          + '<div style="min-width:0;">'
+          + '<div style="font-size:12px;color:var(--c-muted);">'+date+'</div>'
+          + '<div style="font-weight:600;font-size:13px;color:var(--c-teal-dk);line-height:1.3;margin-top:2px;">'+a.title+'</div>'
+          + (a.excerpt ? '<div style="font-size:12px;color:var(--c-text);margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">'+a.excerpt+'</div>' : '')
+          + '</div></a>';
+      }).join('');
+    })
+    .catch(function(){ grid.innerHTML = '<p class="hint">Не удалось загрузить статьи</p>'; });
+})();
+</script>
+{% endblock %}
 
 {% block title %}Няня на час — Нячанг | Проверенные няни для детей 0–8 лет{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  var grid = document.getElementById('articlesGrid');
+  if (!grid) return;
+  fetch('/api/articles/latest')
+    .then(function(r){ return r.json(); })
+    .then(function(arts){
+      if (!arts.length) {
+        grid.innerHTML = '<p class="hint" style="text-align:center;">Статьи скоро появятся</p>';
+        return;
+      }
+      grid.innerHTML = arts.map(function(a){
+        var date = a.created_at ? a.created_at.slice(0,10).split('-').reverse().join('.') : '';
+        var cover = a.cover_url
+          ? '<img src="'+a.cover_url+'" alt="'+a.title+'" style="width:72px;height:56px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
+          : '<div style="width:72px;height:56px;border-radius:var(--r-sm);background:var(--c-teal-lt);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">📝</div>';
+        return '<a href="/blog/'+a.slug+'" style="text-decoration:none;color:inherit;display:flex;gap:var(--s3);align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--c-border);">'
+          + cover
+          + '<div style="min-width:0;">'
+          + '<div style="font-size:12px;color:var(--c-muted);">'+date+'</div>'
+          + '<div style="font-weight:600;font-size:13px;color:var(--c-teal-dk);line-height:1.3;margin-top:2px;">'+a.title+'</div>'
+          + (a.excerpt ? '<div style="font-size:12px;color:var(--c-text);margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">'+a.excerpt+'</div>' : '')
+          + '</div></a>';
+      }).join('');
+    })
+    .catch(function(){ grid.innerHTML = '<p class="hint">Не удалось загрузить статьи</p>'; });
+})();
+</script>
+{% endblock %}
 
 {% block content %}
 
@@ -157,12 +217,14 @@
     </p>
   </div>
 
-  <!-- Instagram -->
-  <div class="panel panel--ig">
-    <h3>📸 Instagram</h3>
-    <p class="hint" style="margin-bottom:10px;">Фото и атмосфера нашей работы.</p>
-    <div id="igGrid" class="ig-grid" aria-label="Лента Instagram"></div>
-    <a class="action-link ig-link" href="https://www.instagram.com/nanny_nya_trang/" target="_blank" rel="noopener noreferrer">Открыть Instagram →</a>
+  <!-- Articles block -->
+  <div class="panel panel--articles">
+    <h3>📝 Статьи</h3>
+    <p class="hint" style="margin-bottom:var(--s3);">Полезное о детях и воспитании.</p>
+    <div id="articlesGrid" style="display:flex;flex-direction:column;gap:var(--s3);"></div>
+    <a class="action-link" href="/blog" style="margin-top:var(--s3);display:block;text-align:center;">
+      Все статьи →
+    </a>
   </div>
 
   <!-- Nannies -->
@@ -243,4 +305,34 @@
   </div>
 </section>
 
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  var grid = document.getElementById('articlesGrid');
+  if (!grid) return;
+  fetch('/api/articles/latest')
+    .then(function(r){ return r.json(); })
+    .then(function(arts){
+      if (!arts.length) {
+        grid.innerHTML = '<p class="hint" style="text-align:center;">Статьи скоро появятся</p>';
+        return;
+      }
+      grid.innerHTML = arts.map(function(a){
+        var date = a.created_at ? a.created_at.slice(0,10).split('-').reverse().join('.') : '';
+        var cover = a.cover_url
+          ? '<img src="'+a.cover_url+'" alt="'+a.title+'" style="width:72px;height:56px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
+          : '<div style="width:72px;height:56px;border-radius:var(--r-sm);background:var(--c-teal-lt);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;">📝</div>';
+        return '<a href="/blog/'+a.slug+'" style="text-decoration:none;color:inherit;display:flex;gap:var(--s3);align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--c-border);">'
+          + cover
+          + '<div style="min-width:0;">'
+          + '<div style="font-size:12px;color:var(--c-muted);">'+date+'</div>'
+          + '<div style="font-weight:600;font-size:13px;color:var(--c-teal-dk);line-height:1.3;margin-top:2px;">'+a.title+'</div>'
+          + (a.excerpt ? '<div style="font-size:12px;color:var(--c-text);margin-top:2px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">'+a.excerpt+'</div>' : '')
+          + '</div></a>';
+      }).join('');
+    })
+    .catch(function(){ grid.innerHTML = '<p class="hint">Не удалось загрузить статьи</p>'; });
+})();
+</script>
 {% endblock %}

@@ -399,9 +399,247 @@
     </div>
   </div>
 
+  <!-- ═══ ARTICLES ══════════════════════════════════════════ -->
+  <div class="section-block" style="margin-top:var(--s6);">
+    <div class="section-inner">
+      <h2>📝 Статьи (<span id="artCount">…</span>)</h2>
+      <p class="hint" style="margin-bottom:var(--s4);">Создавайте статьи с SEO, фото и видео. Публикуются на <a href="/blog" target="_blank">/blog</a></p>
+
+      <!-- Article list -->
+      <div id="artList" style="display:flex;flex-direction:column;gap:var(--s3);margin-bottom:var(--s5);"></div>
+
+      <!-- Create / Edit form -->
+      <details id="artFormWrap" style="margin-top:var(--s4);">
+        <summary style="cursor:pointer;font-weight:700;color:var(--c-teal-dk);">+ Новая статья</summary>
+        <div style="margin-top:var(--s4);padding:var(--s4);background:var(--c-surface-2);border-radius:var(--r-md);border:1px solid var(--c-border);">
+          <input type="hidden" id="artEditId" value="">
+          <div style="display:grid;gap:var(--s3);">
+
+            <div><label>Заголовок *</label>
+              <input id="artTitle" placeholder="Как выбрать хорошую няню" required></div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);">
+              <div><label>Slug (URL)</label>
+                <input id="artSlug" placeholder="kak-vybrat-nyanyu" pattern="[a-z0-9а-яё\-]+">
+                <span class="hint" style="font-size:11px;">/blog/<em id="artSlugPreview">…</em></span>
+              </div>
+              <div><label>Статус</label>
+                <select id="artPublished" style="padding:8px;border-radius:var(--r-sm);border:1.5px solid var(--c-border-str);width:100%;">
+                  <option value="1">✅ Опубликована</option>
+                  <option value="0">📝 Черновик</option>
+                </select>
+              </div>
+            </div>
+
+            <div><label>Краткое описание (excerpt)</label>
+              <textarea id="artExcerpt" rows="2" placeholder="Кратко о чём статья — покажется в блоке и списке"></textarea></div>
+
+            <div><label>Текст статьи (HTML)</label>
+              <textarea id="artBody" rows="10" placeholder="<p>Текст статьи...</p>" style="font-family:monospace;font-size:13px;"></textarea></div>
+
+            <!-- Cover image -->
+            <div>
+              <label>Обложка</label>
+              <div style="display:flex;gap:var(--s3);align-items:flex-start;flex-wrap:wrap;">
+                <div>
+                  <input type="file" id="artCoverFile" accept="image/*" style="font-size:13px;">
+                  <button type="button" onclick="uploadArtCover()" class="btn secondary" style="width:auto;margin-top:6px;font-size:12px;">Загрузить фото</button>
+                </div>
+                <div style="flex:1;">
+                  <input id="artCoverUrl" placeholder="или вставьте URL обложки" style="margin-bottom:6px;">
+                  <img id="artCoverPreview" src="" alt="" style="max-height:120px;border-radius:var(--r-sm);display:none;">
+                </div>
+              </div>
+            </div>
+
+            <!-- Video -->
+            <div>
+              <label>Видео</label>
+              <input id="artVideoUrl" placeholder="YouTube / Vimeo ссылка (https://youtube.com/watch?v=...)">
+              <div style="margin-top:8px;display:flex;align-items:center;gap:var(--s3);">
+                <span style="font-size:13px;color:var(--c-muted);">или</span>
+                <input type="file" id="artVideoFile" accept="video/*" style="font-size:13px;flex:1;">
+                <button type="button" onclick="uploadArtVideo()" class="btn secondary" style="width:auto;font-size:12px;">Загрузить видео</button>
+              </div>
+              <input id="artVideoFileUrl" placeholder="URL загруженного видео" style="margin-top:8px;font-size:12px;color:var(--c-muted);">
+            </div>
+
+            <!-- SEO -->
+            <details style="margin-top:var(--s2);">
+              <summary style="cursor:pointer;color:var(--c-muted);font-size:13px;">🔍 SEO настройки</summary>
+              <div style="display:grid;gap:var(--s3);margin-top:var(--s3);">
+                <div><label>SEO Title</label>
+                  <input id="artSeoTitle" placeholder="Заголовок для поисковиков (если отличается)"></div>
+                <div><label>SEO Description</label>
+                  <textarea id="artSeoDesc" rows="2" placeholder="Описание для Google (до 160 символов)"></textarea></div>
+                <div><label>Keywords</label>
+                  <input id="artSeoKw" placeholder="няня, нячанг, уход за детьми"></div>
+              </div>
+            </details>
+
+            <div style="display:flex;gap:var(--s3);margin-top:var(--s2);">
+              <button type="button" onclick="saveArticle()" class="btn primary" style="width:auto;">💾 Сохранить</button>
+              <button type="button" onclick="resetArtForm()" class="btn secondary" style="width:auto;">Отмена</button>
+            </div>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
 </div><!-- /container -->
 
 <script>
+// ── Articles Admin ────────────────────────────────────────
+(function(){
+  function fmtDate(s){ return s ? s.slice(0,10).split('-').reverse().join('.') : ''; }
+
+  function loadArticles(){
+    fetch('/api/admin/articles')
+      .then(r=>r.json())
+      .then(function(arts){
+        document.getElementById('artCount').textContent = arts.length;
+        var list = document.getElementById('artList');
+        if(!arts.length){
+          list.innerHTML='<p class="hint">Статей пока нет. Создайте первую!</p>';
+          return;
+        }
+        list.innerHTML = arts.map(function(a){
+          var status = a.published
+            ? '<span style="color:var(--c-lime);font-size:11px;">● Опубликована</span>'
+            : '<span style="color:var(--c-muted);font-size:11px;">○ Черновик</span>';
+          var cover = a.cover_url
+            ? '<img src="'+a.cover_url+'" style="width:60px;height:48px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;" onerror="this.style.display=\'none\'">'
+            : '<div style="width:60px;height:48px;border-radius:var(--r-sm);background:var(--c-teal-lt);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📝</div>';
+          return '<div style="display:flex;gap:var(--s3);align-items:center;padding:var(--s3);border:1px solid var(--c-border);border-radius:var(--r-md);">'
+            + cover
+            + '<div style="flex:1;min-width:0;">'
+            + '<div style="font-weight:700;font-size:13px;color:var(--c-teal-dk);">'+a.title+'</div>'
+            + '<div style="font-size:11px;color:var(--c-muted);margin-top:2px;">/blog/'+a.slug+' · '+fmtDate(a.created_at)+' · '+status+'</div>'
+            + '</div>'
+            + '<div style="display:flex;gap:8px;flex-shrink:0;">'
+            + '<a href="/blog/'+a.slug+'" target="_blank" class="btn secondary" style="width:auto;font-size:12px;padding:4px 10px;">👁</a>'
+            + '<button onclick="editArticle(\''+a.id+'\')" class="btn secondary" style="width:auto;font-size:12px;padding:4px 10px;">✏️</button>'
+            + '<button onclick="deleteArticle(\''+a.id+'\')" class="btn danger" style="width:auto;font-size:12px;padding:4px 10px;">🗑</button>'
+            + '</div></div>';
+        }).join('');
+      });
+  }
+
+  window._artData = {};
+
+  window.editArticle = function(id){
+    fetch('/api/admin/articles')
+      .then(r=>r.json())
+      .then(function(arts){
+        var a = arts.find(function(x){ return x.id===id; });
+        if(!a) return;
+        window._artData[id] = a;
+        document.getElementById('artEditId').value = a.id;
+        document.getElementById('artTitle').value = a.title||'';
+        document.getElementById('artSlug').value = a.slug||'';
+        document.getElementById('artSlugPreview').textContent = a.slug||'';
+        document.getElementById('artExcerpt').value = a.excerpt||'';
+        document.getElementById('artBody').value = a.body||'';
+        document.getElementById('artCoverUrl').value = a.cover_url||'';
+        document.getElementById('artVideoUrl').value = a.video_url||'';
+        document.getElementById('artVideoFileUrl').value = a.video_file||'';
+        document.getElementById('artSeoTitle').value = a.seo_title||'';
+        document.getElementById('artSeoDesc').value = a.seo_description||'';
+        document.getElementById('artSeoKw').value = a.seo_keywords||'';
+        document.getElementById('artPublished').value = a.published ? '1' : '0';
+        // show cover preview
+        var prev = document.getElementById('artCoverPreview');
+        if(a.cover_url){ prev.src=a.cover_url; prev.style.display='block'; } else { prev.style.display='none'; }
+        // open form
+        document.getElementById('artFormWrap').open = true;
+        document.getElementById('artFormWrap').scrollIntoView({behavior:'smooth'});
+      });
+  };
+
+  window.deleteArticle = function(id){
+    if(!confirm('Удалить статью?')) return;
+    fetch('/api/admin/articles/'+id, {method:'DELETE'})
+      .then(r=>r.json())
+      .then(function(){ loadArticles(); });
+  };
+
+  window.saveArticle = function(){
+    var id = document.getElementById('artEditId').value;
+    var data = {
+      title: document.getElementById('artTitle').value.trim(),
+      slug: document.getElementById('artSlug').value.trim(),
+      excerpt: document.getElementById('artExcerpt').value.trim(),
+      body: document.getElementById('artBody').value,
+      cover_url: document.getElementById('artCoverUrl').value.trim(),
+      video_url: document.getElementById('artVideoUrl').value.trim(),
+      video_file: document.getElementById('artVideoFileUrl').value.trim(),
+      published: document.getElementById('artPublished').value === '1',
+      seo_title: document.getElementById('artSeoTitle').value.trim(),
+      seo_description: document.getElementById('artSeoDesc').value.trim(),
+      seo_keywords: document.getElementById('artSeoKw').value.trim(),
+    };
+    if(!data.title){ alert('Заполните заголовок'); return; }
+    var url = id ? '/api/admin/articles/'+id : '/api/admin/articles';
+    var method = id ? 'PUT' : 'POST';
+    fetch(url, {method:method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+      .then(r=>r.json())
+      .then(function(res){
+        if(res.ok){ resetArtForm(); loadArticles(); }
+        else alert('Ошибка: '+(res.error||'unknown'));
+      });
+  };
+
+  window.resetArtForm = function(){
+    document.getElementById('artEditId').value='';
+    ['artTitle','artSlug','artExcerpt','artBody','artCoverUrl','artVideoUrl','artVideoFileUrl',
+     'artSeoTitle','artSeoDesc','artSeoKw'].forEach(function(id){ document.getElementById(id).value=''; });
+    document.getElementById('artPublished').value='1';
+    document.getElementById('artCoverPreview').style.display='none';
+    document.getElementById('artSlugPreview').textContent='…';
+    document.getElementById('artFormWrap').open=false;
+  };
+
+  window.uploadArtCover = function(){
+    var f = document.getElementById('artCoverFile').files[0];
+    if(!f){ alert('Выберите файл'); return; }
+    var fd = new FormData(); fd.append('file', f);
+    fetch('/api/admin/articles/upload-cover', {method:'POST', body:fd})
+      .then(r=>r.json())
+      .then(function(res){
+        if(res.ok){
+          document.getElementById('artCoverUrl').value = res.url;
+          var prev = document.getElementById('artCoverPreview');
+          prev.src = res.url; prev.style.display='block';
+        } else alert('Ошибка загрузки: '+(res.error||''));
+      });
+  };
+
+  window.uploadArtVideo = function(){
+    var f = document.getElementById('artVideoFile').files[0];
+    if(!f){ alert('Выберите файл'); return; }
+    var fd = new FormData(); fd.append('file', f);
+    fetch('/api/admin/articles/upload-video', {method:'POST', body:fd})
+      .then(r=>r.json())
+      .then(function(res){
+        if(res.ok) document.getElementById('artVideoFileUrl').value = res.url;
+        else alert('Ошибка загрузки: '+(res.error||''));
+      });
+  };
+
+  // Slug preview
+  document.getElementById('artSlug').addEventListener('input', function(){
+    document.getElementById('artSlugPreview').textContent = this.value || '…';
+  });
+  // Cover URL preview
+  document.getElementById('artCoverUrl').addEventListener('input', function(){
+    var prev = document.getElementById('artCoverPreview');
+    if(this.value){ prev.src=this.value; prev.style.display='block'; } else prev.style.display='none';
+  });
+
+  loadArticles();
+})();
+
 // ── Master calendar ──────────────────────────────────────
 (function(){
   const EVENTS = {{ events | tojson }};
