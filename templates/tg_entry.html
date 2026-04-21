@@ -4,67 +4,75 @@
 <section class="section">
   <div class="container">
     <div class="panel" style="max-width:480px;margin:40px auto;text-align:center;">
-      <img src="/static/img/logo.png" alt="Няня на час" style="width:72px;height:72px;border-radius:50%;margin-bottom:14px;">
+      <img src="/static/img/logo.png" alt="Няня на час"
+           style="width:72px;height:72px;border-radius:50%;margin-bottom:14px;">
       <h3 style="margin:0 0 6px">Входим…</h3>
       <div id="tgStatus" class="muted">Проверяем Telegram‑аккаунт</div>
-      <div id="tgDebug" style="margin-top:12px;font-size:13px;opacity:.7;display:none;white-space:pre-wrap;text-align:left;"></div>
+      <div id="tgDebug" style="margin-top:12px;font-size:13px;opacity:.7;display:none;
+                               white-space:pre-wrap;text-align:left;background:#f4f4f4;
+                               padding:10px;border-radius:8px;"></div>
     </div>
   </div>
 </section>
 
 <script>
-(function(){
-  var status  = document.getElementById('tgStatus');
-  var debugEl = document.getElementById('tgDebug');
+(function () {
+  var statusEl = document.getElementById('tgStatus');
+  var debugEl  = document.getElementById('tgDebug');
 
-  function setStatus(text, color) {
-    status.textContent = text;
-    status.style.color = color || '';
+  function setStatus(txt, color) {
+    statusEl.textContent = txt;
+    statusEl.style.color = color || '';
   }
-  function showDebug(text) {
+  function showDebug(txt) {
     debugEl.style.display = 'block';
-    debugEl.textContent = text;
+    debugEl.textContent   = txt;
   }
 
   function doAuth(initData) {
     setStatus('Авторизуемся…');
     fetch('/api/auth/telegram', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({init_data: initData}),
-      credentials: 'include'
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ init_data: initData }),
+      credentials: 'include',
     })
-    .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
-    .then(function(res){
-      if (!res.ok) {
-        setStatus('Ошибка авторизации: ' + (res.data.error || '?'), '#e74c3c');
-        showDebug('Убедитесь что TELEGRAM_BOT_TOKEN добавлен в переменные Railway.\nError: ' + JSON.stringify(res.data));
-        return;
-      }
-      var role = res.data.role || 'client';
-      window.__TG_AUTH__ = Object.assign({ok: true}, res.data);
+      .then(function (r) {
+        return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+      })
+      .then(function (res) {
+        if (!res.ok) {
+          setStatus('Ошибка: ' + (res.data.error || 'неизвестно'), '#e74c3c');
+          showDebug(
+            'Убедитесь что TELEGRAM_BOT_TOKEN и ADMIN_IDS добавлены в Railway Variables.\n\n' +
+            JSON.stringify(res.data, null, 2)
+          );
+          return;
+        }
 
-      // Авторедирект по роли
-      if (role === 'admin') {
-        setStatus('Добро пожаловать, администратор! Открываю панель…');
-        window.location.href = '/admin';
-      } else if (role === 'nanny') {
-        setStatus('Добро пожаловать, няня! Открываю кабинет…');
-        window.location.href = '/nanny/app';
-      } else {
-        setStatus('Добро пожаловать! Открываю личный кабинет…');
-        window.location.href = '/client/app';
-      }
-    })
-    .catch(function(e){
-      setStatus('Ошибка сети', '#e74c3c');
-      showDebug(e.message);
-    });
+        var role      = res.data.role || 'client';
+        var authToken = res.data.auth_token || '';
+
+        // Build redirect URL with auth_token in query param
+        // auth_simple.py will read ?_t= and hydrate the session server-side
+        var dest = '/client/app';
+        if (role === 'admin') dest = '/admin';
+        if (role === 'nanny') dest = '/nanny/app';
+
+        if (authToken) dest += '?_t=' + encodeURIComponent(authToken);
+
+        setStatus('Готово! Открываю ' + role + '…');
+        window.location.href = dest;
+      })
+      .catch(function (e) {
+        setStatus('Ошибка сети', '#e74c3c');
+        showDebug(e.message);
+      });
   }
 
-  // Ждём загрузки Telegram SDK
+  // Wait for Telegram SDK to load
   var tries = 0;
-  var timer = setInterval(function(){
+  var timer = setInterval(function () {
     tries++;
     if (window.Telegram && window.Telegram.WebApp) {
       clearInterval(timer);
@@ -73,14 +81,18 @@
       tg.expand();
       var initData = tg.initData || '';
       if (!initData) {
-        setStatus('initData пустой — откройте через кнопку в боте', '#e67e22');
-        showDebug('Telegram ID узнайте у @userinfobot\nЕсли вы открываете в браузере — зайдите напрямую:\n/admin?dev_token=YOUR_ADMIN_TOKEN');
+        setStatus('Откройте через кнопку в боте', '#e67e22');
+        showDebug(
+          'initData пустой — приложение нужно открывать кнопкой Menu Button внутри @Nannynhatrang_bot.\n\n' +
+          'Для входа в браузере используйте:\n' +
+          window.location.origin + '/admin?dev_token=ВАШ_ADMIN_TOKEN'
+        );
         return;
       }
       doAuth(initData);
-    } else if (tries > 40) {
+    } else if (tries > 50) {
+      // Not inside Telegram — go to main site
       clearInterval(timer);
-      // Не внутри Telegram — редирект на главную
       window.location.href = '/';
     }
   }, 100);

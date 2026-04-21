@@ -39,8 +39,8 @@ def create_app() -> Flask:
     # Sessions: keep clients logged-in in Telegram Mini App
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_SAMESITE="None",   # Required for Telegram Mini App (cross-origin iframe)
+        SESSION_COOKIE_SECURE=True,        # Required when SameSite=None
         PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=30),
     )
 
@@ -599,12 +599,14 @@ def create_app() -> Flask:
                 u.role = 'admin'
             db.session.commit()
 
+        auth_token = _make_auth_token(role, telegram_user_id)
         return {
             'ok': True,
             'telegram_user_id': telegram_user_id,
             'telegram_username': user_obj.get('username'),
             'telegram_display_name': (user_obj.get('first_name') or ''),
             'role': role,
+            'auth_token': auth_token,
         }
 
     def _require_telegram_session() -> int:
@@ -916,6 +918,31 @@ def create_app() -> Flask:
 
     # Simple in-memory rate limiter for /api/lead (max 5 per IP per 10 minutes)
     _lead_rate: dict = {}
+
+    # Short-lived auth tokens for Telegram Mini App (cookie fallback)
+    # token -> {role, telegram_user_id, expires}
+    _auth_tokens: dict = {}
+
+    def _make_auth_token(role: str, tg_id: int) -> str:
+        token = secrets.token_urlsafe(24)
+        _auth_tokens[token] = {
+            'role': role,
+            'telegram_user_id': tg_id,
+            'expires': time.time() + 300,  # 5 min
+        }
+        return token
+
+    # Register in app config so auth_simple can import it
+    app.config["_validate_auth_token"] = lambda t: _validate_auth_token(t)
+
+    def _validate_auth_token(token: str) -> dict | None:
+        entry = _auth_tokens.get(token)
+        if not entry:
+            return None
+        if time.time() > entry['expires']:
+            del _auth_tokens[token]
+            return None
+        return entry
 
     @app.route('/api/lead', methods=['POST'])
     def api_lead():
