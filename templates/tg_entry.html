@@ -80,10 +80,22 @@
         addLog('telegram_user_id: ' + tgId);
         addLog('auth_token: ' + (authToken ? authToken.substring(0,8)+'…' : 'MISSING'));
 
-        var dest = '/client/app';
-        if (role === 'admin') dest = '/admin';
-        if (role === 'nanny') dest = '/nanny/app';
-        if (authToken) dest += '?_t=' + encodeURIComponent(authToken);
+        var lkUrl   = res.data.lk_url || '';
+        var dest;
+        if (role === 'admin') {
+          dest = '/admin';
+          if (authToken) dest += '?_t=' + encodeURIComponent(authToken);
+        } else if (role === 'nanny') {
+          dest = '/nanny/app';
+          if (authToken) dest += '?_t=' + encodeURIComponent(authToken);
+        } else {
+          // client: if has LK — go there, otherwise show lead form
+          if (lkUrl) {
+            dest = lkUrl;
+          } else {
+            dest = '/';  // lead form for new clients
+          }
+        }
 
         addLog('→ redirect: ' + dest);
         setStatus('Готово! role=' + role + '. Перехожу…');

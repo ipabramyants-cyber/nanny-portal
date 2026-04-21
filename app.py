@@ -600,6 +600,22 @@ def create_app() -> Flask:
             db.session.commit()
 
         auth_token = _make_auth_token(role, telegram_user_id)
+
+        # For client role: find their LK token if they already have a lead
+        lk_url = None
+        if role == 'client':
+            leads_list = _read_json(LEADS_FILE, [])
+            tg_id_str = str(telegram_user_id)
+            tg_username = user_obj.get('username', '')
+            for lead in leads_list:
+                lead_tg = str(lead.get('telegram_user_id') or '')
+                lead_uname = str(lead.get('telegram_username') or '').lstrip('@')
+                if (lead_tg and lead_tg == tg_id_str) or \
+                   (tg_username and lead_uname and lead_uname.lower() == tg_username.lower()):
+                    if lead.get('portal_token'):
+                        lk_url = f"/lk/{lead['portal_token']}"
+                        break
+
         return {
             'ok': True,
             'telegram_user_id': telegram_user_id,
@@ -607,6 +623,7 @@ def create_app() -> Flask:
             'telegram_display_name': (user_obj.get('first_name') or ''),
             'role': role,
             'auth_token': auth_token,
+            'lk_url': lk_url,
         }
 
     def _require_telegram_session() -> int:
