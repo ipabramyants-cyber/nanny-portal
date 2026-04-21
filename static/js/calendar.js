@@ -223,13 +223,15 @@
           alert(data.error || 'Ошибка сохранения');
           return;
         }
-        alert('Сохранено! Ссылка на ЛК показана ниже (для теста).');
         if (data.lk_url) {
-          const lkLink = document.getElementById('lkLink');
-          if (lkLink) {
-            lkLink.style.display = 'block';
-            lkLink.href = data.lk_url;
+          // Open LK inside Telegram Mini App if available, else browser
+          if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
+            window.Telegram.WebApp.openLink(data.lk_url);
+          } else {
+            window.location.href = data.lk_url;
           }
+        } else {
+          alert('Заявка принята! Ссылка на ЛК придёт в Telegram.');
         }
         return;
       }

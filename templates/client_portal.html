@@ -88,8 +88,9 @@
               <span class="badge badge--success" style="margin-top:6px;">✓ Назначена</span>
             </div>
           </div>
-          <a class="btn secondary" href="/nanny/{{ nanny.portal_token }}"
-             target="_blank" style="margin-top:var(--s3); display:flex; align-items:center; justify-content:center; gap:6px; font-size:13px;">
+          <a class="btn secondary" href="#"
+             onclick="openTgLink('/nanny/{{ nanny.portal_token }}'); return false;"
+             style="margin-top:var(--s3); display:flex; align-items:center; justify-content:center; gap:6px; font-size:13px;">
             Профиль няни →
           </a>
         {% else %}
@@ -102,15 +103,15 @@
       <div class="panel">
         <h3>📄 Документы</h3>
         <div style="display:flex; flex-direction:column; gap:var(--s2);">
-          <a class="action-link" href="/static/contracts/contract_nanny_parents.pdf" target="_blank" download
+          <a class="action-link" href="#" onclick="openTgLink('/static/contracts/contract_nanny_parents.pdf'); return false;"
              style="display:flex; align-items:center; gap:var(--s2); padding:var(--s3); background:var(--c-teal-lt); border-radius:var(--r-sm); font-size:13px;">
             📄 Договор няня–родители (агентство)
           </a>
-          <a class="action-link" href="/static/contracts/contract_agency_parents.pdf" target="_blank" download
+          <a class="action-link" href="#" onclick="openTgLink('/static/contracts/contract_agency_parents.pdf'); return false;"
              style="display:flex; align-items:center; gap:var(--s2); padding:var(--s3); background:var(--c-teal-lt); border-radius:var(--r-sm); font-size:13px;">
             📄 Типовой договор агентство–родитель
           </a>
-          <a class="action-link" href="/static/contracts/package_clients.pdf" target="_blank" download
+          <a class="action-link" href="#" onclick="openTgLink('/static/contracts/package_clients.pdf'); return false;"
              style="display:flex; align-items:center; gap:var(--s2); padding:var(--s3); background:var(--c-teal-lt); border-radius:var(--r-sm); font-size:13px;">
             📦 Пакет документов для клиентов
           </a>
@@ -118,7 +119,7 @@
 
         <div style="margin-top:var(--s4);">
           <h3 style="margin-bottom:var(--s2);">💰 Тарифы и оплата</h3>
-          <a href="/static/contracts/photo_doc_1.jpg" target="_blank">
+          <a href="#" onclick="openTgLink('/static/contracts/photo_doc_1.jpg'); return false;">
             <img src="/static/contracts/photo_doc_1.jpg" alt="Тарифы и платежи"
                  style="width:100%; border-radius:var(--r-md); box-shadow:0 2px 12px rgba(0,0,0,.12);" />
           </a>
@@ -126,7 +127,7 @@
 
         <div style="margin-top:var(--s4);">
           <h3 style="margin-bottom:var(--s2);">🤝 Партнёрская программа</h3>
-          <a href="/static/contracts/photo_doc_2.jpg" target="_blank">
+          <a href="#" onclick="openTgLink('/static/contracts/photo_doc_2.jpg'); return false;">
             <img src="/static/contracts/photo_doc_2.jpg" alt="Партнёрская реферальная программа"
                  style="width:100%; border-radius:var(--r-md); box-shadow:0 2px 12px rgba(0,0,0,.12);" />
           </a>
@@ -141,8 +142,9 @@
       <div class="panel" id="igPanel">
         <h3>📸 Instagram</h3>
         <div id="igGrid" class="ig-grid"></div>
-        <a class="action-link ig-link" href="https://www.instagram.com/nanny_nya_trang/"
-           target="_blank" rel="noopener noreferrer" style="margin-top:var(--s3); display:block;">
+        <a class="action-link ig-link" href="#"
+           onclick="openTgLink('https://www.instagram.com/nanny_nya_trang/'); return false;"
+           style="margin-top:var(--s3); display:block;">
           Открыть Instagram →
         </a>
       </div>
@@ -166,6 +168,17 @@
 </div>
 
 <script>
+// Open link properly in Telegram WebView
+function openTgLink(path) {
+  var base = window.location.origin;
+  var url = path.startsWith('http') ? path : base + path;
+  if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
+    window.Telegram.WebApp.openLink(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
 (function(){
   const LK = window.__LK__ || {};
   const WORK_DATES = LK.work_dates || {};   // { "2025-06-10": {...}, ... }
