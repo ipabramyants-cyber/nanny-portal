@@ -28,7 +28,7 @@
     "address": { "@type": "PostalAddress", "addressLocality": "Nha Trang", "addressCountry": "VN" },
     "sameAs": ["https://www.instagram.com/nanny_nya_trang", "https://t.me/nanny_nya_trang"],
     "priceRange": "$$",
-    "aggregateRating": { "@type": "AggregateRating", "ratingValue": "5", "reviewCount": "{{ reviews|length }}" }
+    "aggregateRating": { "@type": "AggregateRating", "ratingValue": "{{ (reviews | map(attribute='stars') | map('float') | sum / [reviews|length, 1]|max) | round(1) }}", "reviewCount": "{{ reviews|length }}" }
   }</script>
 {% endblock %}
 

@@ -27,6 +27,7 @@
     <div style="display:flex; gap:var(--s6); align-items:center; flex-wrap:wrap;">
       <img src="{{ nanny_photo_src(nanny.photo) }}" alt="Няня {{ nanny.name }}"
            style="width:140px;height:140px;border-radius:var(--r-xl);object-fit:cover;border:4px solid rgba(255,255,255,.35);box-shadow:var(--sh-xl); flex-shrink:0;"
+           loading="lazy" width="140" height="140"
            onerror="this.src='/static/img/nanny_placeholder.jpg'" />
       <div style="animation:fade-up .5s both;">
         <div class="hero-badge" style="margin-bottom:var(--s3);">🌴 Нячанг, Вьетнам</div>

@@ -34,7 +34,16 @@ def _write_json(path, data):
 
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev_secret_change_me')
+    _secret_key = os.environ.get('FLASK_SECRET_KEY', '')
+    if not _secret_key or _secret_key == 'dev_secret_change_me':
+        if os.environ.get('FLASK_DEBUG') == '1' or not os.environ.get('FORCE_HTTPS'):
+            # Development mode — use insecure fallback with a warning
+            import warnings
+            warnings.warn('FLASK_SECRET_KEY not set — using insecure default. Set it in .env for production!', stacklevel=2)
+            _secret_key = _secret_key or 'dev_secret_change_me_insecure'
+        else:
+            raise RuntimeError('FLASK_SECRET_KEY must be set in production (min 32 random chars).')
+    app.secret_key = _secret_key
 
     # Sessions: keep clients logged-in in Telegram Mini App
     app.config.update(
@@ -106,13 +115,18 @@ def create_app() -> Flask:
     def security_headers(resp):
         # Prevent MIME sniffing
         resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
-        # Allow framing only from same origin (admin panel, etc.)
-        # Telegram Mini App embeds via t.me — don't block that
-        # resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+        # Allow framing only from Telegram (Mini App support)
+        resp.headers.setdefault(
+            'Content-Security-Policy',
+            "frame-ancestors 'self' https://t.me https://*.telegram.org https://web.telegram.org"
+        )
         # Referrer policy
         resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
         # Permissions policy — disable unused features
         resp.headers.setdefault('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+        # HSTS for production
+        if os.environ.get('FORCE_HTTPS') == '1':
+            resp.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
         # Cache static assets aggressively, everything else no-cache
         if request.path.startswith('/static/'):
             resp.headers.setdefault('Cache-Control', 'public, max-age=31536000, immutable')
@@ -1021,17 +1035,22 @@ def create_app() -> Flask:
 
         # Validate meeting_date
         _d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        _today_str = datetime.datetime.utcnow().date().isoformat()
         meeting_date = meeting_date_raw if (
             isinstance(meeting_date_raw, str) and re.match(_d_re, meeting_date_raw)
+            and meeting_date_raw >= _today_str
         ) else None
 
-        # Validate work_dates: YYYY-MM-DD keys only, max 60 entries
+        # Validate work_dates: YYYY-MM-DD keys only, max 60 entries, no past dates
         def _val_work_dates(raw):
             if not isinstance(raw, dict):
                 return {}
             result = {}
+            today_iso = datetime.datetime.utcnow().date().isoformat()
             for k, v in list(raw.items())[:60]:
                 if isinstance(k, str) and re.match(_d_re, k):
+                    if k < today_iso:
+                        continue  # skip past dates
                     if isinstance(v, dict):
                         t = str(v.get('time') or '')[:20]
                         result[k] = {'time': t} if t else {}
@@ -1039,7 +1058,6 @@ def create_app() -> Flask:
                         result[k] = {}
             return result
 
-        work_dates = _val_work_dates(work_dates_raw)
         token = secrets.token_urlsafe(16)
 
         if use_sql:
@@ -1921,10 +1939,15 @@ def create_app() -> Flask:
             return {'error': 'SQL mode required'}, 400
 
         secret = os.environ.get('CRON_SECRET')
-        if secret:
-            provided = request.args.get('secret') or request.headers.get('X-Cron-Secret')
-            if provided != secret:
-                return {'error': 'forbidden'}, 403
+        provided = request.args.get('secret') or request.headers.get('X-Cron-Secret')
+        if not secret:
+            # If CRON_SECRET not configured, block external access entirely
+            # Allow only local calls (Railway internal)
+            remote = request.environ.get('REMOTE_ADDR', '')
+            if remote not in ('127.0.0.1', '::1'):
+                return {'error': 'CRON_SECRET not configured — set it in env vars'}, 403
+        elif provided != secret:
+            return {'error': 'forbidden'}, 403
 
         from zoneinfo import ZoneInfo
 
@@ -2038,6 +2061,13 @@ def create_app() -> Flask:
             return jsonify({'error': 'Слишком много запросов. Попробуйте позже.'}), 429
         return render_template('404.html'), 429
 
+    def _site_base() -> str:
+        """Return canonical site base URL. Use SITE_URL env if set (recommended for production)."""
+        site_url = os.environ.get('SITE_URL', '').rstrip('/')
+        if site_url:
+            return site_url
+        return request.url_root.rstrip('/')
+
     @app.route('/robots.txt')
     def robots_txt():
         lines = [
@@ -2051,7 +2081,7 @@ def create_app() -> Flask:
             "Disallow: /nanny/portal",
             "Disallow: /client",
             "Disallow: /api/",
-            "Sitemap: " + request.url_root.rstrip('/') + "/sitemap.xml",
+            "Sitemap: " + _site_base() + "/sitemap.xml",
         ]
         return Response("\n".join(lines) + "\n", mimetype="text/plain")
 
@@ -2060,7 +2090,7 @@ def create_app() -> Flask:
     @app.route('/sitemap.xml')
     def sitemap_xml():
         import html as _html
-        base = request.url_root.rstrip('/')
+        base = _site_base()
         articles = _read_json(ARTICLES_FILE, [])
         nannies_list = load_nannies()
         today = datetime.datetime.utcnow().strftime('%Y-%m-%d')

@@ -1,20 +1,25 @@
-# Nanny App — Current Sprint
+# Task: Audit & Fix нanny-portal
 
-## Status
-- [x] app.py syntax fixed (line 2104)
-- [x] DEFAULT_CLIENT_RATE_VND / DEFAULT_NANNY_RATE_VND constants added inside create_app()
-- [x] Syntax verified OK
+## Done
+- [x] Cloned repo, ran app locally
+- [x] Tested all routes (200/302/400/404)
+- [x] Audited security, SEO, design, functionality, Mini App
+- [x] Fixed: CSP header + frame-ancestors for Telegram
+- [x] Fixed: HSTS header in production
+- [x] Fixed: FLASK_SECRET_KEY warning/error in production
+- [x] Fixed: /cron/remind_2h — blocked without CRON_SECRET
+- [x] Fixed: sitemap/robots.txt — use SITE_URL env var
+- [x] Written AUDIT.md with top-10 priorities
 
-## TODO
-- [ ] faq.html — create with FAQPage schema.org
-- [ ] admin_simple.html — inline rate editor per lead (JS fetch /api/admin/lead/<token>/rates), calculator block
-- [ ] client_portal.html — client calculator (hours × client_rate)
-- [ ] nanny_portal_public.html — nanny earnings calculator (hours × nanny_rate)
-- [ ] index.html — tariffs section with <picture> tag
-- [ ] git commit + push
+## In Progress
+- [ ] Fix Schema.org ratingValue calculation
+- [ ] Add date validation on server in /api/lead
+- [ ] Add lazy loading to nanny images
+- [ ] FAQ Schema markup
+- [ ] Add SITE_URL to .env.example
+- [ ] Mini App fallback error screen in tg_webapp.js
 
-## Notes
-- lead dict has client_rate_per_hour, nanny_rate_per_hour (int VND)
-- work_dates is dict keyed by ISO date with {start, end, ...} per date
-- Admin sees nanny_rate + margin. Client/nanny see only their own rate.
-- rates API: POST /api/admin/lead/<token>/rates {client_rate_per_hour, nanny_rate_per_hour}
+## Pending
+- [ ] CSRF protection (complex, needs flask-wtf)
+- [ ] File upload extension validation
+- [ ] railway.json with cron config
