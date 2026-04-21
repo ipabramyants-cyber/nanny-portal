@@ -123,49 +123,91 @@
             const existing = String(workDates[key].time || '');
 
             async function pickTime(existingRange){
-              // Prefer a native-like picker (input type=time)
-              if (typeof HTMLDialogElement === 'undefined') {
-                const t = prompt('Укажи время (например 10:00-14:00):', existingRange || '');
-                return t === null ? null : String(t).trim();
+              const m = (existingRange||'').match(/^(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})$/);
+              const sh0 = m ? m[1] : '10';
+              const sm0 = m ? m[2] : '00';
+              const eh0 = m ? m[3] : '14';
+              const em0 = m ? m[4] : '00';
+
+              // Build hour options 06..23, minute options 00/15/30/45
+              function hoursOpts(sel) {
+                let s = '';
+                for (let h = 6; h <= 23; h++) {
+                  const v = String(h).padStart(2,'0');
+                  s += `<option value="${v}"${v===sel?' selected':''}>${v}</option>`;
+                }
+                return s;
+              }
+              function minsOpts(sel) {
+                return ['00','15','30','45'].map(v =>
+                  `<option value="${v}"${v===sel?' selected':''}>${v}</option>`
+                ).join('');
               }
 
-              const m = existingRange.match(/^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})$/);
-              const start0 = m ? m[1] : '';
-              const end0 = m ? m[2] : '';
+              // Bottom sheet overlay — no dialog element, no native picker
+              const overlay = document.createElement('div');
+              overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,.45);';
 
-              const dlg = document.createElement('dialog');
-              dlg.style.border = 'none';
-              dlg.style.borderRadius = '16px';
-              dlg.style.padding = '16px';
-              dlg.style.maxWidth = '420px';
-              dlg.innerHTML = `
-                <form method="dialog" style="display:grid; gap:10px;">
-                  <div style="font-weight:900; font-size:16px;">Время работы</div>
-                  <label style="margin:0; font-weight:900;">Начало</label>
-                  <input type="time" name="start" value="${start0}" required style="padding:10px 12px; border:1px solid rgba(0,0,0,.12); border-radius:12px;" />
-                  <label style="margin:0; font-weight:900;">Окончание</label>
-                  <input type="time" name="end" value="${end0}" required style="padding:10px 12px; border:1px solid rgba(0,0,0,.12); border-radius:12px;" />
-                  <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:6px;">
-                    <button value="cancel" class="btn" style="background:rgba(0,0,0,.06)">Отмена</button>
-                    <button value="ok" class="btn primary" style="margin-top:0; width:auto;">Сохранить</button>
+              const sheet = document.createElement('div');
+              sheet.style.cssText = 'background:#fff;border-radius:20px 20px 0 0;padding:20px 20px 32px;box-shadow:0 -4px 32px rgba(0,0,0,.18);max-height:80vh;overflow-y:auto;';
+              sheet.innerHTML = `
+                <div style="width:40px;height:4px;border-radius:4px;background:rgba(0,0,0,.15);margin:0 auto 16px;"></div>
+                <div style="font-weight:900;font-size:18px;margin-bottom:18px;color:#016b82;">⏰ Время работы</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+                  <div>
+                    <div style="font-size:13px;font-weight:700;color:#555;margin-bottom:6px;">Начало</div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                      <select id="__cal_sh" style="flex:1;padding:10px 8px;border:2px solid #e2e8f0;border-radius:10px;font-size:16px;font-weight:700;background:#f8fafc;-webkit-appearance:none;text-align:center;">${hoursOpts(sh0)}</select>
+                      <span style="font-weight:900;font-size:18px;color:#016b82;">:</span>
+                      <select id="__cal_sm" style="flex:1;padding:10px 8px;border:2px solid #e2e8f0;border-radius:10px;font-size:16px;font-weight:700;background:#f8fafc;-webkit-appearance:none;text-align:center;">${minsOpts(sm0)}</select>
+                    </div>
                   </div>
-                </form>
+                  <div>
+                    <div style="font-size:13px;font-weight:700;color:#555;margin-bottom:6px;">Окончание</div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                      <select id="__cal_eh" style="flex:1;padding:10px 8px;border:2px solid #e2e8f0;border-radius:10px;font-size:16px;font-weight:700;background:#f8fafc;-webkit-appearance:none;text-align:center;">${hoursOpts(eh0)}</select>
+                      <span style="font-weight:900;font-size:18px;color:#016b82;">:</span>
+                      <select id="__cal_em" style="flex:1;padding:10px 8px;border:2px solid #e2e8f0;border-radius:10px;font-size:16px;font-weight:700;background:#f8fafc;-webkit-appearance:none;text-align:center;">${minsOpts(em0)}</select>
+                    </div>
+                  </div>
+                </div>
+                <div id="__cal_err" style="color:#e53e3e;font-size:13px;min-height:18px;margin-bottom:8px;"></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                  <button id="__cal_cancel" style="padding:13px;border:2px solid #e2e8f0;border-radius:12px;font-size:15px;font-weight:700;background:#f8fafc;cursor:pointer;">Отмена</button>
+                  <button id="__cal_ok" style="padding:13px;border:none;border-radius:12px;font-size:15px;font-weight:700;background:#016b82;color:#fff;cursor:pointer;">Сохранить</button>
+                </div>
               `;
-              document.body.appendChild(dlg);
+
+              overlay.appendChild(sheet);
+              document.body.appendChild(overlay);
+
+              // Animate in
+              sheet.style.transform = 'translateY(100%)';
+              sheet.style.transition = 'transform .28s cubic-bezier(.32,.72,0,1)';
+              requestAnimationFrame(() => { sheet.style.transform = 'translateY(0)'; });
 
               return await new Promise((resolve) => {
-                dlg.addEventListener('close', () => {
-                  try {
-                    if (dlg.returnValue !== 'ok') return resolve(null);
-                    const fd = new FormData(dlg.querySelector('form'));
-                    const start = String(fd.get('start')||'').trim();
-                    const end = String(fd.get('end')||'').trim();
-                    resolve(start && end ? `${start}-${end}` : null);
-                  } finally {
-                    try { dlg.remove(); } catch (e) {}
+                function close(val) {
+                  sheet.style.transform = 'translateY(100%)';
+                  setTimeout(() => { try { overlay.remove(); } catch(e){} }, 300);
+                  resolve(val);
+                }
+
+                overlay.addEventListener('click', (e) => { if (e.target === overlay) close(null); });
+                sheet.querySelector('#__cal_cancel').addEventListener('click', () => close(null));
+                sheet.querySelector('#__cal_ok').addEventListener('click', () => {
+                  const sh = sheet.querySelector('#__cal_sh').value;
+                  const sm = sheet.querySelector('#__cal_sm').value;
+                  const eh = sheet.querySelector('#__cal_eh').value;
+                  const em = sheet.querySelector('#__cal_em').value;
+                  const startMins = parseInt(sh)*60 + parseInt(sm);
+                  const endMins   = parseInt(eh)*60 + parseInt(em);
+                  if (endMins <= startMins) {
+                    sheet.querySelector('#__cal_err').textContent = 'Окончание должно быть позже начала';
+                    return;
                   }
-                }, { once:true });
-                dlg.showModal();
+                  close(`${sh}:${sm}-${eh}:${em}`);
+                });
               });
             }
 
