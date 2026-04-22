@@ -225,11 +225,12 @@
       </div>
     </div>
 
-    <!-- Instagram -->
-    <div class="panel">
-      <h3>Instagram</h3>
-      <div id="igGrid" class="ig-grid"></div>
-      <a class="action-link ig-link" href="https://www.instagram.com/nanny_nya_trang/" target="_blank" rel="noopener noreferrer">Открыть Instagram →</a>
+    <!-- Articles -->
+    <div class="panel" id="articlesPanel">
+      <h3>📝 Статьи</h3>
+      <div id="articlesGrid" style="display:flex;flex-direction:column;gap:var(--s3);margin-bottom:var(--s3);"></div>
+      <a class="action-link" href="/blog" target="_blank" rel="noopener"
+         style="display:block;text-align:center;">Все статьи →</a>
     </div>
 
   </div>
@@ -459,6 +460,33 @@
     const initialDate=today||Object.keys(byDate).sort()[0];
     if(initialDate)selectDate(initialDate);
   })();
+})();
+
+// Load latest articles
+(function(){
+  var grid = document.getElementById('articlesGrid');
+  if (!grid) return;
+  fetch('/api/articles/latest')
+    .then(function(r){ return r.json(); })
+    .then(function(arts){
+      if (!arts || !arts.length) {
+        grid.innerHTML = '<p style="font-size:13px;color:var(--c-muted);text-align:center;">Статьи скоро появятся</p>';
+        return;
+      }
+      grid.innerHTML = arts.map(function(a){
+        var date = a.created_at ? a.created_at.slice(0,10).split('-').reverse().join('.') : '';
+        var cover = a.cover_url
+          ? '<img src="'+a.cover_url+'" alt="'+a.title+'" style="width:64px;height:50px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
+          : '<div style="width:64px;height:50px;border-radius:var(--r-sm);background:var(--c-teal-lt);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📝</div>';
+        return '<a href="/blog/'+a.slug+'" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:flex;gap:var(--s2);align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--c-border);">'
+          + cover
+          + '<div style="min-width:0;">'
+          + '<div style="font-size:11px;color:var(--c-muted);">'+date+'</div>'
+          + '<div style="font-weight:600;font-size:12px;color:var(--c-teal-dk);line-height:1.3;margin-top:2px;">'+a.title+'</div>'
+          + '</div></a>';
+      }).join('');
+    })
+    .catch(function(){ });
 })();
 </script>
 
