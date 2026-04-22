@@ -339,12 +339,36 @@
           <form method="POST" action="/admin/nanny/save" enctype="multipart/form-data"
                 style="display:grid; gap:12px; padding:16px; margin-top:8px; background:var(--c-surface-2); border-radius:var(--r-md); border:1px solid var(--c-border); max-width:640px;">
             <input type="hidden" name="id" value="{{ nanny.id }}" />
+            {# photo stored as data URL — don't put it in a visible input, pass via hidden field #}
+            {% set photo_val = nanny.photo or '' %}
+            {% if photo_val.startswith('data:') %}
+              <input type="hidden" name="photo" value="{{ photo_val }}" />
+            {% else %}
+              {# regular URL — show editable input #}
+              <input type="hidden" name="photo" id="nannyPhotoHidden_{{ nanny.id }}" value="{{ photo_val }}" />
+            {% endif %}
             <div><label>Имя</label><input name="name" value="{{ nanny.name }}" required /></div>
             <div><label>Краткий опыт</label><input name="exp_short" value="{{ nanny.exp_short or '' }}" /></div>
             <div><label>Bio</label><textarea name="bio" rows="4">{{ nanny.bio or '' }}</textarea></div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-              <div><label>Фото URL</label><input name="photo" value="{{ nanny.photo or '' }}" placeholder="https://…" /></div>
-              <div><label>Загрузить фото</label><input type="file" name="photo_file" accept="image/*" /></div>
+            <div style="display:grid; grid-template-columns:1fr auto; gap:12px; align-items:end;">
+              <div>
+                <label>Фото</label>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+                  <img src="{{ nanny_photo_src(nanny.photo) }}" alt=""
+                       style="width:56px;height:56px;border-radius:8px;object-fit:cover;border:1px solid var(--c-border);"
+                       onerror="this.src='/static/img/nanny_placeholder.jpg'" />
+                  <div>
+                    <input type="file" name="photo_file" accept="image/*" style="font-size:13px;" />
+                    <p style="font-size:11px;color:var(--c-text-muted);margin-top:3px;">Загрузить новое фото</p>
+                    {% if not photo_val.startswith('data:') %}
+                    <input placeholder="или URL фото" style="font-size:12px;margin-top:4px;"
+                           oninput="document.querySelector('[name=photo][form]') && (document.querySelector('input[name=photo][type=hidden]').value=this.value)"
+                           value="{{ photo_val }}" id="nannyPhotoUrl_{{ nanny.id }}"
+                           onchange="document.getElementById('nannyPhotoHidden_{{ nanny.id }}').value=this.value" />
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
             </div>
             <div><label>Telegram ID</label><input name="telegram_user_id" value="{{ nanny.telegram_user_id or '' }}" placeholder="числовой ID" /></div>
             <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
@@ -476,13 +500,23 @@
               <div style="display:flex;gap:var(--s3);align-items:flex-start;flex-wrap:wrap;">
                 <div>
                   <input type="file" id="artCoverFile" accept="image/*" style="font-size:13px;">
-                  <button type="button" onclick="uploadArtCover()" class="btn secondary" style="width:auto;margin-top:6px;font-size:12px;">Загрузить фото</button>
+                  <button type="button" onclick="uploadArtCover()" class="btn secondary" style="width:auto;margin-top:6px;font-size:12px;">Загрузить</button>
                 </div>
                 <div style="flex:1;">
                   <input id="artCoverUrl" placeholder="или вставьте URL обложки" style="margin-bottom:6px;">
-                  <img id="artCoverPreview" src="" alt="" style="max-height:120px;border-radius:var(--r-sm);display:none;">
+                  <img id="artCoverPreview" src="" alt="" style="max-height:100px;border-radius:var(--r-sm);display:none;">
                 </div>
               </div>
+            </div>
+
+            <!-- Gallery -->
+            <div>
+              <label>Галерея (доп. фото к статье)</label>
+              <div style="display:flex;gap:var(--s3);align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+                <input type="file" id="artGalleryFile" accept="image/*" multiple style="font-size:13px;flex:1;">
+                <button type="button" onclick="uploadArtGallery()" class="btn secondary" style="width:auto;font-size:12px;">Добавить фото</button>
+              </div>
+              <div id="artGalleryList" style="display:flex;flex-wrap:wrap;gap:8px;min-height:8px;"></div>
             </div>
 
             <!-- Video -->
@@ -581,9 +615,12 @@
         document.getElementById('artSeoDesc').value = a.seo_description||'';
         document.getElementById('artSeoKw').value = a.seo_keywords||'';
         document.getElementById('artPublished').value = a.published ? '1' : '0';
-        // show cover preview
+        // cover preview
         var prev = document.getElementById('artCoverPreview');
         if(a.cover_url){ prev.src=a.cover_url; prev.style.display='block'; } else { prev.style.display='none'; }
+        // gallery
+        _gallery = Array.isArray(a.gallery) ? a.gallery.slice() : [];
+        renderGallery();
         // open form
         document.getElementById('artFormWrap').open = true;
         document.getElementById('artFormWrap').scrollIntoView({behavior:'smooth'});
@@ -605,6 +642,7 @@
       excerpt: document.getElementById('artExcerpt').value.trim(),
       body: document.getElementById('artBody').value,
       cover_url: document.getElementById('artCoverUrl').value.trim(),
+      gallery: _gallery.slice(),
       video_url: document.getElementById('artVideoUrl').value.trim(),
       video_file: document.getElementById('artVideoFileUrl').value.trim(),
       published: document.getElementById('artPublished').value === '1',
@@ -620,7 +658,50 @@
       .then(function(res){
         if(res.ok){ resetArtForm(); loadArticles(); }
         else alert('Ошибка: '+(res.error||'unknown'));
-      });
+      })
+      .catch(function(e){ alert('Ошибка сохранения: '+e); });
+  };
+
+  // Gallery state
+  var _gallery = []; // array of data URLs / external URLs
+
+  function renderGallery(){
+    var el = document.getElementById('artGalleryList');
+    if(!el) return;
+    if(!_gallery.length){ el.innerHTML='<span style="font-size:12px;color:var(--c-text-muted);">Фото ещё нет</span>'; return; }
+    el.innerHTML = _gallery.map(function(url, i){
+      var thumb = url.length > 300
+        ? url  // data URL — use directly
+        : url;
+      return '<div style="position:relative;display:inline-block;">'
+        + '<img src="'+thumb+'" style="width:72px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--c-border);" onerror="this.style.opacity=0.3">'
+        + '<button type="button" onclick="_galleryRemove('+i+')" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:#dc2626;color:#fff;border:none;font-size:11px;cursor:pointer;line-height:1;padding:0;">✕</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  window._galleryRemove = function(i){
+    _gallery.splice(i,1);
+    renderGallery();
+  };
+
+  window.uploadArtGallery = function(){
+    var files = document.getElementById('artGalleryFile').files;
+    if(!files || !files.length){ alert('Выберите фото'); return; }
+    var pending = files.length;
+    Array.from(files).forEach(function(f){
+      var fd = new FormData(); fd.append('file', f);
+      fetch('/api/admin/articles/upload-gallery', {method:'POST', body:fd})
+        .then(function(r){ return r.json(); })
+        .then(function(res){
+          if(res.ok) _gallery.push(res.url);
+          else alert('Ошибка: '+(res.error||''));
+          pending--;
+          if(!pending) renderGallery();
+        })
+        .catch(function(e){ pending--; alert('Ошибка загрузки'); });
+    });
+    document.getElementById('artGalleryFile').value='';
   };
 
   window.resetArtForm = function(){
@@ -630,6 +711,8 @@
     document.getElementById('artPublished').value='1';
     document.getElementById('artCoverPreview').style.display='none';
     document.getElementById('artSlugPreview').textContent='…';
+    _gallery = [];
+    renderGallery();
     document.getElementById('artFormWrap').open=false;
   };
 

@@ -2440,6 +2440,9 @@ def create_app() -> Flask:
         if any(a.get('slug') == slug for a in arts):
             slug = slug + '-' + str(int(time.time()))[-4:]
         now = time.strftime('%Y-%m-%dT%H:%M:%S')
+        gallery = data.get('gallery', [])
+        if not isinstance(gallery, list):
+            gallery = []
         art = {
             'id': str(_uuid.uuid4()),
             'slug': slug,
@@ -2447,6 +2450,7 @@ def create_app() -> Flask:
             'excerpt': (data.get('excerpt') or '').strip(),
             'body': _sanitize_html(data.get('body') or ''),
             'cover_url': (data.get('cover_url') or '').strip(),
+            'gallery': [str(u) for u in gallery if u],
             'video_url': (data.get('video_url') or '').strip(),
             'video_file': (data.get('video_file') or '').strip(),
             'published': bool(data.get('published', True)),
@@ -2468,12 +2472,15 @@ def create_app() -> Flask:
         art = next((a for a in arts if a['id'] == art_id), None)
         if not art:
             return jsonify({'error': 'not found'}), 404
-        fields = ['title','excerpt','body','cover_url','video_url','video_file',
+        fields = ['title','excerpt','body','cover_url','gallery','video_url','video_file',
                   'published','seo_title','seo_description','seo_keywords','slug']
         for f in fields:
             if f in data:
                 if f == 'body':
                     art[f] = _sanitize_html(data[f])
+                elif f == 'gallery':
+                    g = data[f]
+                    art[f] = [str(u) for u in g if u] if isinstance(g, list) else []
                 else:
                     art[f] = data[f]
         art['updated_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
@@ -2488,36 +2495,52 @@ def create_app() -> Flask:
         _write_json(ARTICLES_FILE, arts)
         return jsonify({'ok': True})
 
+    def _article_upload_dir():
+        """Returns the articles upload directory, creating it if needed."""
+        folder = os.path.join(app.config['UPLOAD_DIR'], 'articles')
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
+    def _article_save_image(file_storage):
+        """Save article image as data URL (survives redeploys). Returns data URL."""
+        return _image_to_data_url(file_storage)
+
     @app.route('/api/admin/articles/upload-cover', methods=['POST'])
     @require_admin
     def api_article_upload_cover():
         f = request.files.get('file')
-        if not f:
+        if not f or not getattr(f, 'filename', ''):
             return jsonify({'error': 'no file'}), 400
-        import uuid as _uuid
         ext = (f.filename or 'img').rsplit('.', 1)[-1].lower()
         if ext not in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
             return jsonify({'error': 'bad ext'}), 400
-        folder = os.path.join(app.config.get('UPLOAD_FOLDER', 'uploads'), 'articles')
-        os.makedirs(folder, exist_ok=True)
-        fname = str(_uuid.uuid4()) + '.' + ext
-        fpath = os.path.join(folder, fname)
-        f.save(fpath)
-        url = '/uploads/articles/' + fname
+        url = _article_save_image(f)
+        return jsonify({'ok': True, 'url': url})
+
+    @app.route('/api/admin/articles/upload-gallery', methods=['POST'])
+    @require_admin
+    def api_article_upload_gallery():
+        """Upload one gallery image, returns its data URL."""
+        f = request.files.get('file')
+        if not f or not getattr(f, 'filename', ''):
+            return jsonify({'error': 'no file'}), 400
+        ext = (f.filename or 'img').rsplit('.', 1)[-1].lower()
+        if ext not in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+            return jsonify({'error': 'bad ext'}), 400
+        url = _article_save_image(f)
         return jsonify({'ok': True, 'url': url})
 
     @app.route('/api/admin/articles/upload-video', methods=['POST'])
     @require_admin
     def api_article_upload_video():
         f = request.files.get('file')
-        if not f:
+        if not f or not getattr(f, 'filename', ''):
             return jsonify({'error': 'no file'}), 400
         import uuid as _uuid
         ext = (f.filename or 'vid').rsplit('.', 1)[-1].lower()
         if ext not in ('mp4', 'mov', 'webm', 'avi'):
             return jsonify({'error': 'bad ext'}), 400
-        folder = os.path.join(app.config.get('UPLOAD_FOLDER', 'uploads'), 'articles')
-        os.makedirs(folder, exist_ok=True)
+        folder = _article_upload_dir()
         fname = str(_uuid.uuid4()) + '.' + ext
         fpath = os.path.join(folder, fname)
         f.save(fpath)

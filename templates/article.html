@@ -75,6 +75,24 @@
         {{ art.body | safe }}
       </div>
 
+      <!-- Gallery -->
+      {% if art.gallery and art.gallery|length > 0 %}
+      <div style="margin-top:var(--s6);">
+        <h3 style="margin-bottom:var(--s3);">📷 Фотогалерея</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--s3);">
+          {% for img_url in art.gallery %}
+          <a href="{{ img_url }}" target="_blank" style="display:block;overflow:hidden;border-radius:var(--r-md);">
+            <img src="{{ img_url }}" alt="Фото {{ loop.index }}"
+                 style="width:100%;height:160px;object-fit:cover;transition:transform .2s;"
+                 onmouseover="this.style.transform='scale(1.04)'"
+                 onmouseout="this.style.transform='scale(1)'"
+                 loading="lazy">
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       <!-- Video -->
       {% if art.video_url %}
       <div style="margin-top:var(--s6);">
