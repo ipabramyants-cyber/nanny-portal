@@ -14,7 +14,7 @@ from config import admin_ids
 from telegram_notify import send_message
 from telegram_auth import validate_webapp_init_data, TelegramAuthError
 
-from models import db, Nanny, Lead, User, Shift, Client, NannyBlock, Review
+from models import db, Nanny, Lead, User, Shift, Client, NannyBlock, Review, Article
 
 def _save_image_webp(file_storage, upload_dir: str, prefix: str = 'img') -> str:
     """
@@ -2303,20 +2303,54 @@ def create_app() -> Flask:
         ]
         return Response("\n".join(lines) + "\n", mimetype="text/plain")
 
-    ARTICLES_FILE = os.path.join(app.config['DATA_DIR'], 'articles.json')
+    ARTICLES_FILE = os.path.join(app.config['DATA_DIR'], 'articles.json')  # JSON fallback
 
-    def _sanitize_html(html: str) -> str:
-        """Admin-only content — return as-is. No size limit."""
-        return html or ''
+    def _sanitize_html(html):
+        if not html:
+            return ''
+        if '<' not in html:
+            # No HTML tags — treat as Markdown
+            try:
+                import markdown as _md
+                return _md.markdown(html, extensions=['extra', 'nl2br'])
+            except Exception:
+                paras = [p.strip() for p in html.split('\n') if p.strip()]
+                return ''.join(f'<p>{p}</p>' for p in paras)
+        return html
+
+    def _art_to_dict(a):
+        return {
+            'id': a.id,
+            'slug': a.slug,
+            'title': a.title or '',
+            'excerpt': a.excerpt or '',
+            'body': a.body or '',
+            'cover_url': a.cover_url or '',
+            'gallery': a.gallery or [],
+            'video_url': a.video_url or '',
+            'video_file': a.video_file or '',
+            'published': a.published,
+            'seo_title': a.seo_title or '',
+            'seo_description': a.seo_description or '',
+            'seo_keywords': a.seo_keywords or '',
+            'created_at': a.created_at.isoformat() if a.created_at else '',
+            'updated_at': a.updated_at.isoformat() if a.updated_at else '',
+        }
+
+    def _articles_published():
+        if use_sql:
+            rows = Article.query.filter_by(published=True).order_by(Article.created_at.desc()).all()
+            return [_art_to_dict(r) for r in rows]
+        arts = _read_json(ARTICLES_FILE, [])
+        return [a for a in arts if a.get('published')]
 
     @app.route('/sitemap.xml')
     def sitemap_xml():
         import html as _html
         base = _site_base()
-        articles = _read_json(ARTICLES_FILE, [])
+        articles = _articles_published()
         nannies_list = load_nannies()
         today = datetime.datetime.utcnow().strftime('%Y-%m-%d')
-
         entries = [
             {'loc': base + '/', 'priority': '1.0', 'changefreq': 'weekly', 'lastmod': today},
             {'loc': base + '/blog', 'priority': '0.8', 'changefreq': 'weekly', 'lastmod': today},
@@ -2324,72 +2358,23 @@ def create_app() -> Flask:
             {'loc': base + '/tariffs', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': today},
         ]
         for a in articles:
-            if a.get('published') and a.get('slug'):
+            if a.get('slug'):
                 lastmod = (a.get('updated_at') or a.get('created_at') or today)[:10]
-                entries.append({
-                    'loc': base + '/blog/' + a['slug'],
-                    'priority': '0.7',
-                    'changefreq': 'monthly',
-                    'lastmod': lastmod,
-                })
+                entries.append({'loc': base + '/blog/' + a['slug'], 'priority': '0.7',
+                                'changefreq': 'monthly', 'lastmod': lastmod})
         for n in nannies_list:
             if n.get('portal_token'):
-                entries.append({
-                    'loc': base + '/nanny/' + _html.escape(str(n['portal_token'])),
-                    'priority': '0.6',
-                    'changefreq': 'monthly',
-                    'lastmod': today,
-                })
-
+                entries.append({'loc': base + '/nanny/' + _html.escape(str(n['portal_token'])),
+                                'priority': '0.6', 'changefreq': 'monthly', 'lastmod': today})
         xml = ['<?xml version="1.0" encoding="UTF-8"?>',
                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
         for e in entries:
-            xml.append(
-                f"<url><loc>{_html.escape(e['loc'])}</loc>"
-                f"<lastmod>{e['lastmod']}</lastmod>"
-                f"<changefreq>{e['changefreq']}</changefreq>"
-                f"<priority>{e['priority']}</priority></url>"
-            )
+            xml.append(f"<url><loc>{_html.escape(e['loc'])}</loc>"
+                       f"<lastmod>{e['lastmod']}</lastmod>"
+                       f"<changefreq>{e['changefreq']}</changefreq>"
+                       f"<priority>{e['priority']}</priority></url>")
         xml.append("</urlset>")
         return Response("\n".join(xml), mimetype="application/xml")
-
-    # ── ARTICLES (public) ──────────────────────────────────────────────────
-    def _articles_published():
-        arts = _read_json(ARTICLES_FILE, [])
-        return [a for a in arts if a.get('published')]
-
-
-
-    @app.route('/api/admin/lead/<token>/rates', methods=['POST'])
-    @require_admin
-    def api_admin_lead_rates(token: str):
-        """Update client_rate_per_hour and nanny_rate_per_hour for a lead."""
-        data = request.get_json(force=True) or {}
-        try:
-            cr = int(data.get('client_rate_per_hour') or 0)
-            nr = int(data.get('nanny_rate_per_hour') or 0)
-        except (ValueError, TypeError):
-            return jsonify({'error': 'invalid rates'}), 400
-        if cr < 0 or nr < 0:
-            return jsonify({'error': 'rates must be non-negative'}), 400
-
-        if use_sql:
-            lead_row = Lead.query.filter_by(token=token).first()
-            if not lead_row:
-                return jsonify({'error': 'not found'}), 404
-            if cr: lead_row.client_rate_per_hour = cr
-            if nr: lead_row.nanny_rate_per_hour = nr
-            db.session.commit()
-        else:
-            leads = load_leads()
-            lead = next((x for x in leads if x.get('token') == token), None)
-            if not lead:
-                return jsonify({'error': 'not found'}), 404
-            if cr: lead['client_rate_per_hour'] = cr
-            if nr: lead['nanny_rate_per_hour'] = nr
-            save_leads(leads)
-        return jsonify({'ok': True})
-
 
     @app.route('/tariffs')
     def tariffs():
@@ -2401,69 +2386,80 @@ def create_app() -> Flask:
 
     @app.route('/blog')
     def blog():
-        articles = sorted(_articles_published(),
-                          key=lambda a: a.get('created_at', ''), reverse=True)
+        articles = _articles_published()
         return render_template('blog.html', articles=articles)
 
     @app.route('/blog/<slug>')
     def article(slug):
-        arts = _read_json(ARTICLES_FILE, [])
-        art = next((a for a in arts if a.get('slug') == slug and a.get('published')), None)
-        if not art:
-            return render_template('404.html'), 404
-        # prev/next for navigation
-        published = sorted(_articles_published(),
-                           key=lambda a: a.get('created_at', ''), reverse=True)
+        if use_sql:
+            row = Article.query.filter_by(slug=slug, published=True).first()
+            if not row:
+                return render_template('404.html'), 404
+            art = _art_to_dict(row)
+        else:
+            arts = _read_json(ARTICLES_FILE, [])
+            art = next((a for a in arts if a.get('slug') == slug and a.get('published')), None)
+            if not art:
+                return render_template('404.html'), 404
+        published = _articles_published()
         idx = next((i for i, a in enumerate(published) if a['slug'] == slug), None)
         prev_art = published[idx + 1] if idx is not None and idx + 1 < len(published) else None
         next_art = published[idx - 1] if idx is not None and idx > 0 else None
         return render_template('article.html', art=art, prev_art=prev_art, next_art=next_art)
 
-    # ── ARTICLES API (admin) ────────────────────────────────────────────────
     @app.route('/api/admin/articles', methods=['GET'])
     @require_admin
     def api_articles_list():
+        if use_sql:
+            rows = Article.query.order_by(Article.created_at.desc()).all()
+            return jsonify([_art_to_dict(r) for r in rows])
         arts = _read_json(ARTICLES_FILE, [])
-        arts = sorted(arts, key=lambda a: a.get('created_at', ''), reverse=True)
-        return jsonify(arts)
+        return jsonify(sorted(arts, key=lambda a: a.get('created_at', ''), reverse=True))
 
     @app.route('/api/admin/articles', methods=['POST'])
     @require_admin
     def api_article_create():
-        data = request.get_json(force=True) or {}
-        import uuid as _uuid
+        import uuid as _uuid, re as _re
+        data = request.get_json(force=True, silent=True) or {}
         slug = (data.get('slug') or '').strip()
         if not slug:
-            # auto-generate from title
-            import re as _re
             raw = (data.get('title') or 'article').lower()
-            slug = _re.sub(r'[^a-z0-9а-яёa-z]+', '-', raw).strip('-')[:80]
-            slug = slug + '-' + str(int(time.time()))[-5:]
+            slug = _re.sub(r'[^a-z0-9\-]+', '-', raw).strip('-')[:80] + '-' + str(int(time.time()))[-5:]
+        gallery = [str(u) for u in (data.get('gallery') or []) if u]
+        if use_sql:
+            if Article.query.filter_by(slug=slug).first():
+                slug = slug + '-' + str(int(time.time()))[-4:]
+            row = Article(
+                id=str(_uuid.uuid4()), slug=slug,
+                title=(data.get('title') or '').strip(),
+                excerpt=(data.get('excerpt') or '').strip(),
+                body=_sanitize_html(data.get('body') or ''),
+                cover_url=(data.get('cover_url') or '').strip() or None,
+                gallery=gallery,
+                video_url=(data.get('video_url') or '').strip() or None,
+                video_file=(data.get('video_file') or '').strip() or None,
+                published=bool(data.get('published', True)),
+                seo_title=(data.get('seo_title') or '').strip() or None,
+                seo_description=(data.get('seo_description') or '').strip() or None,
+                seo_keywords=(data.get('seo_keywords') or '').strip() or None,
+                created_at=datetime.datetime.utcnow(),
+                updated_at=datetime.datetime.utcnow(),
+            )
+            db.session.add(row)
+            db.session.commit()
+            return jsonify({'ok': True, 'article': _art_to_dict(row)})
+        now = time.strftime('%Y-%m-%dT%H:%M:%S')
         arts = _read_json(ARTICLES_FILE, [])
-        # slug uniqueness
         if any(a.get('slug') == slug for a in arts):
             slug = slug + '-' + str(int(time.time()))[-4:]
-        now = time.strftime('%Y-%m-%dT%H:%M:%S')
-        gallery = data.get('gallery', [])
-        if not isinstance(gallery, list):
-            gallery = []
-        art = {
-            'id': str(_uuid.uuid4()),
-            'slug': slug,
-            'title': (data.get('title') or '').strip(),
-            'excerpt': (data.get('excerpt') or '').strip(),
-            'body': _sanitize_html(data.get('body') or ''),
-            'cover_url': (data.get('cover_url') or '').strip(),
-            'gallery': [str(u) for u in gallery if u],
-            'video_url': (data.get('video_url') or '').strip(),
-            'video_file': (data.get('video_file') or '').strip(),
-            'published': bool(data.get('published', True)),
-            'created_at': now,
-            'updated_at': now,
-            'seo_title': (data.get('seo_title') or '').strip(),
-            'seo_description': (data.get('seo_description') or '').strip(),
-            'seo_keywords': (data.get('seo_keywords') or '').strip(),
-        }
+        art = {'id': str(_uuid.uuid4()), 'slug': slug, 'title': (data.get('title') or '').strip(),
+               'excerpt': (data.get('excerpt') or '').strip(), 'body': _sanitize_html(data.get('body') or ''),
+               'cover_url': (data.get('cover_url') or '').strip(), 'gallery': gallery,
+               'video_url': (data.get('video_url') or '').strip(), 'video_file': (data.get('video_file') or '').strip(),
+               'published': bool(data.get('published', True)), 'created_at': now, 'updated_at': now,
+               'seo_title': (data.get('seo_title') or '').strip(),
+               'seo_description': (data.get('seo_description') or '').strip(),
+               'seo_keywords': (data.get('seo_keywords') or '').strip()}
         arts.append(art)
         _write_json(ARTICLES_FILE, arts)
         return jsonify({'ok': True, 'article': art})
@@ -2471,22 +2467,35 @@ def create_app() -> Flask:
     @app.route('/api/admin/articles/<art_id>', methods=['PUT'])
     @require_admin
     def api_article_update(art_id):
-        data = request.get_json(force=True) or {}
+        data = request.get_json(force=True, silent=True) or {}
+        if use_sql:
+            row = Article.query.get(art_id)
+            if not row:
+                return jsonify({'error': 'not found'}), 404
+            for f in ['title','excerpt','body','cover_url','gallery','video_url','video_file',
+                      'published','seo_title','seo_description','seo_keywords','slug']:
+                if f not in data:
+                    continue
+                if f == 'body':
+                    row.body = _sanitize_html(data[f])
+                elif f == 'gallery':
+                    g = data[f]
+                    row.gallery = [str(u) for u in g if u] if isinstance(g, list) else []
+                elif f == 'cover_url':
+                    row.cover_url = (data[f] or '').strip() or None
+                else:
+                    setattr(row, f, data[f])
+            row.updated_at = datetime.datetime.utcnow()
+            db.session.commit()
+            return jsonify({'ok': True, 'article': _art_to_dict(row)})
         arts = _read_json(ARTICLES_FILE, [])
         art = next((a for a in arts if a['id'] == art_id), None)
         if not art:
             return jsonify({'error': 'not found'}), 404
-        fields = ['title','excerpt','body','cover_url','gallery','video_url','video_file',
-                  'published','seo_title','seo_description','seo_keywords','slug']
-        for f in fields:
+        for f in ['title','excerpt','body','cover_url','gallery','video_url','video_file',
+                  'published','seo_title','seo_description','seo_keywords','slug']:
             if f in data:
-                if f == 'body':
-                    art[f] = _sanitize_html(data[f])
-                elif f == 'gallery':
-                    g = data[f]
-                    art[f] = [str(u) for u in g if u] if isinstance(g, list) else []
-                else:
-                    art[f] = data[f]
+                art[f] = _sanitize_html(data[f]) if f == 'body' else data[f]
         art['updated_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
         _write_json(ARTICLES_FILE, arts)
         return jsonify({'ok': True, 'article': art})
@@ -2494,19 +2503,17 @@ def create_app() -> Flask:
     @app.route('/api/admin/articles/<art_id>', methods=['DELETE'])
     @require_admin
     def api_article_delete(art_id):
-        arts = _read_json(ARTICLES_FILE, [])
-        arts = [a for a in arts if a['id'] != art_id]
-        _write_json(ARTICLES_FILE, arts)
+        if use_sql:
+            row = Article.query.get(art_id)
+            if row:
+                db.session.delete(row)
+                db.session.commit()
+        else:
+            arts = _read_json(ARTICLES_FILE, [])
+            _write_json(ARTICLES_FILE, [a for a in arts if a['id'] != art_id])
         return jsonify({'ok': True})
 
-    def _article_upload_dir():
-        """Returns the articles upload directory, creating it if needed."""
-        folder = os.path.join(app.config['UPLOAD_DIR'], 'articles')
-        os.makedirs(folder, exist_ok=True)
-        return folder
-
     def _article_save_image(file_storage):
-        """Save article image as data URL (survives redeploys). Returns data URL."""
         return _image_to_data_url(file_storage)
 
     @app.route('/api/admin/articles/upload-cover', methods=['POST'])
@@ -2515,54 +2522,46 @@ def create_app() -> Flask:
         f = request.files.get('file')
         if not f or not getattr(f, 'filename', ''):
             return jsonify({'error': 'no file'}), 400
-        ext = (f.filename or 'img').rsplit('.', 1)[-1].lower()
-        if ext not in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+        if (f.filename or '').rsplit('.', 1)[-1].lower() not in ('jpg','jpeg','png','gif','webp'):
             return jsonify({'error': 'bad ext'}), 400
-        url = _article_save_image(f)
-        return jsonify({'ok': True, 'url': url})
+        return jsonify({'ok': True, 'url': _article_save_image(f)})
 
     @app.route('/api/admin/articles/upload-gallery', methods=['POST'])
     @require_admin
     def api_article_upload_gallery():
-        """Upload one gallery image, returns its data URL."""
         f = request.files.get('file')
         if not f or not getattr(f, 'filename', ''):
             return jsonify({'error': 'no file'}), 400
-        ext = (f.filename or 'img').rsplit('.', 1)[-1].lower()
-        if ext not in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+        if (f.filename or '').rsplit('.', 1)[-1].lower() not in ('jpg','jpeg','png','gif','webp'):
             return jsonify({'error': 'bad ext'}), 400
-        url = _article_save_image(f)
-        return jsonify({'ok': True, 'url': url})
+        return jsonify({'ok': True, 'url': _article_save_image(f)})
 
     @app.route('/api/admin/articles/upload-video', methods=['POST'])
     @require_admin
     def api_article_upload_video():
+        import uuid as _uuid
         f = request.files.get('file')
         if not f or not getattr(f, 'filename', ''):
             return jsonify({'error': 'no file'}), 400
-        import uuid as _uuid
         ext = (f.filename or 'vid').rsplit('.', 1)[-1].lower()
-        if ext not in ('mp4', 'mov', 'webm', 'avi'):
+        if ext not in ('mp4','mov','webm','avi'):
             return jsonify({'error': 'bad ext'}), 400
-        folder = _article_upload_dir()
+        folder = os.path.join(app.config['UPLOAD_DIR'], 'articles')
+        os.makedirs(folder, exist_ok=True)
         fname = str(_uuid.uuid4()) + '.' + ext
-        fpath = os.path.join(folder, fname)
-        f.save(fpath)
-        url = '/uploads/articles/' + fname
-        return jsonify({'ok': True, 'url': url})
+        f.save(os.path.join(folder, fname))
+        return jsonify({'ok': True, 'url': '/uploads/articles/' + fname})
 
-    # ── PUBLIC API: latest articles (for blocks on index/lk) ───────────────
     @app.route('/api/articles/latest')
     def api_articles_latest():
-        arts = sorted(_articles_published(),
-                      key=lambda a: a.get('created_at', ''), reverse=True)[:3]
-        resp = jsonify([{
-            'slug': a['slug'], 'title': a['title'],
-            'excerpt': a.get('excerpt',''), 'cover_url': a.get('cover_url',''),
-            'created_at': a.get('created_at','')
-        } for a in arts])
+        arts = _articles_published()[:3]
+        resp = jsonify([{'slug': a['slug'], 'title': a['title'],
+                         'excerpt': a.get('excerpt',''), 'cover_url': a.get('cover_url',''),
+                         'created_at': a.get('created_at','')} for a in arts])
         resp.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
         return resp
+
+
 
     return app
 

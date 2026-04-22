@@ -126,3 +126,23 @@ class Review(db.Model):
     text = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
     is_visible = db.Column(db.Boolean, default=True, nullable=False)
+
+
+class Article(db.Model):
+    __tablename__ = 'articles'
+
+    id = db.Column(db.String(64), primary_key=True)
+    slug = db.Column(db.String(200), unique=True, nullable=False)
+    title = db.Column(db.String(500), nullable=False)
+    excerpt = db.Column(db.Text, nullable=True)
+    body = db.Column(db.Text, nullable=True)
+    cover_url = db.Column(db.Text, nullable=True)   # data URL or external URL
+    gallery = db.Column(db.JSON, nullable=True, default=list)
+    video_url = db.Column(db.String(500), nullable=True)
+    video_file = db.Column(db.String(500), nullable=True)
+    published = db.Column(db.Boolean, default=True, nullable=False)
+    seo_title = db.Column(db.String(500), nullable=True)
+    seo_description = db.Column(db.Text, nullable=True)
+    seo_keywords = db.Column(db.String(500), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)

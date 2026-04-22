@@ -2,6 +2,10 @@
 {% block head_meta %}
 <meta name="robots" content="noindex, nofollow">
 {% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
+<script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
+{% endblock %}
 {% block title %}Админ-панель — Няня на час{% endblock %}
 
 {% block content %}
@@ -491,8 +495,8 @@
             <div><label>Краткое описание (excerpt)</label>
               <textarea id="artExcerpt" rows="2" placeholder="Кратко о чём статья — покажется в блоке и списке"></textarea></div>
 
-            <div><label>Текст статьи (HTML)</label>
-              <textarea id="artBody" rows="10" placeholder="<p>Текст статьи...</p>" style="font-family:monospace;font-size:13px;"></textarea></div>
+            <div><label>Текст статьи (Markdown / HTML)</label>
+              <textarea id="artBody" rows="10" placeholder="Пишите в Markdown или HTML. Параграфы, **жирный**, *курсив*, ## Заголовок"></textarea></div>
 
             <!-- Cover image -->
             <div>
@@ -595,6 +599,21 @@
 
   window._artData = {};
 
+  // Init EasyMDE markdown editor
+  var _artMDE = null;
+  (function initMDE(){
+    var el = document.getElementById('artBody');
+    if(!el || typeof EasyMDE === 'undefined') return;
+    _artMDE = new EasyMDE({
+      element: el,
+      spellChecker: false,
+      autosave: { enabled: false },
+      toolbar: ['bold','italic','heading','|','unordered-list','ordered-list','|','link','image','|','preview','guide'],
+      placeholder: 'Пишите в Markdown. **Жирный**, *курсив*, ## Заголовок, - список...',
+      minHeight: '200px',
+    });
+  })();
+
   window.editArticle = function(id){
     fetch('/api/admin/articles')
       .then(r=>r.json())
@@ -607,7 +626,7 @@
         document.getElementById('artSlug').value = a.slug||'';
         document.getElementById('artSlugPreview').textContent = a.slug||'';
         document.getElementById('artExcerpt').value = a.excerpt||'';
-        document.getElementById('artBody').value = a.body||'';
+        if(_artMDE){ _artMDE.value(a.body||''); } else { document.getElementById('artBody').value = a.body||''; }
         document.getElementById('artCoverUrl').value = a.cover_url||'';
         document.getElementById('artVideoUrl').value = a.video_url||'';
         document.getElementById('artVideoFileUrl').value = a.video_file||'';
@@ -640,7 +659,7 @@
       title: document.getElementById('artTitle').value.trim(),
       slug: document.getElementById('artSlug').value.trim(),
       excerpt: document.getElementById('artExcerpt').value.trim(),
-      body: document.getElementById('artBody').value,
+      body: _artMDE ? _artMDE.value() : document.getElementById('artBody').value,
       cover_url: document.getElementById('artCoverUrl').value.trim(),
       gallery: _gallery.slice(),
       video_url: document.getElementById('artVideoUrl').value.trim(),
