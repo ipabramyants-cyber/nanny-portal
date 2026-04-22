@@ -28,7 +28,7 @@
   </nav>
 
   {% if articles %}
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--s5);max-width:960px;margin:0 auto;">
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,360px));gap:var(--s5);max-width:960px;margin:0 auto;justify-content:center;">
     {% for art in articles %}
     <a href="/blog/{{ art.slug }}" style="text-decoration:none;color:inherit;">
       <div class="panel" style="padding:0;overflow:hidden;transition:transform .2s,box-shadow .2s;cursor:pointer;"
@@ -45,7 +45,10 @@
         {% endif %}
         <div style="padding:var(--s4);">
           <div style="font-size:12px;color:var(--c-muted);margin-bottom:6px;">
-            {{ art.created_at[:10] | replace('-', '.') if art.created_at else '' }}
+            {% if art.created_at %}
+              {% set d = art.created_at[:10].split('-') %}
+              {{ d[2] }}.{{ d[1] }}.{{ d[0] }}
+            {% endif %}
           </div>
           <h3 style="margin:0 0 8px;font-size:1rem;line-height:1.4;color:var(--c-teal-dk);">{{ art.title }}</h3>
           {% if art.excerpt %}

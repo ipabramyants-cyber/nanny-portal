@@ -115,9 +115,8 @@
 
   <!-- Scripts -->
   <script src="/static/js/loader.js?v={{ static_ver }}"></script>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   {% block scripts_pre %}{% endblock %}
-  <script src="/static/js/tg_webapp.js?v={{ static_ver }}"></script>
+  {% block tg_webapp_script %}{% endblock %}
   <script src="/static/js/calendar.js?v={{ static_ver }}"></script>
   <script src="/static/js/instagram.js?v={{ static_ver }}"></script>
 

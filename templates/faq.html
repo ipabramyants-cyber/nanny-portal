@@ -146,9 +146,9 @@
 
     {% for q, a in faqs %}
     <details class="faq-item" style="background:var(--c-surface); border:1.5px solid var(--c-border); border-radius:var(--r-md); overflow:hidden;">
-      <summary style="padding:var(--s4) var(--s5); cursor:pointer; font-weight:600; font-size:15px; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:var(--s3); user-select:none;">
-        <span>{{ q }}</span>
-        <span class="faq-arrow" style="font-size:18px; transition:transform .25s; flex-shrink:0;">›</span>
+      <summary style="padding:var(--s4) var(--s5); cursor:pointer; font-weight:600; font-size:15px; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:var(--s3); user-select:none; text-align:left;">
+        <span style="flex:1;">{{ q }}</span>
+        <span class="faq-arrow" style="font-size:20px; line-height:1; transition:transform .25s; flex-shrink:0; color:var(--c-teal);">›</span>
       </summary>
       <div style="padding:0 var(--s5) var(--s4); color:var(--c-text-2); font-size:14px; line-height:1.7; border-top:1px solid var(--c-border);">
         {{ a | safe }}
@@ -171,8 +171,16 @@
 </div>
 
 <style>
-details.faq-item[open] summary .faq-arrow { transform: rotate(90deg); }
-details.faq-item summary::-webkit-details-marker { display:none; }
+details.faq-item > summary { list-style: none; }
+details.faq-item > summary::-webkit-details-marker { display: none; }
+details.faq-item > summary::marker { content: ''; font-size: 0; }
+details.faq-item[open] > summary .faq-arrow { transform: rotate(90deg); }
 </style>
+<script>
+/* Убираем браузерный маркер <details> через JS для совместимости */
+document.querySelectorAll('details.faq-item > summary').forEach(function(s) {
+  s.style.listStyle = 'none';
+});
+</script>
 
 {% endblock %}

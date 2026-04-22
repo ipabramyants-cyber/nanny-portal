@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block scripts_pre %}<script src="https://telegram.org/js/telegram-web-app.js"></script>{% endblock %}
+{% block tg_webapp_script %}<script src="/static/js/tg_webapp.js?v={{ static_ver }}"></script>{% endblock %}
 {% block title %}Кабинет няни — Telegram{% endblock %}
 
 {% block content %}
