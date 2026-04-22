@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Тарифы и цены — Няня на час Нячанг{% endblock %}
+
+{% block head_meta %}
+  <link rel="canonical" href="{{ site_url }}/tariffs">
+  <meta name="robots" content="index, follow">
+  <meta name="description" content="Прозрачные тарифы на услуги няни в Нячанге. Почасовая оплата от 130 000 ₫. Без скрытых платежей — всё фиксируется в личном кабинете.">
+  <meta name="keywords" content="стоимость няни Нячанг, тарифы няня Вьетнам, цена няни в час, babysitter price Nha Trang">
+  <meta property="og:title" content="Тарифы — Няня на час Нячанг">
+  <meta property="og:description" content="Почасовая оплата от 130 000 ₫. Прозрачный расчёт, личный кабинет, никаких сюрпризов.">
+  <meta property="og:url" content="{{ site_url }}/tariffs">
+  <meta property="og:image" content="{{ site_url }}/static/img/logo-full.png">
+  <script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "Service",
+    "name": "Услуги няни на час — Нячанг",
+    "description": "Профессиональный уход за детьми от 0 до 8 лет в Нячанге. Почасовая оплата, прозрачный расчёт.",
+    "provider": {
+      "@type": "LocalBusiness",
+      "name": "Няня на час — Нячанг",
+      "url": "{{ site_url }}"
+    },
+    "areaServed": "Nha Trang",
+    "offers": [
+      {
+        "@type": "Offer",
+        "name": "Стандартная смена",
+        "description": "Почасовой уход за ребёнком от 0 до 8 лет",
+        "priceCurrency": "VND",
+        "price": "130000",
+        "unitCode": "HUR"
+      }
+    ]
+  }</script>
+{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<div style="background:var(--grad-hero);padding:var(--s12) 0 var(--s8);position:relative;overflow:hidden;">
+  <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.05) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;"></div>
+  <div class="container" style="position:relative;z-index:1;text-align:center;animation:fade-up .5s both;">
+    <div class="hero-badge">💰 Прозрачные цены</div>
+    <h1 style="color:#fff;margin-bottom:var(--s3);">Тарифы</h1>
+    <p style="color:rgba(255,255,255,.85);font-size:16px;max-width:520px;margin:0 auto;">
+      Никаких скрытых платежей. Итоговая сумма рассчитывается по фактически отработанным часам.
+    </p>
+  </div>
+</div>
+
+<!-- Main content -->
+<section class="section">
+  <div class="container" style="max-width:760px;">
+
+    <!-- Pricing cards -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s5);margin-bottom:var(--s8);" class="tariff-grid">
+
+      <div class="panel" style="border:2px solid rgba(1,107,130,.2);text-align:center;padding:var(--s7) var(--s5);">
+        <div style="font-size:40px;margin-bottom:var(--s3);">⏱</div>
+        <div style="font-size:13px;font-weight:700;color:var(--c-teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:var(--s2);">Стандартная ставка</div>
+        <div style="font-size:36px;font-weight:900;color:var(--c-text);line-height:1;">130 000 ₫</div>
+        <div style="font-size:13px;color:var(--c-text-muted);margin-top:4px;margin-bottom:var(--s4);">в час</div>
+        <ul style="list-style:none;padding:0;margin:0;text-align:left;font-size:14px;line-height:1.8;">
+          <li>✅ Дети от 0 до 8 лет</li>
+          <li>✅ Почасовая оплата</li>
+          <li>✅ Оплата по факту работы</li>
+          <li>✅ Чеки в личном кабинете</li>
+        </ul>
+      </div>
+
+      <div class="panel" style="border:2px solid rgba(163,207,16,.4);text-align:center;padding:var(--s7) var(--s5);position:relative;">
+        <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--c-lime);color:#fff;font-size:11px;font-weight:800;padding:4px 14px;border-radius:var(--r-pill);white-space:nowrap;">Популярный</div>
+        <div style="font-size:40px;margin-bottom:var(--s3);">📅</div>
+        <div style="font-size:13px;font-weight:700;color:var(--c-lime-dk);text-transform:uppercase;letter-spacing:.05em;margin-bottom:var(--s2);">Регулярные смены</div>
+        <div style="font-size:36px;font-weight:900;color:var(--c-text);line-height:1;">от 130 000 ₫</div>
+        <div style="font-size:13px;color:var(--c-text-muted);margin-top:4px;margin-bottom:var(--s4);">в час</div>
+        <ul style="list-style:none;padding:0;margin:0;text-align:left;font-size:14px;line-height:1.8;">
+          <li>✅ Гибкое расписание</li>
+          <li>✅ Та же няня каждый раз</li>
+          <li>✅ Приоритетный подбор</li>
+          <li>✅ Личный кабинет онлайн</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <!-- How payment works -->
+    <div class="panel" style="margin-bottom:var(--s6);">
+      <h2 style="font-size:20px;margin-bottom:var(--s4);">💳 Как происходит оплата</h2>
+      <div style="display:flex;flex-direction:column;gap:var(--s4);">
+        <div style="display:flex;gap:var(--s4);align-items:flex-start;">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--c-teal);color:#fff;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
+          <div>
+            <div style="font-weight:800;margin-bottom:4px;">Смена завершена</div>
+            <div style="color:var(--c-text-muted);font-size:14px;">Няня отмечает фактическое время окончания в своём приложении</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:var(--s4);align-items:flex-start;">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--c-teal);color:#fff;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
+          <div>
+            <div style="font-weight:800;margin-bottom:4px;">Расчёт суммы</div>
+            <div style="color:var(--c-text-muted);font-size:14px;">Итог = фактические часы × 130 000 ₫. Виден в вашем личном кабинете</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:var(--s4);align-items:flex-start;">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--c-teal);color:#fff;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</div>
+          <div>
+            <div style="font-weight:800;margin-bottom:4px;">Оплата и чек</div>
+            <div style="color:var(--c-text-muted);font-size:14px;">Переводите сумму удобным способом. Загрузите чек прямо в личном кабинете</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FAQ short -->
+    <div class="panel" style="margin-bottom:var(--s6);">
+      <h2 style="font-size:20px;margin-bottom:var(--s4);">❓ Частые вопросы об оплате</h2>
+      <div style="display:flex;flex-direction:column;gap:var(--s4);">
+        <div>
+          <div style="font-weight:800;margin-bottom:4px;">Есть ли минимальное время заказа?</div>
+          <div style="color:var(--c-text-muted);font-size:14px;">Минимальная смена — 3 часа. Это позволяет обеспечить комфорт для ребёнка и покрыть дорогу няни.</div>
+        </div>
+        <div>
+          <div style="font-weight:800;margin-bottom:4px;">Когда платить — до или после?</div>
+          <div style="color:var(--c-text-muted);font-size:14px;">Оплата после смены, по факту. Никаких предоплат.</div>
+        </div>
+        <div>
+          <div style="font-weight:800;margin-bottom:4px;">Что если смена закончилась раньше?</div>
+          <div style="color:var(--c-text-muted);font-size:14px;">Оплачивается только фактически отработанное время. Всё честно.</div>
+        </div>
+        <div>
+          <div style="font-weight:800;margin-bottom:4px;">Каким способом платить?</div>
+          <div style="color:var(--c-text-muted);font-size:14px;">Наличными няне или переводом — уточните у администратора в Telegram.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div style="text-align:center;padding:var(--s6) 0;">
+      <a href="/#leadForm" class="btn primary" style="font-size:16px;padding:16px 40px;">
+        📅 Оставить заявку
+      </a>
+      <p style="margin-top:var(--s3);color:var(--c-text-muted);font-size:13px;">
+        Или <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener" style="color:var(--c-teal);font-weight:700;">напишите нам в Telegram</a> — ответим за 15 минут
+      </p>
+    </div>
+
+  </div>
+</section>
+
+<style>
+@media (max-width: 600px) {
+  .tariff-grid { grid-template-columns: 1fr !important; }
+}
+</style>
+
+{% endblock %}

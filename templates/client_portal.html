@@ -135,9 +135,10 @@
         </div>
 
         <hr class="divider" />
-        <h3>🧾 Чеки за смену</h3>
-        <p class="hint" style="margin-bottom:var(--s2);">Нажмите на дату работы в календаре.</p>
-        <div id="receiptsBox"></div>
+        <h3>🧾 Управление датами</h3>
+        <p class="hint" style="margin-bottom:var(--s2);">Нажмите на выделенную дату в календаре.</p>
+        <div id="dateActionsBox"></div>
+        <div id="receiptsBox" style="margin-top:var(--s3);"></div>
       </div>
 
       <div class="panel" id="articlesPanel">
@@ -304,8 +305,8 @@ function openTgLink(path) {
             cell.appendChild(t);
           }
           cell.style.cursor = 'pointer';
-          cell.title = 'Нажмите, чтобы увидеть чеки';
-          cell.addEventListener('click', () => loadReceipts(iso));
+          cell.title = 'Нажмите, чтобы увидеть чеки и управлять датой';
+          cell.addEventListener('click', () => { loadReceipts(iso); showDateActions(iso); });
         }
 
         if(iso === MEETING_DATE){
@@ -319,6 +320,43 @@ function openTgLink(path) {
         row.appendChild(cell); day++;
       }
       calEl.appendChild(row);
+    }
+  }
+
+  function showDateActions(dateStr){
+    const box = document.getElementById('dateActionsBox');
+    if(!box) return;
+    const isPast = dateStr < today;
+    box.innerHTML = `
+      <div style="margin-top:var(--s3);padding:var(--s3) var(--s4);background:#f0f9fc;border-radius:var(--r-lg);border:1px solid rgba(1,107,130,.15);">
+        <div style="font-weight:800;font-size:14px;color:#016b82;margin-bottom:var(--s2);">📅 ${fmtRu(dateStr)}</div>
+        ${isPast
+          ? '<div class="hint">Прошедшие даты нельзя отменить</div>'
+          : `<button onclick="cancelDate('${dateStr}')" style="background:#fee2e2;color:#dc2626;border:none;padding:8px 16px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;width:100%;">
+              ❌ Отменить эту дату
+            </button>
+            <div class="hint" style="margin-top:6px;font-size:11px;">Администратор будет уведомлён автоматически</div>`
+        }
+      </div>`;
+  }
+
+  async function cancelDate(dateStr){
+    if(!confirm(\`Отменить дату \${fmtRu(dateStr)}? Это действие нельзя отменить.\`)) return;
+    try {
+      const res = await fetch(\`/api/client/${TOKEN}/cancel_date\`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({date: dateStr})
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Ошибка');
+      // Update local state and re-render
+      delete WORK_DATES[dateStr];
+      document.getElementById('dateActionsBox').innerHTML =
+        '<div class="hint" style="color:#16a34a;font-weight:700;">✅ Дата отменена</div>';
+      renderCalendar();
+    } catch(e) {
+      alert('Ошибка: ' + e.message);
     }
   }
 

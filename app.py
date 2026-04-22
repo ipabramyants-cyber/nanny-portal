@@ -16,6 +16,38 @@ from telegram_auth import validate_webapp_init_data, TelegramAuthError
 
 from models import db, Nanny, Lead, User, Shift, Client, NannyBlock
 
+def _save_image_webp(file_storage, upload_dir: str, prefix: str = 'img') -> str:
+    """
+    Save uploaded image as WebP (max 1200px wide, quality 82).
+    Returns filename (relative to upload_dir).
+    Falls back to original format if Pillow fails.
+    """
+    import io
+    try:
+        from PIL import Image as _PIL_Image
+        img = _PIL_Image.open(file_storage.stream)
+        img = img.convert('RGB')
+        # Max 1200px wide, preserve aspect ratio
+        max_w = 1200
+        if img.width > max_w:
+            ratio = max_w / img.width
+            img = img.resize((max_w, int(img.height * ratio)), _PIL_Image.LANCZOS)
+        fname = f"{prefix}_{int(time.time())}.webp"
+        fpath = os.path.join(upload_dir, fname)
+        img.save(fpath, 'WEBP', quality=82, method=4)
+        return fname
+    except Exception as _e:
+        import logging
+        logging.getLogger(__name__).warning('WebP conversion failed: %s', _e)
+        # Fallback: save as-is
+        file_storage.stream.seek(0)
+        safe = secure_filename(file_storage.filename or 'photo.jpg')
+        fname = f"{prefix}_{int(time.time())}_{safe}"
+        fpath = os.path.join(upload_dir, fname)
+        file_storage.save(fpath)
+        return fname
+
+
 
 def _read_json(path, default):
     if not os.path.exists(path):
@@ -140,6 +172,19 @@ def create_app() -> Flask:
         elif not request.path.startswith('/api/'):
             resp.headers.setdefault('Cache-Control', 'no-cache, must-revalidate')
         return resp
+
+
+    @app.route('/sw.js')
+    def service_worker():
+        """Service Worker — must be served from root for full scope."""
+        resp = send_from_directory(os.path.join(BASE_DIR, 'static'), 'sw.js')
+        resp.headers['Service-Worker-Allowed'] = '/'
+        resp.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        return resp
+
+    @app.route('/offline.html')
+    def offline_page():
+        return render_template('offline.html')
 
     @app.route('/healthz')
     def healthz():
@@ -1225,6 +1270,52 @@ def create_app() -> Flask:
         items = (lead.get('documents') or {}).get('receipts', {}).get(date_str, [])
         return {'items': items}
 
+
+    @app.route('/api/client/<token>/cancel_date', methods=['POST'])
+    def api_client_cancel_date(token: str):
+        """Remove a single work date from client booking + notify admin."""
+        data = request.get_json(force=True) or {}
+        date_str = (data.get('date') or '').strip()
+        _d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        import re as _re
+        if not date_str or not _re.match(_d_re, date_str):
+            return {'error': 'Неверный формат даты'}, 400
+
+        if use_sql:
+            lead_row = Lead.query.filter_by(token=token).first()
+            if not lead_row:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead_row.work_dates or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            del wd[date_str]
+            lead_row.work_dates = wd
+            db.session.commit()
+            parent_name = lead_row.parent_name
+            tg = lead_row.telegram
+        else:
+            leads = load_leads()
+            lead = next((x for x in leads if x.get('token') == token), None)
+            if not lead:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead.get('work_dates') or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            del wd[date_str]
+            lead['work_dates'] = wd
+            save_leads(leads)
+            parent_name = lead.get('parent_name', '')
+            tg = lead.get('telegram', '')
+
+        # Notify admins
+        _notify_admins(
+            "\u274c Клиент отменил дату\n"
+            f"Клиент: {parent_name} ({tg})\n"
+            f"Дата: {date_str}\n"
+            f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{token}"
+        )
+        return {'ok': True}
+
     @app.route('/nanny/portal/<portal_token>')
     def nanny_portal(portal_token: str):
         nannies = load_nannies()
@@ -1507,12 +1598,8 @@ def create_app() -> Flask:
             photo = (request.form.get('photo') or '').strip() or None
             photo_file = request.files.get('photo_file')
             if photo_file and getattr(photo_file, 'filename', ''):
-                fn = secure_filename(photo_file.filename)
-                if fn:
-                    fn = f"nanny_{int(time.time())}_{fn}"
-                    photo_file.save(os.path.join(app.config['UPLOAD_DIR'], fn))
-                    # store as logical path, rendered by nanny_photo_src()
-                    photo = f"uploads/{fn}"
+                fn = _save_image_webp(photo_file, app.config['UPLOAD_DIR'], prefix='nanny')
+                photo = f"uploads/{fn}"
             tid_raw = (request.form.get('telegram_user_id') or '').strip() or None
 
             if not name:
@@ -1569,11 +1656,9 @@ def create_app() -> Flask:
         # Photo upload support in JSON mode
         photo_file_json = request.files.get('photo_file')
         if photo_file_json and getattr(photo_file_json, 'filename', ''):
-            fn_json = secure_filename(photo_file_json.filename)
-            if fn_json:
-                fn_json = f"nanny_{int(time.time())}_{fn_json}"
-                photo_file_json.save(os.path.join(app.config['UPLOAD_DIR'], fn_json))
-                photo = f"uploads/{fn_json}"
+            fn_json = _save_image_webp(photo_file_json, app.config['UPLOAD_DIR'], prefix='nanny')
+            photo = f"uploads/{fn_json}"
+
 
         if not name:
             flash('Имя няни обязательно', 'error')
@@ -2106,6 +2191,7 @@ def create_app() -> Flask:
             {'loc': base + '/', 'priority': '1.0', 'changefreq': 'weekly', 'lastmod': today},
             {'loc': base + '/blog', 'priority': '0.8', 'changefreq': 'weekly', 'lastmod': today},
             {'loc': base + '/faq', 'priority': '0.7', 'changefreq': 'monthly', 'lastmod': today},
+            {'loc': base + '/tariffs', 'priority': '0.8', 'changefreq': 'monthly', 'lastmod': today},
         ]
         for a in articles:
             if a.get('published') and a.get('slug'):
@@ -2173,6 +2259,11 @@ def create_app() -> Flask:
             if nr: lead['nanny_rate_per_hour'] = nr
             save_leads(leads)
         return jsonify({'ok': True})
+
+
+    @app.route('/tariffs')
+    def tariffs():
+        return render_template('tariffs.html')
 
     @app.route('/faq')
     def faq():

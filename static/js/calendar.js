@@ -265,16 +265,7 @@
           alert(data.error || 'Ошибка сохранения');
           return;
         }
-        if (data.lk_url) {
-          // Open LK inside Telegram Mini App if available, else browser
-          if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
-            window.Telegram.WebApp.openLink(data.lk_url);
-          } else {
-            window.location.href = data.lk_url;
-          }
-        } else {
-          alert('Заявка принята! Ссылка на ЛК придёт в Telegram.');
-        }
+        _showSuccessScreen(data.lk_url || null);
         return;
       }
 
@@ -296,4 +287,46 @@
   }
 
   render();
+
+  function _showSuccessScreen(lkUrl) {
+    // Hide the form section
+    const formPanel = document.querySelector('.panel--lead');
+    const calPanel  = document.querySelector('.panel--calendar');
+    if (formPanel) formPanel.style.display = 'none';
+    if (calPanel)  calPanel.style.display  = 'none';
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'grid-column:1/-1;display:flex;justify-content:center;padding:16px 0 32px;';
+    wrap.innerHTML = `
+      <div style="background:#fff;border-radius:24px;padding:40px 28px 36px;max-width:480px;width:100%;text-align:center;box-shadow:0 8px 48px rgba(1,107,130,.13);animation:fade-up .45s both;">
+        <div style="font-size:64px;margin-bottom:16px;">🎉</div>
+        <h2 style="font-size:24px;font-weight:900;color:#016b82;margin-bottom:10px;">Заявка принята!</h2>
+        <p style="color:#555;font-size:15px;line-height:1.6;margin-bottom:24px;">
+          Мы уже подбираем для вас няню.<br>
+          Ответим в Telegram в течение <strong>15 минут</strong>.
+        </p>
+        ${lkUrl ? `
+        <a href="${lkUrl}" class="btn primary" style="display:inline-block;text-decoration:none;margin-bottom:12px;width:100%;">
+          📋 Открыть личный кабинет
+        </a>
+        <p style="font-size:12px;color:#999;">Сохраните ссылку — в ней ваше расписание и смены</p>
+        ` : `
+        <p style="font-size:13px;color:#888;background:#f0f9fc;padding:12px 16px;border-radius:12px;">
+          Ссылка на личный кабинет придёт в Telegram
+        </p>
+        `}
+      </div>
+    `;
+
+    const heroGrid = document.querySelector('.hero-grid');
+    if (heroGrid) {
+      heroGrid.appendChild(wrap);
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      // fallback: just redirect
+      if (lkUrl) window.location.href = lkUrl;
+      else alert('Заявка принята! Ожидайте сообщения в Telegram.');
+    }
+  }
+
 })();
