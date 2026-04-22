@@ -49,20 +49,45 @@
 
   <!-- Site navbar — shown on inner pages, hidden on main page and TG app -->
   {% if request.path != '/' %}
-  <nav class="site-nav" aria-label="Навигация по сайту">
-    <div class="container site-nav__inner">
+  <nav class="site-nav" aria-label="Навигация по сайту" id="siteNav">
+    <div class="container site-nav__inner" style="position:relative;">
       <a href="/" class="site-nav__logo" aria-label="На главную">
         <img src="/static/img/logo.webp" alt="Няня на час" width="32" height="32" loading="eager">
         <span>Няня на час</span>
       </a>
-      <div class="site-nav__links">
+      <div class="site-nav__links" id="navLinks">
         <a href="/tariffs" class="site-nav__link {% if request.path == '/tariffs' %}active{% endif %}">Тарифы</a>
         <a href="/faq" class="site-nav__link {% if request.path == '/faq' %}active{% endif %}">FAQ</a>
         <a href="/blog" class="site-nav__link {% if request.path.startswith('/blog') %}active{% endif %}">Блог</a>
         <a href="/#leadForm" class="btn primary site-nav__cta">Заявка</a>
       </div>
+      <button class="nav-burger" id="navBurger" aria-label="Меню" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
     </div>
   </nav>
+  <script>
+    (function(){
+      var btn   = document.getElementById('navBurger');
+      var links = document.getElementById('navLinks');
+      if (!btn || !links) return;
+      btn.addEventListener('click', function(){
+        var open = links.classList.toggle('open');
+        btn.classList.toggle('open', open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      // Close on link click
+      links.querySelectorAll('a').forEach(function(a){
+        a.addEventListener('click', function(){ links.classList.remove('open'); btn.classList.remove('open'); });
+      });
+      // Close on outside click
+      document.addEventListener('click', function(e){
+        if (!btn.contains(e.target) && !links.contains(e.target)){
+          links.classList.remove('open'); btn.classList.remove('open');
+        }
+      });
+    })();
+  </script>
   {% endif %}
 
 

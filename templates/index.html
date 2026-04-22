@@ -148,12 +148,20 @@
   <div class="panel panel--calendar">
     <div class="calendar-head">
       <button type="button" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
-      <div id="monthLabel"></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div id="monthLabel"></div>
+        <button type="button" id="todayBtn" aria-label="Перейти к текущему месяцу" style="display:none;">Сегодня</button>
+      </div>
       <button type="button" id="nextMonth" aria-label="Следующий месяц">›</button>
     </div>
     <div id="calendar" class="calendar" role="grid" aria-label="Календарь выбора дат"></div>
-    <p class="hint" style="margin-top:10px;">
-      🗓 Тап/клик — выбрать дату работы. Повторный тап — убрать.
+    <div class="cal-legend">
+      <div class="cal-legend__item"><div class="cal-legend__dot cal-legend__dot--today"></div> Сегодня</div>
+      <div class="cal-legend__item"><div class="cal-legend__dot cal-legend__dot--work"></div> Рабочий день</div>
+      <div class="cal-legend__item"><div class="cal-legend__dot cal-legend__dot--meeting"></div> Встреча</div>
+    </div>
+    <p class="hint" style="margin-top:8px;">
+      🗓 Тап — выбрать дату · Правый клик / долгий тап — убрать · Свайп — след. месяц
     </p>
   </div>
 
@@ -161,7 +169,11 @@
   <div class="panel panel--articles">
     <h3>📝 Статьи</h3>
     <p class="hint" style="margin-bottom:var(--s3);">Полезное о детях и воспитании.</p>
-    <div id="articlesGrid" style="display:flex;flex-direction:column;gap:var(--s3);"></div>
+    <div id="articlesGrid" style="display:flex;flex-direction:column;gap:var(--s3);">
+      <!-- Skeleton loaders -->
+      <div class="article-skeleton"><div class="skeleton-img"></div><div class="skeleton-lines"><div class="skeleton-line s-short"></div><div class="skeleton-line s-full"></div><div class="skeleton-line s-med"></div></div></div>
+      <div class="article-skeleton"><div class="skeleton-img"></div><div class="skeleton-lines"><div class="skeleton-line s-short"></div><div class="skeleton-line s-full"></div><div class="skeleton-line s-med"></div></div></div>
+    </div>
     <a class="action-link" href="/blog" style="margin-top:var(--s3);display:block;text-align:center;">
       Все статьи →
     </a>
@@ -226,22 +238,83 @@
       <h2 id="reviews-heading">Отзывы родителей</h2>
       <div class="section-title__line"><span></span><span></span><span></span></div>
     </div>
-    <div class="reviews-grid">
-      {% for review in reviews %}
-      <div class="review reveal reveal-delay-{{ (loop.index0 % 3) + 1 }}" itemscope itemtype="https://schema.org/Review">
-        <div class="review__quote" aria-hidden="true">"</div>
-        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating">
-          <meta itemprop="ratingValue" content="{{ review.stars }}" />
-          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
+    <div class="reviews-wrap" id="reviewsWrap">
+      <div class="reviews-grid" id="reviewsGrid">
+        {% for review in reviews %}
+        <div class="review reveal reveal-delay-{{ (loop.index0 % 3) + 1 }}" data-review-idx="{{ loop.index0 }}" itemscope itemtype="https://schema.org/Review">
+          <div class="review__quote" aria-hidden="true">"</div>
+          <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating">
+            <meta itemprop="ratingValue" content="{{ review.stars }}" />
+            {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
+          </div>
+          <div class="review__author" itemprop="author" itemscope itemtype="https://schema.org/Person">
+            <span itemprop="name">{{ review.author }}</span>
+          </div>
+          {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+          <div class="review__text" itemprop="reviewBody">{{ review.text }}</div>
         </div>
-        <div class="review__author" itemprop="author" itemscope itemtype="https://schema.org/Person">
-          <span itemprop="name">{{ review.author }}</span>
-        </div>
-        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
-        <div class="review__text" itemprop="reviewBody">{{ review.text }}</div>
+        {% endfor %}
       </div>
-      {% endfor %}
+      <!-- Carousel nav -->
+      <div class="reviews-nav" id="reviewsNav">
+        <button class="reviews-nav__btn" id="reviewsPrev" aria-label="Предыдущие отзывы">‹</button>
+        <div class="reviews-nav__dots" id="reviewsDots"></div>
+        <button class="reviews-nav__btn" id="reviewsNext" aria-label="Следующие отзывы">›</button>
+      </div>
     </div>
+    <script>
+    (function(){
+      var allCards = Array.from(document.querySelectorAll('[data-review-idx]'));
+      var total = allCards.length;
+      if (total === 0) return;
+      var perPage = window.innerWidth >= 900 ? 3 : window.innerWidth >= 540 ? 2 : 1;
+      var page = 0;
+      var pages = Math.ceil(total / perPage);
+
+      var grid  = document.getElementById('reviewsGrid');
+      var prev  = document.getElementById('reviewsPrev');
+      var next  = document.getElementById('reviewsNext');
+      var dots  = document.getElementById('reviewsDots');
+
+      // Build dots
+      for (var i = 0; i < pages; i++) {
+        var d = document.createElement('button');
+        d.className = 'reviews-nav__dot' + (i === 0 ? ' active' : '');
+        d.setAttribute('aria-label', 'Страница ' + (i+1));
+        d.dataset.page = i;
+        d.addEventListener('click', function(){ goTo(+this.dataset.page); });
+        dots.appendChild(d);
+      }
+
+      function goTo(p) {
+        page = Math.max(0, Math.min(pages - 1, p));
+        grid.style.opacity = '0';
+        grid.style.transform = 'translateY(8px)';
+        setTimeout(function(){
+          allCards.forEach(function(c, idx){
+            var show = idx >= page * perPage && idx < (page + 1) * perPage;
+            c.style.display = show ? '' : 'none';
+          });
+          grid.style.opacity = '1';
+          grid.style.transform = 'none';
+          prev.disabled = page === 0;
+          next.disabled = page === pages - 1;
+          dots.querySelectorAll('.reviews-nav__dot').forEach(function(d){ d.classList.toggle('active', +d.dataset.page === page); });
+        }, 180);
+      }
+
+      grid.style.transition = 'opacity .2s, transform .2s';
+      prev.addEventListener('click', function(){ goTo(page - 1); });
+      next.addEventListener('click', function(){ goTo(page + 1); });
+      goTo(0);
+
+      // Keyboard support
+      document.addEventListener('keydown', function(e){
+        if (e.key === 'ArrowRight') goTo(page + 1);
+        if (e.key === 'ArrowLeft') goTo(page - 1);
+      });
+    })();
+    </script>
   </div>
 </section>
 

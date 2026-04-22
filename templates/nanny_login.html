@@ -1,48 +1,121 @@
 {% extends "base.html" %}
 {% block scripts_pre %}<script src="https://telegram.org/js/telegram-web-app.js"></script>{% endblock %}
-{% block title %}Вход няни{% endblock %}
+{% block title %}Вход няни — Nanny Nha Trang{% endblock %}
 {% block content %}
-<section class="container" style="padding-top: 14px;">
-  <h1 style="margin: 8px 0;">Кабинет няни</h1>
-  <p style="opacity:.8">Откройте страницу внутри Telegram Mini App.</p>
 
-  <div class="panel" style="margin-top:14px; padding:14px;">
-    <div id="status" style="opacity:.85;">Проверяю Telegram WebApp…</div>
-    <div id="debug" style="margin-top:10px; font-size:12px; opacity:.7; white-space:pre-wrap;"></div>
+<!-- Hero bar -->
+<div style="background:var(--grad-hero);padding:var(--s8) 0;position:relative;overflow:hidden;">
+  <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.05) 1px,transparent 1px);background-size:24px 24px;pointer-events:none;"></div>
+  <div class="container" style="position:relative;z-index:1;text-align:center;animation:fade-up .5s both;">
+    <div style="font-size:48px;margin-bottom:var(--s2);">👩‍🍼</div>
+    <h1 style="color:#fff;margin:0 0 var(--s2);">Кабинет няни</h1>
+    <p style="color:rgba(255,255,255,.8);font-size:14px;margin:0;">Nanny Nha Trang</p>
   </div>
-</section>
+</div>
+
+<div class="container" style="padding:var(--s6) 0 var(--s10);max-width:520px;">
+
+  <!-- Status panel -->
+  <div class="panel" id="statusPanel" style="text-align:center;padding:var(--s6);">
+    <div id="statusIcon" style="font-size:40px;margin-bottom:var(--s3);">⏳</div>
+    <div id="statusText" style="font-size:15px;font-weight:600;color:var(--c-teal-dk);">Проверяю Telegram WebApp…</div>
+    <div id="debugText" style="margin-top:var(--s3);font-size:11px;color:var(--c-text-muted);white-space:pre-wrap;display:none;"></div>
+  </div>
+
+  <!-- Desktop fallback — shown if no Telegram -->
+  <div id="desktopFallback" style="display:none;">
+    <div class="panel" style="padding:var(--s6);">
+      <h2 style="color:var(--c-teal-dk);margin:0 0 var(--s4);">Как открыть кабинет</h2>
+
+      <div style="display:flex;flex-direction:column;gap:var(--s3);">
+        <div style="display:flex;gap:var(--s3);align-items:flex-start;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--c-teal);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex-shrink:0;">1</div>
+          <div>
+            <div style="font-weight:700;font-size:14px;">Откройте Telegram на телефоне</div>
+            <div style="font-size:13px;color:var(--c-text-2);margin-top:3px;">Приложение на iOS или Android</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:var(--s3);align-items:flex-start;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--c-teal);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex-shrink:0;">2</div>
+          <div>
+            <div style="font-weight:700;font-size:14px;">Найдите бот агентства</div>
+            <div style="font-size:13px;color:var(--c-text-2);margin-top:3px;">Напишите администратору для получения ссылки</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:var(--s3);align-items:flex-start;">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--c-teal);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex-shrink:0;">3</div>
+          <div>
+            <div style="font-weight:700;font-size:14px;">Нажмите кнопку «Открыть приложение»</div>
+            <div style="font-size:13px;color:var(--c-text-2);margin-top:3px;">Кабинет откроется прямо в Telegram</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:var(--s5);padding:var(--s4);background:var(--c-teal-lt);border-radius:var(--r-md);text-align:center;">
+        <div style="font-size:13px;color:var(--c-teal-dk);font-weight:600;margin-bottom:var(--s2);">Нужна помощь?</div>
+        <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener"
+           class="btn primary" style="display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+          ✈️ Написать администратору
+        </a>
+      </div>
+    </div>
+  </div>
+
+</div>
 
 <script>
 (async function(){
-  const status = document.getElementById('status');
-  const debug = document.getElementById('debug');
+  const statusIcon  = document.getElementById('statusIcon');
+  const statusText  = document.getElementById('statusText');
+  const debugText   = document.getElementById('debugText');
+  const statusPanel = document.getElementById('statusPanel');
+  const fallback    = document.getElementById('desktopFallback');
+
+  function setStatus(icon, text, isError) {
+    statusIcon.textContent = icon;
+    statusText.textContent = text;
+    if (isError) statusText.style.color = '#dc2626';
+  }
+
   try {
-    if (!window.Telegram || !Telegram.WebApp) {
-      status.textContent = 'Telegram WebApp не найден. Откройте страницу внутри Telegram.';
+    if (!window.Telegram || !Telegram.WebApp || !Telegram.WebApp.initData) {
+      // Not in Telegram — show desktop instructions
+      statusPanel.style.display = 'none';
+      fallback.style.display = 'block';
       return;
     }
+
     Telegram.WebApp.ready();
-    const initData = Telegram.WebApp.initData || '';
-    if (!initData) {
-      status.textContent = 'initData пустой. Откройте Mini App из бота.';
-      return;
-    }
-    status.textContent = 'Авторизация…';
+    const initData = Telegram.WebApp.initData;
+
+    setStatus('🔐', 'Авторизация…');
+
     const resp = await fetch('/api/auth/telegram', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({init_data: initData})
     });
-    const data = await resp.json().catch(()=>null);
+    const data = await resp.json().catch(() => null);
+
     if (!resp.ok) {
-      status.textContent = 'Ошибка авторизации.';
-      debug.textContent = JSON.stringify(data, null, 2);
+      setStatus('❌', 'Ошибка авторизации. Обратитесь к администратору.', true);
+      if (data && data.error) {
+        debugText.textContent = data.error;
+        debugText.style.display = 'block';
+      }
       return;
     }
-    status.textContent = 'Готово. Переходим в кабинет…';
-    window.location.href = '/nanny';
+
+    if (data.role !== 'nanny' && data.role !== 'admin') {
+      setStatus('🔒', 'Доступ закрыт. Попросите администратора назначить вас как няню.', true);
+      return;
+    }
+
+    setStatus('✅', 'Готово! Переходим в кабинет…');
+    setTimeout(() => { window.location.href = '/nanny'; }, 700);
+
   } catch (e) {
-    status.textContent = 'Ошибка: ' + (e && e.message ? e.message : String(e));
+    setStatus('⚠️', 'Ошибка: ' + (e && e.message ? e.message : String(e)), true);
   }
 })();
 </script>
