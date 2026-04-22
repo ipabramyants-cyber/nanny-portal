@@ -140,7 +140,7 @@ def create_app() -> Flask:
 
     app.config['DATA_DIR'] = os.path.join(BASE_DIR, 'data')
     app.config['UPLOAD_DIR'] = os.path.join(BASE_DIR, 'uploads')
-    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+    app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # 64MB — articles + gallery base64
 
     os.makedirs(app.config['DATA_DIR'], exist_ok=True)
     os.makedirs(app.config['UPLOAD_DIR'], exist_ok=True)
@@ -2304,6 +2304,10 @@ def create_app() -> Flask:
         return Response("\n".join(lines) + "\n", mimetype="text/plain")
 
     ARTICLES_FILE = os.path.join(app.config['DATA_DIR'], 'articles.json')
+
+    def _sanitize_html(html: str) -> str:
+        """Admin-only content — return as-is. No size limit."""
+        return html or ''
 
     @app.route('/sitemap.xml')
     def sitemap_xml():
