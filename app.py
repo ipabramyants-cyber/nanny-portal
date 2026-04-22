@@ -57,7 +57,7 @@ def _image_to_data_url(file_storage) -> str:
         file_storage.stream.seek(0)
         img = _PIL_Image.open(file_storage.stream)
         img = img.convert('RGB')
-        max_w = 600
+        max_w = 1200
         if img.width > max_w:
             ratio = max_w / img.width
             img = img.resize((max_w, int(img.height * ratio)), _PIL_Image.LANCZOS)
