@@ -34,6 +34,11 @@
 
 {% block title %}Няня на час — Нячанг | Проверенные няни для детей 0–8 лет{% endblock %}
 
+{% block scripts_pre %}
+<!-- Telegram WebApp SDK — needed to get user identity on main page -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+{% endblock %}
+
 {% block content %}
 
 <!-- ═══ HERO ═══════════════════════════════════════════════ -->
@@ -151,13 +156,24 @@
   <!-- Lead form -->
   <div class="panel panel--lead panel--accent">
     <h3>Оставить заявку</h3>
-    <p class="hint" style="margin-top:-4px; margin-bottom:12px;">Выберите даты — подберём доступную няню.</p>
+    <!-- TG auth status badge — shown when inside Telegram -->
+    <div id="tgAuthBadge" style="display:none; margin:-4px 0 12px; padding:8px 12px; border-radius:var(--r-sm); background:var(--c-teal-lt); border:1.5px solid rgba(10,181,212,.3); font-size:13px; color:var(--c-teal-dk); font-weight:700; align-items:center; gap:6px;">
+      <span>✅</span> <span id="tgAuthName">Вы в Telegram</span>
+    </div>
+    <!-- Fallback telegram field — shown only when NOT in Telegram -->
+    <div id="telegramRow" style="display:none;">
+      <label for="telegramField">Telegram для связи</label>
+      <input id="telegramField" name="telegram" placeholder="@username или номер" autocomplete="off" />
+      <p class="hint" style="margin-top:4px; margin-bottom:12px;">Откройте сайт через бота в Telegram для автозаполнения</p>
+    </div>
+    <p class="hint" style="margin-top:-4px; margin-bottom:12px;" id="calHint">Выберите даты — подберём доступную няню.</p>
     <form id="leadForm" onsubmit="return false;" autocomplete="on">
+      <!-- Hidden: Telegram auth data (filled by JS when in TG) -->
+      <input type="hidden" id="tgInitData" name="tg_init_data" value="" />
+      <input type="hidden" id="tgUserId" name="tg_user_id" value="" />
+
       <label for="parentName">Имя и Фамилия</label>
       <input id="parentName" name="parent_name" required autocomplete="name" placeholder="Мария Иванова" />
-
-      <label for="telegramField">Telegram для связи</label>
-      <input id="telegramField" name="telegram" required placeholder="@username или номер" autocomplete="off" />
 
       <label for="childName">Имя ребёнка</label>
       <input id="childName" name="child_name" required placeholder="Миша" />
@@ -175,6 +191,68 @@
       </a>
       <a id="continueLK" class="btn secondary" href="/client/app" style="display:none; margin-top:10px; width:100%; justify-content:center;">Продолжить в личном кабинете</a>
     </form>
+
+    <script>
+    (function(){
+      var badge    = document.getElementById('tgAuthBadge');
+      var tgRow    = document.getElementById('telegramRow');
+      var tgField  = document.getElementById('telegramField');
+      var initData = document.getElementById('tgInitData');
+      var userId   = document.getElementById('tgUserId');
+      var tgName   = document.getElementById('tgAuthName');
+      var hint     = document.getElementById('calHint');
+
+      function isTelegram() {
+        return !!(window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData);
+      }
+
+      if (isTelegram()) {
+        var tg = window.Telegram.WebApp;
+        tg.ready();
+        // Store initData for server-side verification
+        initData.value = tg.initData || '';
+        var user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+        if (user) {
+          userId.value = String(user.id || '');
+          var displayName = [user.first_name, user.last_name].filter(Boolean).join(' ');
+          if (user.username) displayName += ' (@' + user.username + ')';
+          tgName.textContent = 'Вы авторизованы как ' + (displayName || 'Telegram-пользователь');
+        }
+        // Show badge, hide fallback field
+        badge.style.display = 'flex';
+        tgRow.style.display = 'none';
+        if (tgField) tgField.removeAttribute('required');
+        // Check if already registered — autologin
+        if (window.Telegram.WebApp.initData) {
+          fetch('/api/auth/telegram', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({init_data: tg.initData}),
+            credentials: 'include',
+          })
+          .then(function(r){ return r.json().then(function(d){ return {ok: r.ok, data: d}; }); })
+          .then(function(res){
+            if (res.ok && res.data && res.data.lk_url) {
+              // Already registered → show ЛК link
+              var goBtn = document.getElementById('continueLK');
+              if (goBtn) {
+                goBtn.href = res.data.lk_url;
+                goBtn.textContent = '📋 Открыть личный кабинет';
+                goBtn.style.display = 'flex';
+              }
+              if (hint) hint.textContent = 'Вы уже зарегистрированы. Откройте ЛК или выберите новые даты.';
+            }
+          })
+          .catch(function(){});
+        }
+      } else {
+        // Not in Telegram — show manual field
+        badge.style.display = 'none';
+        tgRow.style.display = 'block';
+        if (tgField) tgField.setAttribute('required', 'required');
+      }
+    })();
+    </script>
   </div>
 
   <!-- Calendar -->

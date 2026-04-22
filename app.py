@@ -778,18 +778,31 @@ def create_app() -> Flask:
         # For client role: find their LK token if they already have a lead
         lk_url = None
         if role == 'client':
-            leads_list = _read_json(LEADS_FILE, [])
             tg_id_str = str(telegram_user_id)
-            tg_username = user_obj.get('username', '')
-            for lead in leads_list:
-                lead_tg = str(lead.get('telegram_user_id') or '')
-                lead_uname = str(lead.get('telegram_username') or '').lstrip('@')
-                if (lead_tg and lead_tg == tg_id_str) or \
-                   (tg_username and lead_uname and lead_uname.lower() == tg_username.lower()):
-                    # /client/<token> is the correct route
-                    if lead.get('token'):
-                        lk_url = f"/client/{lead['token']}"
-                        break
+            tg_username = (user_obj.get('username') or '').lower()
+            if use_sql:
+                try:
+                    lead_row = Lead.query.filter_by(telegram_user_id=telegram_user_id).order_by(Lead.submitted_at.desc()).first()
+                    if not lead_row and tg_username:
+                        # fallback: match by @username stored in telegram field
+                        lead_row = Lead.query.filter(
+                            db.func.lower(Lead.telegram).in_([tg_username, '@' + tg_username])
+                        ).order_by(Lead.submitted_at.desc()).first()
+                    if lead_row and lead_row.token:
+                        lk_url = f"/client/{lead_row.token}"
+                except Exception:
+                    pass
+            else:
+                leads_list = _read_json(LEADS_FILE, [])
+                for lead in leads_list:
+                    lead_tg = str(lead.get('telegram_user_id') or '')
+                    lead_uname = str(lead.get('telegram_username') or '').lstrip('@').lower()
+                    lead_field = str(lead.get('telegram') or '').lstrip('@').lower()
+                    if (lead_tg and lead_tg == tg_id_str) or \
+                       (tg_username and (lead_uname == tg_username or lead_field == tg_username)):
+                        if lead.get('token'):
+                            lk_url = f"/client/{lead['token']}"
+                            break
 
         return {
             'ok': True,
@@ -1149,16 +1162,55 @@ def create_app() -> Flask:
         _lead_rate[ip] = hits
 
         data = request.get_json(force=True) or {}
-        parent_name = (data.get('parent_name') or '').strip()[:100]
-        telegram = (data.get('telegram') or '').strip()[:100]
-        child_name = (data.get('child_name') or '').strip()[:100]
-        child_age = (data.get('child_age') or '').strip()[:20]
-        notes = (data.get('notes') or '').strip()[:1000]
+        parent_name   = (data.get('parent_name') or '').strip()[:100]
+        telegram      = (data.get('telegram') or '').strip()[:100]
+        tg_init_data  = (data.get('tg_init_data') or '').strip()
+        tg_user_id_raw = (data.get('tg_user_id') or '').strip()
+        child_name    = (data.get('child_name') or '').strip()[:100]
+        child_age     = (data.get('child_age') or '').strip()[:20]
+        notes         = (data.get('notes') or '').strip()[:1000]
         meeting_date_raw = data.get('meeting_date')
-        work_dates_raw = data.get('work_dates') or {}
+        work_dates_raw   = data.get('work_dates') or {}
 
-        if not parent_name or not telegram or not child_name or not child_age:
+        # ── Verify Telegram identity ──────────────────────────
+        verified_tg_user_id: int | None = None
+        verified_tg_username: str | None = None
+        verified_tg_name: str | None = None
+
+        if tg_init_data:
+            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+            if bot_token:
+                try:
+                    pairs = validate_webapp_init_data(tg_init_data, bot_token)
+                    user_obj = json.loads(pairs.get('user', '{}'))
+                    verified_tg_user_id  = int(user_obj.get('id') or 0) or None
+                    verified_tg_username = user_obj.get('username') or None
+                    fn = (user_obj.get('first_name') or '').strip()
+                    ln = (user_obj.get('last_name') or '').strip()
+                    verified_tg_name = ' '.join(filter(None, [fn, ln])) or None
+                    # Use TG name as parent_name if not provided
+                    if not parent_name and verified_tg_name:
+                        parent_name = verified_tg_name[:100]
+                    # Set telegram field to @username or numeric id
+                    if not telegram:
+                        if verified_tg_username:
+                            telegram = '@' + verified_tg_username
+                        elif verified_tg_user_id:
+                            telegram = str(verified_tg_user_id)
+                except Exception as e:
+                    app.logger.warning("TG initData verification failed in /api/lead: %s", e)
+        elif tg_user_id_raw and re.fullmatch(r'\d{5,20}', tg_user_id_raw):
+            # Unverified — store as-is (won't be used for security-sensitive ops)
+            try:
+                verified_tg_user_id = int(tg_user_id_raw)
+            except Exception:
+                pass
+
+        # Require either telegram field OR verified TG id
+        if not parent_name or not child_name or not child_age:
             return {'error': 'Заполните обязательные поля.'}, 400
+        if not telegram and not verified_tg_user_id:
+            return {'error': 'Укажите Telegram для связи или откройте сайт через бота.'}, 400
 
         # Validate meeting_date
         _d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
@@ -1194,6 +1246,7 @@ def create_app() -> Flask:
                     token=token,
                     parent_name=parent_name,
                     telegram=telegram,
+                    telegram_user_id=verified_tg_user_id,
                     child_name=child_name,
                     child_age=child_age,
                     notes=notes,
@@ -1208,6 +1261,8 @@ def create_app() -> Flask:
                 'token': token,
                 'parent_name': parent_name,
                 'telegram': telegram,
+                'telegram_user_id': verified_tg_user_id,
+                'telegram_username': verified_tg_username,
                 'child_name': child_name,
                 'child_age': child_age,
                 'notes': notes,
@@ -1226,13 +1281,26 @@ def create_app() -> Flask:
 
         lk_url = os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/') + '/client/' + token
 
+        # ── Notify admins ─────────────────────────────────────
+        tg_display = telegram or (f'id:{verified_tg_user_id}' if verified_tg_user_id else '—')
         _notify_admins(
             "🆕 Новая заявка\n"
             f"Родитель: {parent_name}\n"
-            f"Telegram: {telegram}\n"
+            f"Telegram: {tg_display}\n"
             f"Ребёнок: {child_name}, {child_age}\n"
             f"ЛК: {lk_url}"
         )
+
+        # ── Send LK link directly to client in Telegram ───────
+        if verified_tg_user_id:
+            client_msg = (
+                f"👋 {parent_name}, заявка принята!\n\n"
+                f"Мы подбираем няню для {child_name}.\n"
+                f"Ответим в течение 15 минут.\n\n"
+                f"📋 Ваш личный кабинет:\n{lk_url}\n\n"
+                f"Сохраните ссылку — в ней ваше расписание, смены и чеки."
+            )
+            _safe_send_message(verified_tg_user_id, client_msg)
 
         return {'ok': True, 'lk_url': lk_url}
 

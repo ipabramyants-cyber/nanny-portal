@@ -390,13 +390,15 @@
       if (form) {
         const fd = new FormData(form);
         const payload = {
-          parent_name:  fd.get('parent_name'),
-          telegram:     fd.get('telegram'),
-          child_name:   fd.get('child_name'),
-          child_age:    fd.get('child_age'),
-          notes:        fd.get('notes'),
-          meeting_date: meetingDate,
-          work_dates:   workDates,
+          parent_name:   fd.get('parent_name'),
+          telegram:      fd.get('telegram') || '',
+          tg_init_data:  fd.get('tg_init_data') || '',
+          tg_user_id:    fd.get('tg_user_id') || '',
+          child_name:    fd.get('child_name'),
+          child_age:     fd.get('child_age'),
+          notes:         fd.get('notes'),
+          meeting_date:  meetingDate,
+          work_dates:    workDates,
         };
 
         saveBtn.disabled = true;
