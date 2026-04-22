@@ -1176,9 +1176,15 @@ def create_app() -> Flask:
             return 'Ссылка недействительна', 404
         nannies = load_nannies()
         nanny = None
+        nanny_dayoffs = []
         if lead.get('assigned_nanny_id'):
             nanny = next((n for n in nannies if n.get('id') == lead.get('assigned_nanny_id')), None)
-        return render_template('client_portal.html', lead=lead, nanny=nanny)
+            if use_sql and nanny:
+                nanny_id = nanny.get('id') if isinstance(nanny, dict) else getattr(nanny, 'id', None)
+                if nanny_id:
+                    blocks = NannyBlock.query.filter_by(nanny_id=int(nanny_id), kind='dayoff').order_by(NannyBlock.date.asc()).all()
+                    nanny_dayoffs = [{'date': b.date, 'start': b.start, 'end': b.end, 'note': b.note} for b in blocks]
+        return render_template('client_portal.html', lead=lead, nanny=nanny, nanny_dayoffs=nanny_dayoffs)
 
     @app.route('/api/client/<token>/update', methods=['POST'])
     def api_client_update(token: str):
@@ -1509,8 +1515,25 @@ def create_app() -> Flask:
                     'child_age': l.get('child_age'),
                     'token': l.get('token'),
                     'time': (info or {}).get('time') if isinstance(info, dict) else None,
+                    'type': 'assigned' if l.get('assigned_nanny_id') else 'open',
                 })
         events.sort(key=lambda x: x.get('date') or '')
+
+        # Collect nanny days-off for admin calendar
+        nanny_dayoffs = []
+        nanny_names_by_id = {n['id']: n['name'] for n in nannies} if isinstance(nannies, list) and nannies and isinstance(nannies[0], dict) else {}
+        if use_sql:
+            all_blocks = NannyBlock.query.filter_by(kind='dayoff').order_by(NannyBlock.date.asc()).all()
+            nanny_names_by_id = {n.id: n.name for n in Nanny.query.all()}
+            for b in all_blocks:
+                nanny_dayoffs.append({
+                    'date': b.date,
+                    'nanny_id': b.nanny_id,
+                    'nanny_name': nanny_names_by_id.get(b.nanny_id, f'Няня #{b.nanny_id}'),
+                    'start': b.start,
+                    'end': b.end,
+                    'note': b.note,
+                })
 
         clients = []
         shift_rows = []
@@ -1592,6 +1615,7 @@ def create_app() -> Flask:
             leads=leads,
             nannies=nannies,
             events=events,
+            nanny_dayoffs=nanny_dayoffs,
             clients=clients,
             shifts=shift_rows,
             reviews=reviews,

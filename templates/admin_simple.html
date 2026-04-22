@@ -53,10 +53,21 @@
   <!-- MASTER CALENDAR -->
   <div class="admin-section">
     <div class="panel">
-      <h2>📅 Сводный календарь всех смен</h2>
-      <p style="font-size:13px;color:var(--c-text-muted);margin-bottom:var(--s4);">
-        Все даты работы из всех заявок. 🟢 назначена няня &nbsp;·&nbsp; 🟡 ожидает назначения
-      </p>
+      <h2>📅 Сводный календарь</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:var(--s4);font-size:13px;">
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#f59e0b;"></span>
+          Открытая заявка
+        </span>
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#0d9488;"></span>
+          Назначена няня
+        </span>
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#dc2626;"></span>
+          Выходной няни
+        </span>
+      </div>
       <div style="display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3);">
         <button type="button" id="calPrev" class="btn secondary" style="padding:6px 14px;font-size:13px;">‹</button>
         <strong id="calMonthLabel" style="min-width:160px;text-align:center;"></strong>
@@ -664,12 +675,21 @@
 
 // ── Master calendar ──────────────────────────────────────
 (function(){
-  const EVENTS = {{ events | tojson }};
-  // Build lookup: date -> [{child_name, nanny_id, token, time}, ...]
+  const EVENTS    = {{ events | tojson }};       // {date, nanny_id, child_name, child_age, token, time, type}
+  const DAYOFFS   = {{ nanny_dayoffs | tojson }}; // {date, nanny_id, nanny_name, start, end, note}
+
+  // Build per-date lookup for lead events
   const byDate = {};
   EVENTS.forEach(e => {
     if(!byDate[e.date]) byDate[e.date] = [];
     byDate[e.date].push(e);
+  });
+
+  // Build per-date lookup for nanny dayoffs
+  const dayoffByDate = {};
+  DAYOFFS.forEach(b => {
+    if(!dayoffByDate[b.date]) dayoffByDate[b.date] = [];
+    dayoffByDate[b.date].push(b);
   });
 
   const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -678,8 +698,8 @@
   const today = new Date().toISOString().slice(0,10);
 
   // Start at earliest upcoming event month, or today
-  const futureDates = Object.keys(byDate).filter(d => d >= today).sort();
-  const startDate = futureDates[0] || today;
+  const allDates = [...Object.keys(byDate), ...Object.keys(dayoffByDate)].filter(d => d >= today).sort();
+  const startDate = allDates[0] || today;
   let cur = new Date(startDate.slice(0,7) + '-01');
 
   function pad(n){ return String(n).padStart(2,'0'); }
@@ -708,17 +728,44 @@
         cell.innerHTML=`<div class="cal-num">${day}</div>`;
         if(iso===today) cell.classList.add('today');
 
-        const dayEvts = byDate[iso];
-        if(dayEvts && dayEvts.length){
-          const allAssigned = dayEvts.every(e => e.nanny_id);
-          cell.classList.add(allAssigned ? 'work' : 'dayoff');
-          const badge = document.createElement('div');
-          badge.style.cssText='font-size:10px;font-weight:700;margin-top:2px;';
-          badge.style.color = allAssigned ? 'var(--c-teal-dk)' : '#b45309';
-          badge.textContent = dayEvts.length + (dayEvts.length===1?' смена':' смен');
-          cell.appendChild(badge);
+        const dayEvts   = byDate[iso]     || [];
+        const dayOffs   = dayoffByDate[iso]|| [];
+        const hasOpen   = dayEvts.some(e => e.type === 'open');
+        const hasAssign = dayEvts.some(e => e.type === 'assigned');
+        const hasDayoff = dayOffs.length > 0;
+
+        // Priority: assigned > open > dayoff for background
+        // But we show all indicators
+        if(hasAssign){
+          cell.style.background = '#ccfbf1'; // teal tint
+        } else if(hasOpen){
+          cell.style.background = '#fef3c7'; // amber tint
+        } else if(hasDayoff){
+          cell.style.background = '#fee2e2'; // red tint
+        }
+
+        if(hasAssign){
+          const b=document.createElement('div');
+          b.style.cssText='font-size:9px;font-weight:700;margin-top:2px;color:#0d9488;';
+          b.textContent='✓ '+dayEvts.filter(e=>e.type==='assigned').length+' назн.';
+          cell.appendChild(b);
+        }
+        if(hasOpen){
+          const b=document.createElement('div');
+          b.style.cssText='font-size:9px;font-weight:700;margin-top:2px;color:#d97706;';
+          b.textContent='⏳ '+dayEvts.filter(e=>e.type==='open').length+' откр.';
+          cell.appendChild(b);
+        }
+        if(hasDayoff){
+          const b=document.createElement('div');
+          b.style.cssText='font-size:9px;font-weight:700;margin-top:2px;color:#dc2626;';
+          b.textContent='✗ '+dayOffs.length+' вых.';
+          cell.appendChild(b);
+        }
+
+        if(dayEvts.length || dayOffs.length){
           cell.style.cursor='pointer';
-          cell.addEventListener('click',()=>showDay(iso,dayEvts));
+          cell.addEventListener('click',()=>showDay(iso, dayEvts, dayOffs));
         }
         row.appendChild(cell); day++;
       }
@@ -726,24 +773,42 @@
     }
   }
 
-  function showDay(iso, evts){
+  function showDay(iso, evts, offs){
     const detail = document.getElementById('calDayDetail');
     const title  = document.getElementById('calDayTitle');
     const list   = document.getElementById('calDayList');
     const [y,m,d] = iso.split('-');
-    title.textContent = `${d}.${m}.${y} — ${evts.length} запис.`;
-    list.innerHTML = evts.map(e =>
-      `<div style="padding:8px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);margin-bottom:6px;font-size:13px;">
+    const total = evts.length + offs.length;
+    title.textContent = `${d}.${m}.${y} — ${total} запис.`;
+
+    let html = '';
+
+    // Lead events
+    evts.forEach(e => {
+      const isAssigned = e.type === 'assigned';
+      html += `<div style="padding:8px 12px;border:2px solid ${isAssigned?'#0d9488':'#f59e0b'};border-radius:var(--r-md);margin-bottom:6px;font-size:13px;background:${isAssigned?'#f0fdfa':'#fffbeb'};">
         <strong>${e.child_name||'Ребёнок'}${e.child_age?', '+e.child_age:''}</strong>
         ${e.time?`<span style="color:var(--c-text-muted);margin-left:8px;">${e.time}</span>`:''}
         <br>
-        ${e.nanny_id
-          ? `<span style="color:var(--c-teal-dk);">✅ Няня #${e.nanny_id}</span>`
-          : `<span style="color:#b45309;">⏳ Ожидает назначения</span>`}
+        ${isAssigned
+          ? `<span style="color:#0d9488;">✅ Назначена няня #${e.nanny_id}</span>`
+          : `<span style="color:#d97706;">⏳ Ожидает назначения</span>`}
         &nbsp;·&nbsp;
         <a class="action-link" href="/client/${e.token}" target="_blank" style="font-size:12px;">ЛК →</a>
-      </div>`
-    ).join('');
+      </div>`;
+    });
+
+    // Dayoffs
+    offs.forEach(b => {
+      const timeStr = b.start && b.end ? ` ${b.start}–${b.end}` : '';
+      html += `<div style="padding:8px 12px;border:2px solid #dc2626;border-radius:var(--r-md);margin-bottom:6px;font-size:13px;background:#fef2f2;">
+        <span style="color:#dc2626;">🚫 Выходной — <strong>${b.nanny_name||'Няня #'+b.nanny_id}</strong></span>
+        ${timeStr?`<span style="color:var(--c-text-muted);margin-left:8px;">${timeStr}</span>`:''}
+        ${b.note?`<br><span style="color:#6b7280;font-size:12px;">${b.note}</span>`:''}
+      </div>`;
+    });
+
+    list.innerHTML = html;
     detail.style.display = 'block';
     detail.scrollIntoView({behavior:'smooth',block:'nearest'});
   }

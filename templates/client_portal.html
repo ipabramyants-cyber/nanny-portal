@@ -12,7 +12,8 @@
     token: "{{ lead.token }}",
     meeting_date: "{{ lead.meeting_date or '' }}",
     work_dates: {{ lead.work_dates | tojson }},
-    client_rate: {{ lead.client_rate_per_hour | default(130000) }}
+    client_rate: {{ lead.client_rate_per_hour | default(130000) }},
+    nanny_dayoffs: {{ nanny_dayoffs | tojson }}
   };
 </script>
 
@@ -160,7 +161,7 @@
       </div>
       <div id="calendar" class="calendar" role="grid"></div>
       <p class="hint" style="margin-top:var(--s3); font-size:12px; line-height:1.7;">
-        🟩 <strong>Даты работы</strong> &nbsp;·&nbsp; 🟣 <strong>Знакомство</strong><br>
+        🟩 <strong>Даты работы</strong> &nbsp;·&nbsp; 🟣 <strong>Знакомство</strong>{% if nanny_dayoffs %} &nbsp;·&nbsp; 🔴 <strong>Выходной няни</strong>{% endif %}<br>
         Нажмите на выделенную дату — увидите чеки.
       </p>
 
@@ -197,6 +198,10 @@ function openTgLink(path) {
   const MEETING_DATE = LK.meeting_date || '';
   const TOKEN = LK.token || '';
   const CLIENT_RATE = LK.client_rate || 130000;
+  // Nanny dayoffs: [{date, start, end, note}, ...]
+  const NANNY_DAYOFFS_ARR = LK.nanny_dayoffs || [];
+  const NANNY_DAYOFFS = {};
+  NANNY_DAYOFFS_ARR.forEach(b => { NANNY_DAYOFFS[b.date] = b; });
 
   // ---- Cost calculator ----
   (function buildCalc(){
@@ -315,6 +320,15 @@ function openTgLink(path) {
           badge.style.cssText = 'font-size:10px;font-weight:700;margin-top:2px;color:var(--c-purple,#7c3aed);';
           badge.textContent = 'Знакомство';
           cell.appendChild(badge);
+        }
+
+        // Show nanny dayoff if applicable
+        if(NANNY_DAYOFFS[iso]){
+          cell.style.background = '#fee2e2';
+          const db = document.createElement('div');
+          db.style.cssText = 'font-size:9px;font-weight:700;margin-top:2px;color:#dc2626;';
+          db.textContent = '🚫 вых. няни';
+          cell.appendChild(db);
         }
 
         row.appendChild(cell); day++;
