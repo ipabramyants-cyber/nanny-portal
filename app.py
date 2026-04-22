@@ -779,6 +779,13 @@ def create_app() -> Flask:
 
         auth_token = _make_auth_token(role, telegram_user_id)
 
+        # Set session immediately so cookie is sent with this response.
+        # This fixes multi-worker deployments (Railway) where in-memory _auth_tokens
+        # may not be available on the worker handling the subsequent redirect.
+        session.permanent = True
+        session['telegram_user_id'] = telegram_user_id
+        session['role'] = role
+
         # For client role: find their LK token if they already have a lead
         lk_url = None
         if role == 'client':
