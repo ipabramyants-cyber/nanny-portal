@@ -16,7 +16,7 @@ class Nanny(db.Model):
     age = db.Column(db.String(20), nullable=True)
     exp_short = db.Column(db.String(200), nullable=True)
     bio = db.Column(db.Text, nullable=True)
-    photo = db.Column(db.String(500), nullable=True)
+    photo = db.Column(db.Text, nullable=True)  # may store data URL (base64), so Text not String
     telegram_user_id = db.Column(db.BigInteger, nullable=True)
     portal_token = db.Column(db.String(100), unique=True, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
