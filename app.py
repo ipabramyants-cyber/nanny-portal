@@ -2306,17 +2306,23 @@ def create_app() -> Flask:
     ARTICLES_FILE = os.path.join(app.config['DATA_DIR'], 'articles.json')  # JSON fallback
 
     def _sanitize_html(html):
+        """Convert markdown to HTML, or passthrough HTML, or auto-paragraph plain text."""
         if not html:
             return ''
-        if '<' not in html:
-            # No HTML tags — treat as Markdown
-            try:
-                import markdown as _md
-                return _md.markdown(html, extensions=['extra', 'nl2br'])
-            except Exception:
-                paras = [p.strip() for p in html.split('\n') if p.strip()]
-                return ''.join(f'<p>{p}</p>' for p in paras)
-        return html
+        s = str(html)
+        # If it looks like HTML (has block tags) — store as-is
+        import re as _re
+        if _re.search(r'<(p|h[1-6]|ul|ol|li|blockquote|div|br)\b', s, _re.I):
+            return s
+        # Otherwise treat as Markdown
+        try:
+            import markdown as _md
+            return _md.markdown(s, extensions=['extra', 'nl2br'])
+        except ImportError:
+            pass
+        # fallback: convert newlines to <p>
+        paras = [p.strip() for p in s.split('\n') if p.strip()]
+        return ''.join(f'<p>{p}</p>' for p in paras)
 
     def _art_to_dict(a):
         return {
@@ -2560,6 +2566,8 @@ def create_app() -> Flask:
                          'created_at': a.get('created_at','')} for a in arts])
         resp.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
         return resp
+
+
 
 
 
