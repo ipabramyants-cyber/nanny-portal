@@ -1,8 +1,8 @@
 (function () {
-  // Calendar widget:
+  // Calendar widget v2:
   // - Choose mode: meeting (single date) or work (multiple dates)
-  // - Left click: set date (and optionally time)
-  // - Right click / tap remove icon: remove selection
+  // - Left click / tap: set date (and optionally time)
+  // - Right click / long press (500ms) / tap remove icon: remove selection
   // - Meeting dates = purple; Work dates = green
   // - Past dates = disabled (grayed, not clickable)
   // - Works both on landing and on client LK pages.
@@ -39,14 +39,19 @@
 
   // ── Touch / swipe support for month navigation ──────────────
   let _touchStartX = null;
+  let _touchStartY = null;
   calEl.addEventListener('touchstart', (e) => {
     _touchStartX = e.touches[0].clientX;
+    _touchStartY = e.touches[0].clientY;
   }, { passive: true });
   calEl.addEventListener('touchend', (e) => {
     if (_touchStartX === null) return;
     const dx = e.changedTouches[0].clientX - _touchStartX;
+    const dy = e.changedTouches[0].clientY - _touchStartY;
     _touchStartX = null;
-    if (Math.abs(dx) < 40) return;
+    _touchStartY = null;
+    // Only horizontal swipe (dx > dy to avoid scroll conflicts)
+    if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
     if (dx < 0) navigateMonth(1);
     else         navigateMonth(-1);
   }, { passive: true });
@@ -91,6 +96,25 @@
   }
 
   const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  // ── Selected dates counter ──────────────────────────────────
+  function updateCounter() {
+    const counterEl = document.getElementById('calCounter');
+    if (!counterEl) return;
+    const workCount = Object.keys(workDates).length;
+    const parts = [];
+    if (workCount > 0) parts.push(`${workCount} рабочих ${_pluralize(workCount, 'день', 'дня', 'дней')}`);
+    if (meetingDate) parts.push('1 встреча');
+    counterEl.textContent = parts.length ? '✓ Выбрано: ' + parts.join(' · ') : '';
+    counterEl.style.opacity = parts.length ? '1' : '0';
+  }
+
+  function _pluralize(n, one, few, many) {
+    const mod10 = n % 10, mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return one;
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+    return many;
+  }
 
   function render() {
     const year  = viewDate.getFullYear();
@@ -174,18 +198,41 @@
           }
         }
 
+        // ── Long press / touch-hold → remove ──────────────────
+        let _longPressTimer = null;
+        cell.addEventListener('touchstart', () => {
+          _longPressTimer = setTimeout(() => {
+            _longPressTimer = null;
+            _removeDate(key, cell);
+            // Haptic feedback if available
+            if (navigator.vibrate) navigator.vibrate(40);
+          }, 500);
+        }, { passive: true });
+        cell.addEventListener('touchend', () => {
+          if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+        }, { passive: true });
+        cell.addEventListener('touchmove', () => {
+          if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+        }, { passive: true });
+
         // ── Left click ────────────────────────────────────────
         cell.addEventListener('click', async (e) => {
           e.preventDefault();
+          // Micro-animation tap feedback
+          cell.classList.add('cal-tap');
+          setTimeout(() => cell.classList.remove('cal-tap'), 200);
+
           if (mode === 'meeting') {
             meetingDate = key;
             render();
+            updateCounter();
           } else {
             if (!workDates[key]) workDates[key] = {};
             const existing = String(workDates[key].time || '');
             const picked = await _pickTime(existing);
             if (picked !== null) workDates[key].time = picked;
             render();
+            updateCounter();
           }
         });
 
@@ -200,11 +247,16 @@
       }
       calEl.appendChild(row);
     }
+
+    updateCounter();
   }
 
   function _removeDate(key, cell) {
     if (!cell) {
+      if (meetingDate === key) meetingDate = null;
+      if (workDates[key]) delete workDates[key];
       render();
+      updateCounter();
       return;
     }
     // Flash red animation before removing
@@ -213,6 +265,7 @@
       if (meetingDate === key) meetingDate = null;
       if (workDates[key]) delete workDates[key];
       render();
+      updateCounter();
     }, 260);
   }
 
@@ -242,13 +295,14 @@
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(0,0,0,.5);backdrop-filter:blur(2px);';
 
     const sheet = document.createElement('div');
-    sheet.style.cssText = 'background:#fff;border-radius:24px 24px 0 0;padding:20px 20px 36px;box-shadow:0 -4px 40px rgba(0,0,0,.18);max-height:85vh;overflow-y:auto;';
+    // Safe area inset bottom for iPhone notch/home bar
+    sheet.style.cssText = 'background:#fff;border-radius:24px 24px 0 0;padding:20px 20px 0;box-shadow:0 -4px 40px rgba(0,0,0,.18);max-height:85vh;overflow-y:auto;padding-bottom:calc(24px + env(safe-area-inset-bottom, 0px));';
     sheet.innerHTML = `
       <div style="width:40px;height:4px;border-radius:4px;background:rgba(0,0,0,.12);margin:0 auto 20px;"></div>
       <div style="font-weight:900;font-size:18px;margin-bottom:20px;color:#016b82;text-align:center;">⏰ Время работы</div>
       <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:end;margin-bottom:20px;">
         <div>
-          <div style="font-size:12px;font-weight:700;color:#6a8f9b;margin-bottom:8px;text-align:center;text-transform:uppercase;letter-spacing:.05em;">Начало</div>
+          <div style="font-size:12px;font-weight:700;color:#4e7280;margin-bottom:8px;text-align:center;text-transform:uppercase;letter-spacing:.05em;">Начало</div>
           <div style="display:flex;gap:4px;align-items:center;">
             <select id="__cal_sh" style="flex:1;padding:12px 4px;border:2px solid #e2e8f0;border-radius:12px;font-size:18px;font-weight:800;background:#f8fafc;-webkit-appearance:none;text-align:center;cursor:pointer;">${hoursOpts(sh0)}</select>
             <span style="font-weight:900;font-size:20px;color:#016b82;">:</span>
@@ -257,7 +311,7 @@
         </div>
         <div style="padding-bottom:12px;color:#bbb;font-size:22px;font-weight:300;text-align:center;">→</div>
         <div>
-          <div style="font-size:12px;font-weight:700;color:#6a8f9b;margin-bottom:8px;text-align:center;text-transform:uppercase;letter-spacing:.05em;">Конец</div>
+          <div style="font-size:12px;font-weight:700;color:#4e7280;margin-bottom:8px;text-align:center;text-transform:uppercase;letter-spacing:.05em;">Конец</div>
           <div style="display:flex;gap:4px;align-items:center;">
             <select id="__cal_eh" style="flex:1;padding:12px 4px;border:2px solid #e2e8f0;border-radius:12px;font-size:18px;font-weight:800;background:#f8fafc;-webkit-appearance:none;text-align:center;cursor:pointer;">${hoursOpts(eh0)}</select>
             <span style="font-weight:900;font-size:20px;color:#016b82;">:</span>
@@ -267,7 +321,7 @@
       </div>
       <div id="__cal_preview" style="text-align:center;font-size:15px;font-weight:700;color:#016b82;margin-bottom:8px;min-height:24px;"></div>
       <div id="__cal_err" style="color:#e53e3e;font-size:13px;min-height:18px;margin-bottom:12px;text-align:center;"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
         <button id="__cal_cancel" style="padding:14px;border:2px solid #e2e8f0;border-radius:14px;font-size:15px;font-weight:700;background:#f8fafc;cursor:pointer;transition:background .15s;">Отмена</button>
         <button id="__cal_ok" style="padding:14px;border:none;border-radius:14px;font-size:15px;font-weight:700;background:linear-gradient(135deg,#016b82,#0ab5d4);color:#fff;cursor:pointer;transition:opacity .15s;">Сохранить</button>
       </div>

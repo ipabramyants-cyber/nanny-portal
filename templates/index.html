@@ -80,7 +80,7 @@
 
     <div class="hero-stats">
       <div class="hero-stat">
-        <div class="hero-stat__value">4+</div>
+        <div class="hero-stat__value" data-count="4" data-suffix="+">4+</div>
         <div class="hero-stat__label">Проверенных нянь</div>
       </div>
       <div class="hero-stat">
@@ -88,7 +88,7 @@
         <div class="hero-stat__label">Рейтинг</div>
       </div>
       <div class="hero-stat">
-        <div class="hero-stat__value">15мин</div>
+        <div class="hero-stat__value" data-count="15" data-suffix="мин">15мин</div>
         <div class="hero-stat__label">Быстрый подбор</div>
       </div>
       <div class="hero-stat">
@@ -96,6 +96,39 @@
         <div class="hero-stat__label">Лет детям</div>
       </div>
     </div>
+    <script>
+    (function(){
+      // Count-up animation for hero stats
+      function animateCount(el) {
+        var target = parseInt(el.dataset.count);
+        var suffix = el.dataset.suffix || '';
+        if (!target) return;
+        var start = 0;
+        var duration = 1200;
+        var startTime = null;
+        function step(ts) {
+          if (!startTime) startTime = ts;
+          var progress = Math.min((ts - startTime) / duration, 1);
+          var eased = 1 - Math.pow(1 - progress, 3);
+          var current = Math.round(eased * target);
+          el.textContent = current + suffix;
+          if (progress < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      }
+      if ('IntersectionObserver' in window) {
+        var obs = new IntersectionObserver(function(entries) {
+          entries.forEach(function(e) {
+            if (e.isIntersecting && e.target.dataset.count) {
+              animateCount(e.target);
+              obs.unobserve(e.target);
+            }
+          });
+        }, { threshold: 0.5 });
+        document.querySelectorAll('.hero-stat__value[data-count]').forEach(function(el){ obs.observe(el); });
+      }
+    })();
+    </script>
   </div>
 
   <!-- Wave separator -->
@@ -160,8 +193,9 @@
       <div class="cal-legend__item"><div class="cal-legend__dot cal-legend__dot--work"></div> Рабочий день</div>
       <div class="cal-legend__item"><div class="cal-legend__dot cal-legend__dot--meeting"></div> Встреча</div>
     </div>
-    <p class="hint" style="margin-top:8px;">
-      🗓 Тап — выбрать дату · Правый клик / долгий тап — убрать · Свайп — след. месяц
+    <div id="calCounter" style="opacity:0;"></div>
+    <p class="hint" style="margin-top:6px;">
+      🗓 Тап — выбрать дату · Долгий тап / правый клик — убрать · Свайп — след. месяц
     </p>
   </div>
 
@@ -267,23 +301,31 @@
       var allCards = Array.from(document.querySelectorAll('[data-review-idx]'));
       var total = allCards.length;
       if (total === 0) return;
-      var perPage = window.innerWidth >= 900 ? 3 : window.innerWidth >= 540 ? 2 : 1;
-      var page = 0;
-      var pages = Math.ceil(total / perPage);
 
       var grid  = document.getElementById('reviewsGrid');
       var prev  = document.getElementById('reviewsPrev');
       var next  = document.getElementById('reviewsNext');
       var dots  = document.getElementById('reviewsDots');
 
-      // Build dots
-      for (var i = 0; i < pages; i++) {
-        var d = document.createElement('button');
-        d.className = 'reviews-nav__dot' + (i === 0 ? ' active' : '');
-        d.setAttribute('aria-label', 'Страница ' + (i+1));
-        d.dataset.page = i;
-        d.addEventListener('click', function(){ goTo(+this.dataset.page); });
-        dots.appendChild(d);
+      var page = 0;
+      var perPage = 1;
+      var pages = 1;
+
+      function getPerPage() {
+        return window.innerWidth >= 900 ? 3 : window.innerWidth >= 540 ? 2 : 1;
+      }
+
+      function buildDots() {
+        dots.innerHTML = '';
+        pages = Math.ceil(total / perPage);
+        for (var i = 0; i < pages; i++) {
+          var d = document.createElement('button');
+          d.className = 'reviews-nav__dot' + (i === 0 ? ' active' : '');
+          d.setAttribute('aria-label', 'Страница ' + (i+1));
+          d.dataset.page = i;
+          d.addEventListener('click', function(){ goTo(+this.dataset.page); });
+          dots.appendChild(d);
+        }
       }
 
       function goTo(p) {
@@ -303,16 +345,35 @@
         }, 180);
       }
 
+      function reinit() {
+        var newPer = getPerPage();
+        if (newPer === perPage) return;
+        perPage = newPer;
+        buildDots();
+        goTo(0);
+      }
+
       grid.style.transition = 'opacity .2s, transform .2s';
       prev.addEventListener('click', function(){ goTo(page - 1); });
       next.addEventListener('click', function(){ goTo(page + 1); });
-      goTo(0);
 
       // Keyboard support
       document.addEventListener('keydown', function(e){
         if (e.key === 'ArrowRight') goTo(page + 1);
         if (e.key === 'ArrowLeft') goTo(page - 1);
       });
+
+      // Responsive resize
+      var _resizeTimer;
+      window.addEventListener('resize', function(){
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(reinit, 200);
+      }, { passive: true });
+
+      // Init
+      perPage = getPerPage();
+      buildDots();
+      goTo(0);
     })();
     </script>
   </div>

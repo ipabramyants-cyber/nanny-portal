@@ -329,14 +329,17 @@
   function fmt(n){ return Math.round(n).toLocaleString('ru-RU') + ' ₫'; }
 
   function update(){
-    var rate = parseInt(rateEl.value) || 200000;
-    var hours = parseFloat(hoursEl.value) || 4;
-    var shifts = parseInt(shiftsEl.value) || 8;
+    var rate   = parseInt(rateEl.value) || 200000;
+    var hours  = Math.max(3, Math.min(12, parseFloat(hoursEl.value) || 4));
+    var shifts = Math.max(1, Math.min(31, parseInt(shiftsEl.value) || 8));
+    // Fix inputs if out of range
+    if (parseFloat(hoursEl.value) !== hours) hoursEl.value = hours;
+    if (parseInt(shiftsEl.value) !== shifts) shiftsEl.value = shifts;
     var one = rate * hours;
     var month = one * shifts;
     calcOne.textContent = fmt(one);
     calcMonth.textContent = fmt(month);
-    if(rate === 200000){
+    if (rate === 200000) {
       var save = (200000 - 130000) * hours * shifts;
       calcSave.textContent = '−' + fmt(save) + ' при регулярном';
       calcSaveRow.style.display = 'flex';

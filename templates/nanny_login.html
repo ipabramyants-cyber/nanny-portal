@@ -16,7 +16,8 @@
 <div class="container" style="padding:var(--s6) 0 var(--s10);max-width:520px;">
 
   <!-- Status panel -->
-  <div class="panel" id="statusPanel" style="text-align:center;padding:var(--s6);">
+  <!-- Status shown only when inside Telegram -->
+  <div class="panel" id="statusPanel" style="text-align:center;padding:var(--s6);display:none;">
     <div id="statusIcon" style="font-size:40px;margin-bottom:var(--s3);">⏳</div>
     <div id="statusText" style="font-size:15px;font-weight:600;color:var(--c-teal-dk);">Проверяю Telegram WebApp…</div>
     <div id="debugText" style="margin-top:var(--s3);font-size:11px;color:var(--c-text-muted);white-space:pre-wrap;display:none;"></div>
@@ -79,12 +80,13 @@
 
   try {
     if (!window.Telegram || !Telegram.WebApp || !Telegram.WebApp.initData) {
-      // Not in Telegram — show desktop instructions
-      statusPanel.style.display = 'none';
+      // Not in Telegram — show desktop instructions immediately
       fallback.style.display = 'block';
       return;
     }
 
+    // Inside Telegram — show status panel
+    statusPanel.style.display = 'block';
     Telegram.WebApp.ready();
     const initData = Telegram.WebApp.initData;
 

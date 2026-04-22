@@ -30,8 +30,19 @@
       <h2 style="margin:0; font-size:1.2rem; color:var(--c-teal-dk);">Мои смены</h2>
       <span id="shiftCount" class="badge badge--info"></span>
     </div>
-    <div id="shiftItems" style="display:flex; flex-direction:column; gap:var(--s3);"></div>
-    <p id="shiftEmpty" class="hint" style="display:none; text-align:center; padding:var(--s8);">Смен пока нет</p>
+    <!-- Skeleton loaders -->
+    <div id="shiftSkeleton" style="display:flex;flex-direction:column;gap:var(--s3);">
+      <div class="skeleton-card"></div>
+      <div class="skeleton-card" style="animation-delay:.15s;height:64px;"></div>
+      <div class="skeleton-card" style="animation-delay:.3s;height:72px;"></div>
+    </div>
+    <div id="shiftItems" style="display:none; flex-direction:column; gap:var(--s3);"></div>
+    <!-- Empty state with illustration -->
+    <div id="shiftEmpty" style="display:none; text-align:center; padding:var(--s10) var(--s4);">
+      <div style="font-size:56px;margin-bottom:var(--s3);">📅</div>
+      <div style="font-weight:800;font-size:16px;color:var(--c-teal-dk);margin-bottom:var(--s2);">Смен пока нет</div>
+      <p class="hint">Администратор назначит няню и создаст первую смену после подтверждения заявки.</p>
+    </div>
   </div>
 
   <!-- Shift detail -->
@@ -98,10 +109,16 @@
     return data;
   }
 
+  const shiftSkeleton = document.getElementById('shiftSkeleton');
+
   async function loadShifts() {
     statusHeader.textContent = 'Загружаем смены…';
+    // Show skeleton while loading
+    if (shiftSkeleton) shiftSkeleton.style.display = 'flex';
+    if (shiftItems) shiftItems.style.display = 'none';
     const resp = await fetch('/api/client/me/shifts');
     const data = await resp.json();
+    if (shiftSkeleton) shiftSkeleton.style.display = 'none';
     if (!resp.ok) {
       statusHeader.textContent = data?.error || 'Ошибка загрузки';
       return;
@@ -109,9 +126,12 @@
     statusHeader.textContent = 'Всё актуально';
     shiftList.style.display = 'block';
     const items = data.items || [];
-    shiftCount.textContent = items.length + ' смен';
-    if (!items.length) { shiftEmpty.style.display = 'block'; return; }
-
+    shiftCount.textContent = items.length + ' ' + (items.length === 1 ? 'смена' : items.length < 5 ? 'смены' : 'смен');
+    if (!items.length) {
+      shiftEmpty.style.display = 'block';
+      return;
+    }
+    shiftItems.style.display = 'flex';
     shiftItems.innerHTML = '';
     items.forEach(s => {
       const needsAction = s.status === 'waiting_client';
@@ -139,8 +159,15 @@
   }
 
   function showShiftDetail(s) {
-    shiftList.style.display = 'none';
-    shiftDetail.style.display = 'block';
+    shiftList.classList.add('shift-slide-out');
+    setTimeout(() => {
+      shiftList.style.display = 'none';
+      shiftList.classList.remove('shift-slide-out');
+      shiftDetail.style.display = 'block';
+      shiftDetail.classList.add('shift-slide-in');
+      setTimeout(() => shiftDetail.classList.remove('shift-slide-in'), 300);
+      shiftDetail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 180);
     const canAct = s.status === 'waiting_client';
 
     shiftDetailContent.innerHTML = `
@@ -203,8 +230,14 @@
   }
 
   backBtn.addEventListener('click', () => {
-    shiftDetail.style.display = 'none';
-    shiftList.style.display = 'block';
+    shiftDetail.classList.add('shift-slide-out');
+    setTimeout(() => {
+      shiftDetail.style.display = 'none';
+      shiftDetail.classList.remove('shift-slide-out');
+      shiftList.style.display = 'block';
+      shiftList.classList.add('shift-slide-in');
+      setTimeout(() => shiftList.classList.remove('shift-slide-in'), 300);
+    }, 180);
   });
 
   (async function() {

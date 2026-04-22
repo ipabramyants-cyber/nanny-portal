@@ -160,9 +160,10 @@
         <button type="button" id="nextMonth" aria-label="Следующий месяц">›</button>
       </div>
       <div id="calendar" class="calendar" role="grid"></div>
+      <div id="calCounter" style="opacity:0;"></div>
       <p class="hint" style="margin-top:var(--s3); font-size:12px; line-height:1.7;">
         🟩 <strong>Даты работы</strong> &nbsp;·&nbsp; 🟣 <strong>Знакомство</strong>{% if nanny_dayoffs %} &nbsp;·&nbsp; 🔴 <strong>Выходной няни</strong>{% endif %}<br>
-        Нажмите на выделенную дату — увидите чеки.
+        Нажмите на выделенную дату — увидите чеки. Долгий тап — убрать дату.
       </p>
 
       <!-- Cost calculator (client view) -->
