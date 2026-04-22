@@ -611,9 +611,20 @@ def create_app() -> Flask:
     def nanny_login():
         return render_template('nanny_login.html')
 
-    @app.route('/admin/login')
+    @app.route('/admin/login', methods=['GET', 'POST'])
     def admin_login():
-        return render_template('admin_login.html')
+        error = None
+        if request.method == 'POST':
+            token = os.environ.get('ADMIN_TOKEN', '')
+            entered = (request.form.get('password') or '').strip()
+            if token and entered == token:
+                session.permanent = True
+                session['role'] = 'admin'
+                session['telegram_user_id'] = 0  # browser login marker
+                return redirect(url_for('admin'))
+            else:
+                error = 'Неверный пароль'
+        return render_template('admin_login.html', error=error)
 
     @app.route('/nanny/app')
     @require_nanny

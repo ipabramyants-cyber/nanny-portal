@@ -1,49 +1,85 @@
 {% extends "base.html" %}
 {% block scripts_pre %}<script src="https://telegram.org/js/telegram-web-app.js"></script>{% endblock %}
-{% block title %}Вход{% endblock %}
+{% block title %}Вход в админку{% endblock %}
 {% block content %}
-<section class="container" style="padding-top: 14px;">
-  <h1 style="margin: 8px 0;">Вход администратора</h1>
-  <p style="opacity:.8">Откройте эту страницу внутри Telegram Mini App. Мы проверим <code>initData</code> и авторизуем вас.</p>
 
-  <div class="panel" style="margin-top:14px; padding:14px;">
-    <div id="status" style="opacity:.85;">Проверяю Telegram WebApp…</div>
-    <div id="debug" style="margin-top:10px; font-size:12px; opacity:.7; white-space:pre-wrap;"></div>
+<div style="min-height:80vh; display:flex; align-items:center; justify-content:center; padding:var(--s6);">
+  <div style="width:100%; max-width:380px;">
+
+    <!-- Logo -->
+    <div style="text-align:center; margin-bottom:var(--s6);">
+      <img src="/static/img/logo.png" alt="Няня на час" width="72" height="72"
+           style="border-radius:50%; box-shadow:0 4px 16px rgba(1,107,130,.25);" />
+      <h2 style="margin:var(--s3) 0 4px; color:var(--c-teal-dk);">Вход в админку</h2>
+      <p style="font-size:13px; color:var(--c-muted); margin:0;">Няня на час — Нячанг</p>
+    </div>
+
+    <!-- Password form -->
+    <div class="panel">
+      <form method="POST" action="/admin/login" id="pwdForm">
+        <div style="margin-bottom:var(--s4);">
+          <label style="font-size:13px; font-weight:700; color:var(--c-text-2); display:block; margin-bottom:6px;">
+            Пароль администратора
+          </label>
+          <input type="password" name="password" id="pwdInput" required
+                 placeholder="Введите пароль"
+                 autocomplete="current-password"
+                 style="width:100%; padding:12px 14px; border:1.5px solid var(--c-border); border-radius:var(--r-md);
+                        font-size:15px; background:var(--c-bg); color:var(--c-text); box-sizing:border-box;
+                        outline:none; transition:border-color .15s;"
+                 onfocus="this.style.borderColor='var(--c-teal)'"
+                 onblur="this.style.borderColor='var(--c-border)'" />
+        </div>
+
+        {% if error %}
+        <div style="background:#fff0f0; border:1.5px solid #ffcccc; border-radius:var(--r-sm);
+                    padding:10px 14px; font-size:13px; color:#c00; margin-bottom:var(--s3);">
+          ❌ {{ error }}
+        </div>
+        {% endif %}
+
+        <button type="submit" class="btn primary" style="width:100%; padding:13px; font-size:15px;">
+          Войти →
+        </button>
+      </form>
+
+      <div style="margin-top:var(--s4); padding-top:var(--s4); border-top:1px solid var(--c-border);">
+        <div id="tgStatus" style="font-size:13px; color:var(--c-muted); text-align:center;">
+          Или войдите через Telegram Mini App
+        </div>
+      </div>
+    </div>
+
+    <p style="text-align:center; margin-top:var(--s4); font-size:13px; color:var(--c-muted);">
+      <a href="/" style="color:var(--c-teal);">← На главную</a>
+    </p>
+
   </div>
-</section>
+</div>
 
 <script>
 (async function(){
-  const status = document.getElementById('status');
-  const debug = document.getElementById('debug');
+  const status = document.getElementById('tgStatus');
   try {
-    if (!window.Telegram || !Telegram.WebApp) {
-      status.textContent = 'Telegram WebApp не найден. Откройте страницу внутри Telegram.';
-      return;
-    }
+    if (!window.Telegram || !Telegram.WebApp) return;
     Telegram.WebApp.ready();
     const initData = Telegram.WebApp.initData || '';
-    if (!initData) {
-      status.textContent = 'initData пустой. Откройте Mini App из бота (кнопка/меню).';
-      return;
-    }
-    status.textContent = 'Авторизация…';
+    if (!initData) return;
+    status.textContent = 'Авторизация через Telegram…';
     const resp = await fetch('/api/auth/telegram', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({init_data: initData})
     });
     const data = await resp.json().catch(()=>null);
-    if (!resp.ok) {
-      status.textContent = 'Ошибка авторизации.';
-      debug.textContent = JSON.stringify(data, null, 2);
-      return;
+    if (resp.ok) {
+      status.textContent = '✓ Авторизован. Переходим…';
+      window.location.href = '/admin';
+    } else {
+      status.textContent = 'Telegram: ' + (data && data.error ? data.error : 'ошибка');
     }
-    status.textContent = 'Готово. Переходим в админку…';
-    window.location.href = '/admin';
-  } catch (e) {
-    status.textContent = 'Ошибка: ' + (e && e.message ? e.message : String(e));
-  }
+  } catch(e) {}
 })();
 </script>
+
 {% endblock %}
