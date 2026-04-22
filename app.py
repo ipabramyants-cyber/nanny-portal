@@ -131,6 +131,20 @@ def create_app() -> Flask:
             if os.environ.get('RESET_DB') == '1':
                 db.drop_all()
             db.create_all()
+            # Auto-migrate: add new columns to existing tables without dropping data.
+            # Safe to run on every startup (IF NOT EXISTS).
+            try:
+                with db.engine.connect() as _conn:
+                    _conn.execute(db.text(
+                        "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS nanny_id VARCHAR(100)"
+                    ))
+                    _conn.execute(db.text(
+                        "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS pinned BOOLEAN DEFAULT FALSE"
+                    ))
+                    _conn.commit()
+            except Exception as _e:
+                import warnings
+                warnings.warn(f"Auto-migrate reviews skipped: {_e}")
 
     BASE_DIR = os.path.dirname(__file__)
 
