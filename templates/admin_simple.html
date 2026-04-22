@@ -488,6 +488,17 @@
                   {% for i in range(1,6) %}<option value="{{ i }}" {% if review.stars == i %}selected{% endif %}>{{ i }} ★</option>{% endfor %}
                 </select>
               </div>
+              <div>
+                <label>Привязка к няне (необязательно)</label>
+                <select name="nanny_id" style="width:100%; padding:8px 12px; border-radius:var(--r-sm); border:1.5px solid var(--c-border-str);">
+                  <option value="">— без привязки —</option>
+                  {% for n in nannies %}<option value="{{ n.id }}" {% if review.nanny_id == n.id or review.nanny_id == n.portal_token %}selected{% endif %}>{{ n.name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" name="pinned" id="pinned_{{ review.id }}" value="1" {% if review.pinned %}checked{% endif %} style="width:auto;" />
+                <label for="pinned_{{ review.id }}" style="margin:0; font-weight:600;">📌 Закреплён на странице няни</label>
+              </div>
               <button type="submit" class="btn primary" style="width:auto; margin-top:0;">Сохранить</button>
             </form>
             <form method="POST" action="/admin/review/delete">
@@ -516,6 +527,17 @@
               <option value="2">2 ★</option>
               <option value="1">1 ★</option>
             </select>
+          </div>
+          <div>
+            <label>Привязка к няне (необязательно)</label>
+            <select name="nanny_id" style="width:100%; padding:8px 12px; border-radius:var(--r-sm); border:1.5px solid var(--c-border-str);">
+              <option value="">— без привязки —</option>
+              {% for n in nannies %}<option value="{{ n.id }}">{{ n.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" name="pinned" value="1" style="width:auto;" />
+            <label style="margin:0; font-weight:600;">📌 Закрепить на странице няни</label>
           </div>
           <div><button type="submit" class="btn primary" style="width:auto; margin-top:0;">Добавить</button></div>
         </form>

@@ -7,7 +7,7 @@
 {% if art.seo_description %}<meta property="og:description" content="{{ art.seo_description }}">{% endif %}
 {% if art.cover_url %}<meta property="og:image" content="{{ art.cover_url }}">{% endif %}
 <meta property="og:type" content="article">
-<link rel="canonical" href="{{ request.url_root.rstrip('/') }}/blog/{{ art.slug }}">
+<link rel="canonical" href="{{ site_url }}/blog/{{ art.slug }}">
 {% endblock %}
 {% block content %}
 

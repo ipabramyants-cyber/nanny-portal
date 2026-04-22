@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block head_meta %}
-  <link rel="canonical" href="{{ request.url }}" />
+  <link rel="canonical" href="{{ site_url }}{{ request.path }}" />
   <meta name="robots" content="index, follow">
   <meta name="description" content="Няня {{ nanny.name }} в Нячанге — {{ nanny.exp_short }}. Проверенная няня для детей 0–8 лет. Быстрый подбор, личный кабинет." />
   <meta property="og:title" content="Няня {{ nanny.name }} — Нячанг" />

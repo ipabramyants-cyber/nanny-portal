@@ -160,6 +160,10 @@
     <div id="tgAuthBadge" style="display:none; margin:-4px 0 12px; padding:8px 12px; border-radius:var(--r-sm); background:var(--c-teal-lt); border:1.5px solid rgba(10,181,212,.3); font-size:13px; color:var(--c-teal-dk); font-weight:700; align-items:center; gap:6px;">
       <span>✅</span> <span id="tgAuthName">Вы в Telegram</span>
     </div>
+    <!-- Loading state while waiting for TG SDK -->
+    <div id="tgLoading" style="margin:-4px 0 12px; padding:8px 12px; border-radius:var(--r-sm); background:var(--c-surface-2); font-size:13px; color:var(--c-text-2);">
+      ⏳ Определяем Telegram…
+    </div>
     <!-- Fallback telegram field — shown only when NOT in Telegram -->
     <div id="telegramRow" style="display:none;">
       <label for="telegramField">Telegram для связи</label>
@@ -196,6 +200,7 @@
     (function(){
       var badge    = document.getElementById('tgAuthBadge');
       var tgRow    = document.getElementById('telegramRow');
+      var tgLoading = document.getElementById('tgLoading');
       var tgField  = document.getElementById('telegramField');
       var initData = document.getElementById('tgInitData');
       var userId   = document.getElementById('tgUserId');
@@ -203,6 +208,7 @@
       var hint     = document.getElementById('calHint');
 
       function applyTelegram(tg) {
+        if (tgLoading) tgLoading.style.display = 'none';
         tg.ready();
         tg.expand();
         initData.value = tg.initData || '';
@@ -241,6 +247,7 @@
       }
 
       function showManualField() {
+        if (tgLoading) tgLoading.style.display = 'none';
         badge.style.display = 'none';
         tgRow.style.display = 'block';
         if (tgField) tgField.setAttribute('required', 'required');
