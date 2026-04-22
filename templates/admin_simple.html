@@ -54,6 +54,69 @@
     </div>
   </div>
 
+  <!-- ══════════ PROFIT DASHBOARD ══════════ -->
+  <div class="admin-section">
+    <div class="panel" style="padding:var(--s5);">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s3);margin-bottom:var(--s5);">
+        <h2 style="margin:0;font-size:1.2rem;">💰 Финансовая аналитика</h2>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;" id="profitPeriodTabs">
+          <button class="earn-tab active" data-p="day">День</button>
+          <button class="earn-tab" data-p="week">Неделя</button>
+          <button class="earn-tab" data-p="month">Месяц</button>
+          <button class="earn-tab" data-p="all">Всё время</button>
+        </div>
+      </div>
+
+      <!-- Summary KPIs -->
+      <div class="profit-kpi-grid" id="profitKpiGrid">
+        <div class="profit-kpi profit-kpi--client">
+          <div class="profit-kpi__icon">👤</div>
+          <div class="profit-kpi__label">Выручка (клиенты)</div>
+          <div class="profit-kpi__val" id="pClient">—</div>
+        </div>
+        <div class="profit-kpi profit-kpi--nanny">
+          <div class="profit-kpi__icon">👩</div>
+          <div class="profit-kpi__label">Выплаты (няням)</div>
+          <div class="profit-kpi__val" id="pNanny">—</div>
+        </div>
+        <div class="profit-kpi profit-kpi--margin">
+          <div class="profit-kpi__icon">💵</div>
+          <div class="profit-kpi__label">Прибыль (маржа)</div>
+          <div class="profit-kpi__val" id="pMargin">—</div>
+        </div>
+        <div class="profit-kpi">
+          <div class="profit-kpi__icon">⏱</div>
+          <div class="profit-kpi__label">Часов отработано</div>
+          <div class="profit-kpi__val" id="pHours">—</div>
+        </div>
+        <div class="profit-kpi">
+          <div class="profit-kpi__icon">✅</div>
+          <div class="profit-kpi__label">Смен завершено</div>
+          <div class="profit-kpi__val" id="pDone">—</div>
+        </div>
+        <div class="profit-kpi">
+          <div class="profit-kpi__icon">⏳</div>
+          <div class="profit-kpi__label">Смен в обработке</div>
+          <div class="profit-kpi__val" id="pPending">—</div>
+        </div>
+      </div>
+
+      <!-- Bar chart -->
+      <div id="profitChart" style="margin-top:var(--s5);display:none;">
+        <div style="font-size:12px;color:var(--c-text-muted);margin-bottom:var(--s2);">Прибыль по дням</div>
+        <div id="profitBars" style="display:flex;gap:5px;align-items:flex-end;height:100px;overflow-x:auto;padding-bottom:4px;"></div>
+        <div style="display:flex;gap:var(--s4);margin-top:var(--s2);font-size:11px;color:var(--c-text-muted);">
+          <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--c-teal);margin-right:4px;"></span>Выручка</span>
+          <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--c-lime);margin-right:4px;"></span>Прибыль</span>
+        </div>
+      </div>
+
+      <div id="profitEmpty" style="display:none;text-align:center;padding:var(--s5);color:var(--c-text-muted);font-size:14px;">
+        Завершённых смен за этот период нет
+      </div>
+    </div>
+  </div>
+
   <!-- MASTER CALENDAR -->
   <div class="admin-section">
     <div class="panel">
@@ -986,6 +1049,84 @@
     });
   });
 })();
+
+// ── Admin Profit Dashboard ────────────────────────────────────────────────
+(function(){
+  const fmtMoney = v => v == null ? '—' : Number(v).toLocaleString('ru-RU') + ' ₫';
+  const fmtDate = ymd => { if(!ymd||ymd.length!==10)return ymd; const[y,m,d]=ymd.split('-'); return `${d}.${m}`; };
+
+  let profitPeriod = 'month';
+
+  document.getElementById('profitPeriodTabs').addEventListener('click', function(e){
+    const btn = e.target.closest('.earn-tab');
+    if(!btn) return;
+    this.querySelectorAll('.earn-tab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    profitPeriod = btn.dataset.p;
+    loadProfit();
+  });
+
+  async function loadProfit(){
+    try{
+      const r = await fetch('/api/admin/profit?period=' + profitPeriod);
+      const d = await r.json();
+      if(!d.ok) return;
+      const s = d.summary;
+      document.getElementById('pClient').textContent = fmtMoney(s.client_total);
+      document.getElementById('pNanny').textContent = fmtMoney(s.nanny_total);
+      document.getElementById('pMargin').textContent = fmtMoney(s.margin);
+      document.getElementById('pHours').textContent = s.hours + ' ч';
+      document.getElementById('pDone').textContent = s.shifts_done;
+      document.getElementById('pPending').textContent = s.shifts_pending;
+
+      const daily = d.daily || [];
+      const profitChart = document.getElementById('profitChart');
+      const profitEmpty = document.getElementById('profitEmpty');
+
+      if(!daily.length){
+        profitChart.style.display='none';
+        profitEmpty.style.display='block';
+      } else {
+        profitEmpty.style.display='none';
+        profitChart.style.display='block';
+        const maxClient = Math.max(...daily.map(x=>x.client), 1);
+        const barsEl = document.getElementById('profitBars');
+        barsEl.innerHTML = daily.map(x=>{
+          const hC = Math.max(6, Math.round((x.client/maxClient)*88));
+          const hM = Math.max(4, Math.round((x.margin/maxClient)*88));
+          return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;min-width:36px;" title="${fmtDate(x.date)}\nВыручка: ${fmtMoney(x.client)}\nПрибыль: ${fmtMoney(x.margin)}">
+            <div style="display:flex;gap:2px;align-items:flex-end;">
+              <div style="width:14px;height:${hC}px;background:var(--c-teal);border-radius:3px 3px 0 0;opacity:.8;"></div>
+              <div style="width:14px;height:${hM}px;background:var(--c-lime);border-radius:3px 3px 0 0;opacity:.9;"></div>
+            </div>
+            <div style="font-size:9px;color:var(--c-text-muted);">${fmtDate(x.date)}</div>
+          </div>`;
+        }).join('');
+      }
+    } catch(e){ console.error('profit error', e); }
+  }
+
+  loadProfit();
+})();
 </script>
+
+<style>
+/* ── Profit dashboard ── */
+.profit-kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s3);}
+.profit-kpi{background:var(--c-bg-2);border-radius:var(--r-md);padding:var(--s3) var(--s4);display:flex;flex-direction:column;gap:4px;}
+.profit-kpi--client{border-left:3px solid var(--c-teal);}
+.profit-kpi--nanny{border-left:3px solid var(--c-yellow);}
+.profit-kpi--margin{border-left:3px solid var(--c-lime);}
+.profit-kpi__icon{font-size:20px;}
+.profit-kpi__label{font-size:11px;color:var(--c-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+.profit-kpi__val{font-size:1.2rem;font-weight:900;color:var(--c-text);}
+.profit-kpi--margin .profit-kpi__val{color:var(--c-lime-dk);}
+.profit-kpi--client .profit-kpi__val{color:var(--c-teal-dk);}
+/* Period tabs */
+.earn-tab{padding:6px 12px;border-radius:var(--r-pill);border:1px solid var(--c-border);background:var(--c-surface);font-size:12px;font-weight:600;cursor:pointer;color:var(--c-text-muted);transition:all .15s;}
+.earn-tab.active{background:var(--c-teal);color:#fff;border-color:var(--c-teal);}
+@media(max-width:600px){.profit-kpi-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:400px){.profit-kpi-grid{grid-template-columns:1fr;}}
+</style>
 
 {% endblock %}

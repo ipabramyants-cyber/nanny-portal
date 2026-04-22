@@ -4,10 +4,10 @@
 {% block head_meta %}
   <link rel="canonical" href="{{ site_url }}/tariffs">
   <meta name="robots" content="index, follow">
-  <meta name="description" content="Прозрачные тарифы на услуги няни в Нячанге. Почасовая оплата от 130 000 ₫. Без скрытых платежей — всё фиксируется в личном кабинете.">
+  <meta name="description" content="Прозрачные тарифы на услуги няни в Нячанге. Стандартная смена от 200 000 ₫/ч, регулярные клиенты — от 130 000 ₫/ч. Без скрытых платежей.">
   <meta name="keywords" content="стоимость няни Нячанг, тарифы няня Вьетнам, цена няни в час, babysitter price Nha Trang">
   <meta property="og:title" content="Тарифы — Няня на час Нячанг">
-  <meta property="og:description" content="Почасовая оплата от 130 000 ₫. Прозрачный расчёт, личный кабинет, никаких сюрпризов.">
+  <meta property="og:description" content="Стандартная смена 200 000 ₫/ч, регулярным клиентам 130 000 ₫/ч. Прозрачный расчёт, личный кабинет.">
   <meta property="og:url" content="{{ site_url }}/tariffs">
   <meta property="og:image" content="{{ site_url }}/static/img/logo-full.png">
   <script type="application/ld+json">{
@@ -15,144 +15,341 @@
     "@type": "Service",
     "name": "Услуги няни на час — Нячанг",
     "description": "Профессиональный уход за детьми от 0 до 8 лет в Нячанге. Почасовая оплата, прозрачный расчёт.",
-    "provider": {
-      "@type": "LocalBusiness",
-      "name": "Няня на час — Нячанг",
-      "url": "{{ site_url }}",
-      "telephone": "+79119184166"
-    },
+    "provider": { "@type": "LocalBusiness", "name": "Няня на час — Нячанг", "url": "{{ site_url }}", "telephone": "+79119184166" },
     "areaServed": "Nha Trang",
     "offers": [
-      {
-        "@type": "Offer",
-        "name": "Стандартная смена",
-        "description": "Почасовой уход за ребёнком от 0 до 8 лет",
-        "priceCurrency": "VND",
-        "price": "130000",
-        "unitCode": "HUR"
-      }
+      { "@type": "Offer", "name": "Стандартная смена", "priceCurrency": "VND", "price": "200000", "unitCode": "HUR" },
+      { "@type": "Offer", "name": "Регулярные клиенты", "priceCurrency": "VND", "price": "130000", "unitCode": "HUR" }
     ]
   }</script>
 {% endblock %}
 
 {% block content %}
 
-<!-- Hero -->
-<div style="background:var(--grad-hero);padding:var(--s12) 0 var(--s8);position:relative;overflow:hidden;">
-  <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.05) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;"></div>
-  <div class="container" style="position:relative;z-index:1;text-align:center;animation:fade-up .5s both;">
-    <div class="hero-badge">💰 Прозрачные цены</div>
-    <h1 style="color:#fff;margin-bottom:var(--s3);">Тарифы</h1>
-    <p style="color:rgba(255,255,255,.85);font-size:16px;max-width:520px;margin:0 auto;">
-      Никаких скрытых платежей. Итоговая сумма рассчитывается по фактически отработанным часам.
-    </p>
+<!-- ══════════ HERO ══════════ -->
+<div class="t-hero">
+  <div class="t-hero__dots"></div>
+  <div class="container t-hero__inner">
+    <span class="t-badge">💰 Прозрачные цены</span>
+    <h1 class="t-hero__title">Тарифы на&nbsp;услуги&nbsp;няни</h1>
+    <p class="t-hero__sub">Никаких скрытых платежей. Оплата по факту отработанных часов.</p>
+    <div class="t-hero__pills">
+      <span class="t-pill t-pill--teal">✓ Оплата после смены</span>
+      <span class="t-pill t-pill--lime">✓ Минимум 3 часа</span>
+      <span class="t-pill t-pill--white">✓ Чеки в кабинете</span>
+    </div>
   </div>
 </div>
 
-<!-- Main content -->
-<section class="section">
-  <div class="container" style="max-width:760px;">
+<!-- ══════════ PRICING CARDS ══════════ -->
+<section class="section" style="padding-top:var(--s10);">
+  <div class="container" style="max-width:880px;">
+    <div class="t-cards">
 
-    <!-- Pricing cards -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s5);margin-bottom:var(--s8);" class="tariff-grid">
-
-      <div class="panel" style="border:2px solid rgba(1,107,130,.2);text-align:center;padding:var(--s7) var(--s5);">
-        <div style="font-size:40px;margin-bottom:var(--s3);">⏱</div>
-        <div style="font-size:13px;font-weight:700;color:var(--c-teal);text-transform:uppercase;letter-spacing:.05em;margin-bottom:var(--s2);">Стандартная ставка</div>
-        <div style="font-size:36px;font-weight:900;color:var(--c-text);line-height:1;">130 000 ₫</div>
-        <div style="font-size:13px;color:var(--c-text-muted);margin-top:4px;margin-bottom:var(--s4);">в час</div>
-        <ul style="list-style:none;padding:0;margin:0;text-align:left;font-size:14px;line-height:1.8;">
-          <li>✅ Дети от 0 до 8 лет</li>
-          <li>✅ Почасовая оплата</li>
-          <li>✅ Оплата по факту работы</li>
-          <li>✅ Чеки в личном кабинете</li>
+      <!-- Card 1 — Standard -->
+      <div class="t-card t-card--teal">
+        <div class="t-card__icon">⏱</div>
+        <div class="t-card__label">Стандартная ставка</div>
+        <div class="t-card__price">200 000 <span class="t-card__cur">₫/ч</span></div>
+        <div class="t-card__desc">Разовые или редкие заказы — гибко и без обязательств</div>
+        <ul class="t-card__list">
+          <li>Дети от 0 до 8 лет</li>
+          <li>Оплата по факту</li>
+          <li>Без предоплаты</li>
+          <li>Чек в личном кабинете</li>
+          <li>Минимум 3 часа</li>
         </ul>
+        <a href="/#leadForm" class="t-card__btn t-card__btn--teal">Заказать сейчас</a>
       </div>
 
-      <div class="panel" style="border:2px solid rgba(163,207,16,.4);text-align:center;padding:var(--s7) var(--s5);position:relative;">
-        <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--c-lime);color:#fff;font-size:11px;font-weight:800;padding:4px 14px;border-radius:var(--r-pill);white-space:nowrap;">Популярный</div>
-        <div style="font-size:40px;margin-bottom:var(--s3);">📅</div>
-        <div style="font-size:13px;font-weight:700;color:var(--c-lime-dk);text-transform:uppercase;letter-spacing:.05em;margin-bottom:var(--s2);">Регулярные смены</div>
-        <div style="font-size:36px;font-weight:900;color:var(--c-text);line-height:1;">от 130 000 ₫</div>
-        <div style="font-size:13px;color:var(--c-text-muted);margin-top:4px;margin-bottom:var(--s4);">в час</div>
-        <ul style="list-style:none;padding:0;margin:0;text-align:left;font-size:14px;line-height:1.8;">
-          <li>✅ Гибкое расписание</li>
-          <li>✅ Та же няня каждый раз</li>
-          <li>✅ Приоритетный подбор</li>
-          <li>✅ Личный кабинет онлайн</li>
+      <!-- Card 2 — Regular (featured) -->
+      <div class="t-card t-card--lime t-card--featured">
+        <div class="t-card__popular">⭐ Популярный</div>
+        <div class="t-card__icon">📅</div>
+        <div class="t-card__label">Регулярные клиенты</div>
+        <div class="t-card__price">130 000 <span class="t-card__cur">₫/ч</span></div>
+        <div class="t-card__desc">Для семей с постоянным графиком — экономия до 35%</div>
+        <ul class="t-card__list">
+          <li>Та же няня каждый раз</li>
+          <li>Гибкое расписание</li>
+          <li>Приоритетный подбор</li>
+          <li>Отчёты и история</li>
+          <li>Личный кабинет онлайн</li>
         </ul>
+        <a href="/#leadForm" class="t-card__btn t-card__btn--lime">Стать регулярным</a>
       </div>
 
     </div>
 
-    <!-- How payment works -->
-    <div class="panel" style="margin-bottom:var(--s6);">
-      <h2 style="font-size:20px;margin-bottom:var(--s4);">💳 Как происходит оплата</h2>
-      <div style="display:flex;flex-direction:column;gap:var(--s4);">
-        <div style="display:flex;gap:var(--s4);align-items:flex-start;">
-          <div style="width:36px;height:36px;border-radius:50%;background:var(--c-teal);color:#fff;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">1</div>
-          <div>
-            <div style="font-weight:800;margin-bottom:4px;">Смена завершена</div>
-            <div style="color:var(--c-text-muted);font-size:14px;">Няня отмечает фактическое время окончания в своём приложении</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:var(--s4);align-items:flex-start;">
-          <div style="width:36px;height:36px;border-radius:50%;background:var(--c-teal);color:#fff;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">2</div>
-          <div>
-            <div style="font-weight:800;margin-bottom:4px;">Расчёт суммы</div>
-            <div style="color:var(--c-text-muted);font-size:14px;">Итог = фактические часы × 130 000 ₫. Виден в вашем личном кабинете</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:var(--s4);align-items:flex-start;">
-          <div style="width:36px;height:36px;border-radius:50%;background:var(--c-teal);color:#fff;font-weight:900;font-size:15px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">3</div>
-          <div>
-            <div style="font-weight:800;margin-bottom:4px;">Оплата и чек</div>
-            <div style="color:var(--c-text-muted);font-size:14px;">Переводите сумму удобным способом. Загрузите чек прямо в личном кабинете</div>
-          </div>
-        </div>
+    <!-- Savings banner -->
+    <div class="t-save-banner">
+      <div class="t-save-banner__icon">💡</div>
+      <div>
+        <strong>Регулярные клиенты экономят до 70 000 ₫ за каждый час</strong>
+        <div style="font-size:13px;color:var(--c-text-muted);margin-top:2px;">При 20 часах в месяц — экономия 1 400 000 ₫ (~57$)</div>
       </div>
     </div>
 
-    <!-- FAQ short -->
-    <div class="panel" style="margin-bottom:var(--s6);">
-      <h2 style="font-size:20px;margin-bottom:var(--s4);">❓ Частые вопросы об оплате</h2>
-      <div style="display:flex;flex-direction:column;gap:var(--s4);">
+    <!-- Calculator -->
+    <div class="panel t-calc" style="margin-top:var(--s8);">
+      <h2 class="t-section-title" style="text-align:center;margin-bottom:var(--s6);">🧮 Калькулятор стоимости</h2>
+      <div class="t-calc__grid">
         <div>
-          <div style="font-weight:800;margin-bottom:4px;">Есть ли минимальное время заказа?</div>
-          <div style="color:var(--c-text-muted);font-size:14px;">Минимальная смена — 3 часа. Это позволяет обеспечить комфорт для ребёнка и покрыть дорогу няни.</div>
+          <label>Тариф</label>
+          <select id="calcRate">
+            <option value="200000">Стандартный — 200 000 ₫/ч</option>
+            <option value="130000">Регулярный — 130 000 ₫/ч</option>
+          </select>
         </div>
         <div>
-          <div style="font-weight:800;margin-bottom:4px;">Когда платить — до или после?</div>
-          <div style="color:var(--c-text-muted);font-size:14px;">Оплата после смены, по факту. Никаких предоплат.</div>
+          <label>Часов в смене</label>
+          <input type="number" id="calcHours" value="4" min="3" max="12" step="0.5">
         </div>
         <div>
-          <div style="font-weight:800;margin-bottom:4px;">Что если смена закончилась раньше?</div>
-          <div style="color:var(--c-text-muted);font-size:14px;">Оплачивается только фактически отработанное время. Всё честно.</div>
-        </div>
-        <div>
-          <div style="font-weight:800;margin-bottom:4px;">Каким способом платить?</div>
-          <div style="color:var(--c-text-muted);font-size:14px;">Наличными няне или переводом — уточните у администратора в Telegram.</div>
+          <label>Смен в месяц</label>
+          <input type="number" id="calcShifts" value="8" min="1" max="31">
         </div>
       </div>
-    </div>
-
-    <!-- CTA -->
-    <div style="text-align:center;padding:var(--s6) 0;">
-      <a href="/#leadForm" class="btn primary" style="font-size:16px;padding:16px 40px;">
-        📅 Оставить заявку
-      </a>
-      <p style="margin-top:var(--s3);color:var(--c-text-muted);font-size:13px;">
-        Или <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener" style="color:var(--c-teal);font-weight:700;">напишите нам в Telegram</a> — ответим за 15 минут
-      </p>
+      <div class="t-calc__result" id="calcResult">
+        <div class="t-calc__result-row">
+          <span>Стоимость одной смены</span>
+          <strong id="calcOne">800 000 ₫</strong>
+        </div>
+        <div class="t-calc__result-row">
+          <span>В месяц</span>
+          <strong id="calcMonth">6 400 000 ₫</strong>
+        </div>
+        <div class="t-calc__result-row t-calc__result-row--save" id="calcSaveRow">
+          <span>Экономия при регулярном тарифе</span>
+          <strong id="calcSave">—</strong>
+        </div>
+      </div>
     </div>
 
   </div>
 </section>
 
+<!-- ══════════ HOW IT WORKS ══════════ -->
+<section class="section" style="background:var(--c-bg-2);padding:var(--s10) 0;">
+  <div class="container" style="max-width:760px;">
+    <h2 class="t-section-title" style="text-align:center;margin-bottom:var(--s8);">💳 Как происходит оплата</h2>
+    <div class="t-steps">
+      <div class="t-step">
+        <div class="t-step__num">1</div>
+        <div>
+          <div class="t-step__title">Смена завершена</div>
+          <div class="t-step__text">Няня отмечает фактическое время в своём кабинете</div>
+        </div>
+      </div>
+      <div class="t-step">
+        <div class="t-step__num">2</div>
+        <div>
+          <div class="t-step__title">Расчёт суммы</div>
+          <div class="t-step__text">Итог = фактические часы × ваш тариф. Всё видно в личном кабинете</div>
+        </div>
+      </div>
+      <div class="t-step">
+        <div class="t-step__num">3</div>
+        <div>
+          <div class="t-step__title">Оплата и чек</div>
+          <div class="t-step__text">Переводите удобным способом. Загружаете чек прямо в кабинете</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ COMPARISON TABLE ══════════ -->
+<section class="section" style="padding:var(--s10) 0;">
+  <div class="container" style="max-width:760px;">
+    <h2 class="t-section-title" style="text-align:center;margin-bottom:var(--s6);">Сравнение тарифов</h2>
+    <div class="t-table-wrap">
+      <table class="t-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="t-table__col-std">Стандартный</th>
+            <th class="t-table__col-reg">Регулярный</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Ставка в час</td><td>200 000 ₫</td><td class="t-table__col-reg">130 000 ₫</td></tr>
+          <tr><td>Минимальное время</td><td>3 часа</td><td class="t-table__col-reg">3 часа</td></tr>
+          <tr><td>Предоплата</td><td>Нет</td><td class="t-table__col-reg">Нет</td></tr>
+          <tr><td>Та же няня</td><td>По возможности</td><td class="t-table__col-reg">✅ Гарантировано</td></tr>
+          <tr><td>Личный кабинет</td><td>✅</td><td class="t-table__col-reg">✅</td></tr>
+          <tr><td>История смен</td><td>✅</td><td class="t-table__col-reg">✅</td></tr>
+          <tr><td>Приоритетный подбор</td><td>—</td><td class="t-table__col-reg">✅</td></tr>
+          <tr><td>Условия</td><td>Разовый заказ</td><td class="t-table__col-reg">Регулярный график</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ FAQ ══════════ -->
+<section class="section" style="background:var(--c-bg-2);padding:var(--s10) 0;">
+  <div class="container" style="max-width:720px;">
+    <h2 class="t-section-title" style="text-align:center;margin-bottom:var(--s6);">❓ Частые вопросы</h2>
+    <div class="t-faq">
+      <details class="t-faq__item">
+        <summary>Есть ли минимальное время заказа?</summary>
+        <p>Минимальная смена — 3 часа. Это обеспечивает комфорт ребёнку и покрывает дорогу няни.</p>
+      </details>
+      <details class="t-faq__item">
+        <summary>Когда платить — до или после?</summary>
+        <p>Оплата после смены, по факту. Никаких предоплат.</p>
+      </details>
+      <details class="t-faq__item">
+        <summary>Что если смена закончилась раньше?</summary>
+        <p>Оплачивается только фактически отработанное время. Всё честно, всё зафиксировано.</p>
+      </details>
+      <details class="t-faq__item">
+        <summary>Как стать регулярным клиентом?</summary>
+        <p>Просто напишите нам в Telegram или оставьте заявку. Обсудим удобный график и применим тариф 130 000 ₫/ч.</p>
+      </details>
+      <details class="t-faq__item">
+        <summary>Каким способом можно оплатить?</summary>
+        <p>Наличными няне или переводом. Уточните у администратора в Telegram.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ CTA ══════════ -->
+<section class="section" style="padding:var(--s10) 0;">
+  <div class="container" style="max-width:560px;text-align:center;">
+    <div class="t-cta-box">
+      <div style="font-size:48px;margin-bottom:var(--s4);">👩‍👧</div>
+      <h2 style="font-size:1.5rem;margin-bottom:var(--s3);">Готовы заказать няню?</h2>
+      <p style="color:var(--c-text-muted);margin-bottom:var(--s5);">Ответим за 15 минут. Первая смена — уже сегодня.</p>
+      <div style="display:flex;gap:var(--s3);justify-content:center;flex-wrap:wrap;">
+        <a href="/#leadForm" class="btn primary" style="font-size:15px;padding:14px 32px;">📅 Оставить заявку</a>
+        <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener" class="btn secondary" style="font-size:15px;padding:14px 32px;">✈️ Telegram</a>
+      </div>
+    </div>
+  </div>
+</section>
+
 <style>
-@media (max-width: 600px) {
-  .tariff-grid { grid-template-columns: 1fr !important; }
+/* ── Hero ── */
+.t-hero{background:var(--grad-hero);padding:var(--s12) 0 var(--s10);position:relative;overflow:hidden;}
+.t-hero__dots{position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.06) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;}
+.t-hero__inner{position:relative;z-index:1;text-align:center;animation:fade-up .5s both;}
+.t-badge{display:inline-block;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:var(--r-pill);padding:6px 16px;font-size:13px;font-weight:700;margin-bottom:var(--s4);}
+.t-hero__title{color:#fff;font-size:clamp(1.8rem,4vw,2.8rem);line-height:1.2;margin-bottom:var(--s3);}
+.t-hero__sub{color:rgba(255,255,255,.8);font-size:16px;max-width:500px;margin:0 auto var(--s5);}
+.t-hero__pills{display:flex;gap:var(--s2);justify-content:center;flex-wrap:wrap;}
+.t-pill{padding:6px 14px;border-radius:var(--r-pill);font-size:13px;font-weight:600;}
+.t-pill--teal{background:rgba(1,107,130,.3);color:#a8f0f7;border:1px solid rgba(1,107,130,.4);}
+.t-pill--lime{background:rgba(163,207,16,.25);color:#d4f07a;border:1px solid rgba(163,207,16,.35);}
+.t-pill--white{background:rgba(255,255,255,.15);color:rgba(255,255,255,.9);border:1px solid rgba(255,255,255,.25);}
+
+/* ── Cards ── */
+.t-cards{display:grid;grid-template-columns:1fr 1fr;gap:var(--s5);margin-bottom:var(--s5);}
+.t-card{background:var(--c-surface);border-radius:var(--r-lg);padding:var(--s6) var(--s5);display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;transition:transform .2s,box-shadow .2s;}
+.t-card:hover{transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,.1);}
+.t-card--teal{border:2px solid rgba(1,107,130,.25);}
+.t-card--lime{border:2px solid rgba(163,207,16,.4);}
+.t-card--featured{transform:scale(1.02);}
+.t-card--featured:hover{transform:scale(1.02) translateY(-4px);}
+.t-card__popular{position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,var(--c-lime),var(--c-teal));color:#fff;font-size:11px;font-weight:800;padding:5px 16px;border-radius:var(--r-pill);white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,.15);}
+.t-card__icon{font-size:48px;margin-bottom:var(--s3);}
+.t-card__label{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--c-teal);margin-bottom:var(--s2);}
+.t-card--lime .t-card__label{color:var(--c-lime-dk);}
+.t-card__price{font-size:2.4rem;font-weight:900;line-height:1;color:var(--c-text);margin-bottom:var(--s2);}
+.t-card__cur{font-size:1.2rem;font-weight:600;color:var(--c-text-muted);}
+.t-card__desc{font-size:13px;color:var(--c-text-muted);margin-bottom:var(--s4);line-height:1.5;}
+.t-card__list{list-style:none;padding:0;margin:0 0 var(--s5);text-align:left;font-size:14px;line-height:2;width:100%;}
+.t-card__list li::before{content:"✅ ";margin-right:4px;}
+.t-card__btn{display:block;width:100%;padding:13px;border-radius:var(--r-md);font-weight:700;font-size:14px;text-align:center;text-decoration:none;transition:opacity .15s;}
+.t-card__btn:hover{opacity:.88;}
+.t-card__btn--teal{background:var(--c-teal);color:#fff;}
+.t-card__btn--lime{background:linear-gradient(135deg,var(--c-lime),var(--c-teal));color:#fff;}
+
+/* ── Save Banner ── */
+.t-save-banner{display:flex;align-items:center;gap:var(--s4);background:linear-gradient(135deg,rgba(163,207,16,.12),rgba(1,107,130,.08));border:1px solid rgba(163,207,16,.3);border-radius:var(--r-lg);padding:var(--s4) var(--s5);}
+.t-save-banner__icon{font-size:32px;flex-shrink:0;}
+
+/* ── Calculator ── */
+.t-calc__grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--s4);margin-bottom:var(--s5);}
+.t-calc__result{background:var(--c-bg-2);border-radius:var(--r-md);padding:var(--s4) var(--s5);display:flex;flex-direction:column;gap:var(--s2);}
+.t-calc__result-row{display:flex;justify-content:space-between;align-items:center;font-size:15px;}
+.t-calc__result-row strong{font-size:17px;color:var(--c-teal-dk);}
+.t-calc__result-row--save{border-top:1px solid var(--c-border);padding-top:var(--s2);margin-top:var(--s2);}
+.t-calc__result-row--save strong{color:var(--c-lime-dk);}
+
+/* ── Steps ── */
+.t-steps{display:flex;flex-direction:column;gap:var(--s5);}
+.t-step{display:flex;gap:var(--s4);align-items:flex-start;}
+.t-step__num{width:44px;height:44px;border-radius:50%;background:var(--grad-hero);color:#fff;font-weight:900;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 12px rgba(1,107,130,.3);}
+.t-step__title{font-weight:800;font-size:16px;margin-bottom:4px;}
+.t-step__text{color:var(--c-text-muted);font-size:14px;}
+
+/* ── Table ── */
+.t-table-wrap{overflow-x:auto;}
+.t-table{width:100%;border-collapse:collapse;font-size:14px;}
+.t-table th,.t-table td{padding:12px 16px;border-bottom:1px solid var(--c-border);text-align:left;}
+.t-table thead th{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--c-text-muted);}
+.t-table__col-std{color:var(--c-teal);}
+.t-table__col-reg{color:var(--c-lime-dk);font-weight:700;}
+.t-table tbody tr:hover{background:var(--c-bg-2);}
+
+/* ── FAQ ── */
+.t-faq{display:flex;flex-direction:column;gap:var(--s3);}
+.t-faq__item{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);overflow:hidden;}
+.t-faq__item summary{padding:var(--s4) var(--s5);font-weight:700;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-size:15px;}
+.t-faq__item summary::after{content:"＋";font-size:18px;color:var(--c-teal);flex-shrink:0;}
+.t-faq__item[open] summary::after{content:"－";}
+.t-faq__item p{padding:0 var(--s5) var(--s4);color:var(--c-text-muted);font-size:14px;margin:0;line-height:1.7;}
+
+/* ── CTA Box ── */
+.t-cta-box{background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-lg);padding:var(--s8) var(--s6);box-shadow:0 4px 20px rgba(0,0,0,.06);}
+
+/* ── Section title ── */
+.t-section-title{font-size:1.4rem;font-weight:900;color:var(--c-text);}
+
+@media(max-width:640px){
+  .t-cards{grid-template-columns:1fr;}
+  .t-card--featured{transform:none;}
+  .t-calc__grid{grid-template-columns:1fr;}
 }
 </style>
+
+<script>
+(function(){
+  var rateEl = document.getElementById('calcRate');
+  var hoursEl = document.getElementById('calcHours');
+  var shiftsEl = document.getElementById('calcShifts');
+  var calcOne = document.getElementById('calcOne');
+  var calcMonth = document.getElementById('calcMonth');
+  var calcSave = document.getElementById('calcSave');
+  var calcSaveRow = document.getElementById('calcSaveRow');
+
+  function fmt(n){ return Math.round(n).toLocaleString('ru-RU') + ' ₫'; }
+
+  function update(){
+    var rate = parseInt(rateEl.value) || 200000;
+    var hours = parseFloat(hoursEl.value) || 4;
+    var shifts = parseInt(shiftsEl.value) || 8;
+    var one = rate * hours;
+    var month = one * shifts;
+    calcOne.textContent = fmt(one);
+    calcMonth.textContent = fmt(month);
+    if(rate === 200000){
+      var save = (200000 - 130000) * hours * shifts;
+      calcSave.textContent = '−' + fmt(save) + ' при регулярном';
+      calcSaveRow.style.display = 'flex';
+    } else {
+      calcSaveRow.style.display = 'none';
+    }
+  }
+
+  rateEl.addEventListener('change', update);
+  hoursEl.addEventListener('input', update);
+  shiftsEl.addEventListener('input', update);
+  update();
+})();
+</script>
 
 {% endblock %}

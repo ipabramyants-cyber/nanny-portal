@@ -16,16 +16,63 @@
 <div class="container" style="padding: var(--s5) 0 var(--s16);">
 
   <!-- Auth error state -->
-  <div id="authError" style="display:none;" class="panel" style="text-align:center; padding:var(--s8);">
-    <div style="font-size:40px; margin-bottom:var(--s4);">🔒</div>
-    <h3 style="color:var(--c-teal-dk);">Требуется авторизация</h3>
-    <p class="hint" style="margin-top:var(--s2);">Откройте эту страницу через Telegram Mini App.<br>Проверяем <code>initData</code> и авторизуем вас.</p>
+  <div id="authError" style="display:none;" class="panel">
+    <div style="text-align:center;padding:var(--s8);">
+      <div style="font-size:40px; margin-bottom:var(--s4);">🔒</div>
+      <h3 style="color:var(--c-teal-dk);">Требуется авторизация</h3>
+      <p class="hint" style="margin-top:var(--s2);">Откройте эту страницу через Telegram Mini App.</p>
+    </div>
+  </div>
+
+  <!-- ══ EARNINGS CALCULATOR ══ -->
+  <div id="earningsSection" style="display:none; margin-bottom:var(--s5);">
+    <div class="panel" style="padding:var(--s5);">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s3);margin-bottom:var(--s4);">
+        <h2 style="margin:0;font-size:1.1rem;color:var(--c-teal-dk);">💰 Мои заработки</h2>
+        <div class="earn-period-tabs" id="earnPeriodTabs">
+          <button class="earn-tab active" data-p="day">День</button>
+          <button class="earn-tab" data-p="week">Неделя</button>
+          <button class="earn-tab" data-p="month">Месяц</button>
+          <button class="earn-tab" data-p="all">Всё время</button>
+        </div>
+      </div>
+
+      <!-- Summary cards -->
+      <div class="earn-grid" id="earnGrid">
+        <div class="earn-kpi">
+          <div class="earn-kpi__label">Заработано</div>
+          <div class="earn-kpi__val earn-kpi__val--main" id="eEarned">—</div>
+        </div>
+        <div class="earn-kpi">
+          <div class="earn-kpi__label">Смен выполнено</div>
+          <div class="earn-kpi__val" id="eShiftsDone">—</div>
+        </div>
+        <div class="earn-kpi">
+          <div class="earn-kpi__label">Часов отработано</div>
+          <div class="earn-kpi__val" id="eHours">—</div>
+        </div>
+        <div class="earn-kpi">
+          <div class="earn-kpi__label">Средний заработок / смена</div>
+          <div class="earn-kpi__val" id="eAvg">—</div>
+        </div>
+      </div>
+
+      <!-- Daily breakdown bar chart -->
+      <div id="earnChart" style="margin-top:var(--s4);display:none;">
+        <div style="font-size:12px;color:var(--c-text-muted);margin-bottom:var(--s2);">По дням</div>
+        <div id="earnBars" style="display:flex;gap:4px;align-items:flex-end;height:80px;overflow-x:auto;padding-bottom:4px;"></div>
+      </div>
+
+      <div id="earnEmpty" style="display:none;text-align:center;padding:var(--s4);color:var(--c-text-muted);font-size:14px;">
+        Смен за этот период нет
+      </div>
+    </div>
   </div>
 
   <!-- Shift list -->
-  <div id="shiftList" style="display:none; margin-top:var(--s4);">
+  <div id="shiftList" style="display:none; margin-top:var(--s2);">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--s4);">
-      <h2 style="margin:0; font-size:1.2rem; color:var(--c-teal-dk);">Мои смены</h2>
+      <h2 style="margin:0; font-size:1.1rem; color:var(--c-teal-dk);">📅 Мои смены</h2>
       <span id="shiftCount" class="badge badge--info"></span>
     </div>
     <div id="shiftItems" style="display:flex; flex-direction:column; gap:var(--s3);"></div>
@@ -40,10 +87,23 @@
 
 </div>
 
+<style>
+.earn-period-tabs{display:flex;gap:4px;flex-wrap:wrap;}
+.earn-tab{padding:6px 12px;border-radius:var(--r-pill);border:1px solid var(--c-border);background:var(--c-surface);font-size:12px;font-weight:600;cursor:pointer;color:var(--c-text-muted);transition:all .15s;}
+.earn-tab.active{background:var(--c-teal);color:#fff;border-color:var(--c-teal);}
+.earn-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);}
+.earn-kpi{background:var(--c-bg-2);border-radius:var(--r-md);padding:var(--s3) var(--s4);}
+.earn-kpi__label{font-size:11px;color:var(--c-text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
+.earn-kpi__val{font-size:1.1rem;font-weight:900;color:var(--c-text);}
+.earn-kpi__val--main{font-size:1.4rem;color:var(--c-teal-dk);}
+@media(max-width:400px){.earn-grid{grid-template-columns:1fr;}}
+</style>
+
 <script>
 (function(){
   const statusHeader = document.getElementById('statusHeader');
   const authError = document.getElementById('authError');
+  const earningsSection = document.getElementById('earningsSection');
   const shiftList = document.getElementById('shiftList');
   const shiftItems = document.getElementById('shiftItems');
   const shiftCount = document.getElementById('shiftCount');
@@ -66,6 +126,52 @@
   function statusBadge(status) {
     const s = STATUS_LABELS[status] || { label: status, cls: 'badge--neutral' };
     return `<span class="badge ${s.cls}">${s.label}</span>`;
+  }
+
+  // ── Earnings ──────────────────────────────────────────────────────────────
+  let earnPeriod = 'month';
+
+  document.getElementById('earnPeriodTabs').addEventListener('click', function(e){
+    const btn = e.target.closest('.earn-tab');
+    if(!btn) return;
+    document.querySelectorAll('.earn-tab').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    earnPeriod = btn.dataset.p;
+    loadEarnings();
+  });
+
+  async function loadEarnings(){
+    try{
+      const r = await fetch('/api/nanny/me/earnings?period=' + earnPeriod);
+      const d = await r.json();
+      if(!d.ok) return;
+      const s = d.summary;
+      document.getElementById('eEarned').textContent = fmtMoney(s.earned);
+      document.getElementById('eShiftsDone').textContent = s.shifts_done;
+      document.getElementById('eHours').textContent = s.hours + ' ч';
+      document.getElementById('eAvg').textContent = s.shifts_done ? fmtMoney(s.avg_per_shift) : '—';
+
+      const daily = d.daily || [];
+      const earnChart = document.getElementById('earnChart');
+      const earnEmpty = document.getElementById('earnEmpty');
+      if(!daily.length){
+        earnChart.style.display='none';
+        earnEmpty.style.display='block';
+      } else {
+        earnEmpty.style.display='none';
+        earnChart.style.display='block';
+        const max = Math.max(...daily.map(x=>x.earned), 1);
+        const bars = document.getElementById('earnBars');
+        bars.innerHTML = daily.map(x=>{
+          const h = Math.max(8, Math.round((x.earned/max)*72));
+          const label = x.date.slice(5); // MM-DD
+          return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;min-width:32px;" title="${fmtDate(x.date)}: ${fmtMoney(x.earned)}">
+            <div style="width:24px;height:${h}px;background:var(--c-teal);border-radius:3px 3px 0 0;opacity:.85;"></div>
+            <div style="font-size:9px;color:var(--c-text-muted);white-space:nowrap;">${label}</div>
+          </div>`;
+        }).join('');
+      }
+    } catch(e){ console.error(e); }
   }
 
   async function ensureAuth() {
@@ -97,7 +203,7 @@
   }
 
   async function loadShifts() {
-    statusHeader.textContent = 'Загружаем смены…';
+    statusHeader.textContent = 'Загружаем данные…';
     const resp = await fetch('/api/nanny/me/shifts');
     const data = await resp.json();
     if (!resp.ok) {
@@ -105,7 +211,10 @@
       return;
     }
     statusHeader.textContent = 'Всё готово';
+    earningsSection.style.display = 'block';
     shiftList.style.display = 'block';
+    loadEarnings();
+
     const items = data.items || [];
     shiftCount.textContent = items.length + ' смен';
     if (!items.length) { shiftEmpty.style.display = 'block'; return; }
@@ -135,6 +244,7 @@
 
   function showShiftDetail(s) {
     shiftList.style.display = 'none';
+    earningsSection.style.display = 'none';
     shiftDetail.style.display = 'block';
     const canAct = s.status === 'assigned';
 
@@ -196,6 +306,7 @@
 
   backBtn.addEventListener('click', () => {
     shiftDetail.style.display = 'none';
+    earningsSection.style.display = 'block';
     shiftList.style.display = 'block';
   });
 

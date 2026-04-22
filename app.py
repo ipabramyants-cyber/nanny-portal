@@ -2567,6 +2567,185 @@ def create_app() -> Flask:
         resp.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
         return resp
 
+    # ── Profit / Earnings analytics ─────────────────────────────────────────
+
+    @app.route('/api/admin/profit')
+    @require_admin
+    def api_admin_profit():
+        """Return aggregated profit stats for admin dashboard.
+        Query params: period = day | week | month | all (default: month)
+        """
+        if not use_sql:
+            return jsonify({'error': 'SQL mode required'}), 400
+        from time_utils import compute_amount_vnd
+        import datetime as _dt
+
+        period = request.args.get('period', 'month')
+        today = _dt.date.today()
+        if period == 'day':
+            from_date = today
+        elif period == 'week':
+            from_date = today - _dt.timedelta(days=today.weekday())  # Monday
+        elif period == 'month':
+            from_date = today.replace(day=1)
+        else:
+            from_date = None  # all time
+
+        q = Shift.query
+        if from_date:
+            q = q.filter(Shift.date >= from_date.isoformat())
+
+        shifts = q.order_by(Shift.date.asc()).all()
+
+        total_client = 0
+        total_nanny = 0
+        total_margin = 0
+        total_hours = 0
+        shifts_done = 0
+        shifts_pending = 0
+        daily = {}  # date -> {client, nanny, margin, hours}
+
+        for s in shifts:
+            start = s.nanny_actual_start or s.planned_start
+            end = s.nanny_actual_end or s.planned_end
+            if not (s.date and start and end):
+                shifts_pending += 1
+                continue
+            try:
+                cr = s.client_rate_per_hour or DEFAULT_CLIENT_RATE_VND
+                nr = s.nanny_rate_per_hour or DEFAULT_NANNY_RATE_VND
+                client_amt = compute_amount_vnd(s.date, start, end, cr)
+                nanny_amt = compute_amount_vnd(s.date, start, end, nr)
+            except Exception:
+                shifts_pending += 1
+                continue
+
+            # compute hours
+            def _to_min(t):
+                if not t: return 0
+                parts = t.split(':')
+                return int(parts[0])*60 + (int(parts[1]) if len(parts)>1 else 0)
+            hours = max(0, _to_min(end) - _to_min(start)) / 60.0
+
+            margin = client_amt - nanny_amt
+            total_client += client_amt
+            total_nanny += nanny_amt
+            total_margin += margin
+            total_hours += hours
+            shifts_done += 1
+
+            d = s.date
+            if d not in daily:
+                daily[d] = {'date': d, 'client': 0, 'nanny': 0, 'margin': 0, 'hours': 0, 'shifts': 0}
+            daily[d]['client'] += client_amt
+            daily[d]['nanny'] += nanny_amt
+            daily[d]['margin'] += margin
+            daily[d]['hours'] += hours
+            daily[d]['shifts'] += 1
+
+        daily_list = sorted(daily.values(), key=lambda x: x['date'])
+
+        return jsonify({
+            'ok': True,
+            'period': period,
+            'from_date': from_date.isoformat() if from_date else None,
+            'summary': {
+                'client_total': round(total_client),
+                'nanny_total': round(total_nanny),
+                'margin': round(total_margin),
+                'hours': round(total_hours, 1),
+                'shifts_done': shifts_done,
+                'shifts_pending': shifts_pending,
+            },
+            'daily': daily_list,
+        })
+
+    @app.route('/api/nanny/me/earnings')
+    def api_nanny_me_earnings():
+        """Return nanny's personal earnings stats.
+        Query params: period = day | week | month | all
+        """
+        if not use_sql:
+            return jsonify({'error': 'SQL mode required'}), 400
+        from time_utils import compute_amount_vnd
+        import datetime as _dt
+
+        try:
+            tid = _require_telegram_session()
+        except PermissionError:
+            return jsonify({'error': 'auth required'}), 401
+
+        nanny = Nanny.query.filter_by(telegram_user_id=tid).first()
+        if not nanny:
+            return jsonify({'error': 'nanny not linked'}), 403
+
+        period = request.args.get('period', 'month')
+        today = _dt.date.today()
+        if period == 'day':
+            from_date = today
+        elif period == 'week':
+            from_date = today - _dt.timedelta(days=today.weekday())
+        elif period == 'month':
+            from_date = today.replace(day=1)
+        else:
+            from_date = None
+
+        q = Shift.query.filter_by(nanny_id=nanny.id)
+        if from_date:
+            q = q.filter(Shift.date >= from_date.isoformat())
+        shifts = q.order_by(Shift.date.asc()).all()
+
+        total_earned = 0
+        total_hours = 0
+        shifts_done = 0
+        shifts_upcoming = 0
+        daily = {}
+
+        def _to_min(t):
+            if not t: return 0
+            parts = t.split(':')
+            return int(parts[0])*60 + (int(parts[1]) if len(parts)>1 else 0)
+
+        for s in shifts:
+            start = s.nanny_actual_start or s.planned_start
+            end = s.nanny_actual_end or s.planned_end
+            if not (s.date and start and end):
+                shifts_upcoming += 1
+                continue
+            try:
+                nr = s.nanny_rate_per_hour or DEFAULT_NANNY_RATE_VND
+                earned = compute_amount_vnd(s.date, start, end, nr)
+            except Exception:
+                shifts_upcoming += 1
+                continue
+
+            hours = max(0, _to_min(end) - _to_min(start)) / 60.0
+            total_earned += earned
+            total_hours += hours
+            shifts_done += 1
+
+            d = s.date
+            if d not in daily:
+                daily[d] = {'date': d, 'earned': 0, 'hours': 0, 'shifts': 0}
+            daily[d]['earned'] += earned
+            daily[d]['hours'] += hours
+            daily[d]['shifts'] += 1
+
+        daily_list = sorted(daily.values(), key=lambda x: x['date'])
+
+        return jsonify({
+            'ok': True,
+            'period': period,
+            'summary': {
+                'earned': round(total_earned),
+                'hours': round(total_hours, 1),
+                'shifts_done': shifts_done,
+                'shifts_upcoming': shifts_upcoming,
+                'avg_per_shift': round(total_earned / shifts_done) if shifts_done else 0,
+            },
+            'daily': daily_list,
+        })
+
 
 
 
