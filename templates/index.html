@@ -350,109 +350,84 @@
       <h2 id="reviews-heading">Отзывы родителей</h2>
       <div class="section-title__line"><span></span><span></span><span></span></div>
     </div>
-    <div class="reviews-wrap" id="reviewsWrap">
-      <div class="reviews-grid" id="reviewsGrid">
-        {% for review in reviews %}
-        <div class="review reveal reveal-delay-{{ (loop.index0 % 3) + 1 }}" data-review-idx="{{ loop.index0 }}" itemscope itemtype="https://schema.org/Review">
-          <div class="review__quote" aria-hidden="true">"</div>
-          <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating">
-            <meta itemprop="ratingValue" content="{{ review.stars }}" />
-            {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
-          </div>
-          <div class="review__author" itemprop="author" itemscope itemtype="https://schema.org/Person">
-            <span itemprop="name">{{ review.author }}</span>
-          </div>
-          {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
-          <div class="review__text" itemprop="reviewBody">{{ review.text }}</div>
+    <!-- First 3 reviews always visible -->
+    <div class="reviews-grid" id="reviewsGridMain">
+      {% for review in reviews[:3] %}
+      <div class="review reveal reveal-delay-{{ loop.index }}" itemscope itemtype="https://schema.org/Review">
+        <div class="review__quote" aria-hidden="true">“</div>
+        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating">
+          <meta itemprop="ratingValue" content="{{ review.stars }}" />
+          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
         </div>
-        {% endfor %}
+        <div class="review__author" itemprop="author" itemscope itemtype="https://schema.org/Person">
+          <span itemprop="name">{{ review.author }}</span>
+        </div>
+        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+        <div class="review__text" itemprop="reviewBody">{{ review.text }}</div>
       </div>
-      <!-- Carousel nav -->
-      <div class="reviews-nav" id="reviewsNav">
-        <button class="reviews-nav__btn" id="reviewsPrev" aria-label="Предыдущие отзывы">‹</button>
-        <div class="reviews-nav__dots" id="reviewsDots"></div>
-        <button class="reviews-nav__btn" id="reviewsNext" aria-label="Следующие отзывы">›</button>
-      </div>
+      {% endfor %}
     </div>
+
+    {% if reviews|length > 3 %}
+    <!-- Hidden extra reviews -->
+    <div class="reviews-grid" id="reviewsGridExtra" style="display:none; margin-top:0;">
+      {% for review in reviews[3:] %}
+      <div class="review review--extra" itemscope itemtype="https://schema.org/Review">
+        <div class="review__quote" aria-hidden="true">“</div>
+        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating">
+          <meta itemprop="ratingValue" content="{{ review.stars }}" />
+          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
+        </div>
+        <div class="review__author" itemprop="author" itemscope itemtype="https://schema.org/Person">
+          <span itemprop="name">{{ review.author }}</span>
+        </div>
+        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+        <div class="review__text" itemprop="reviewBody">{{ review.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Counter + expand button -->
+    <div style="text-align:center; margin-top:var(--s6);">
+      <div style="color:var(--c-text-2); font-size:14px; margin-bottom:var(--s3);">
+        Всего <strong>{{ reviews|length }}</strong> отзывов
+      </div>
+      <button id="reviewsToggleBtn" class="btn secondary" style="margin-top:0; min-width:200px;"
+              onclick="toggleReviews()">
+        Показать все отзывы →
+      </button>
+    </div>
+    {% else %}
+    <div style="text-align:center; margin-top:var(--s4); color:var(--c-text-2); font-size:14px;">
+      Всего <strong>{{ reviews|length }}</strong> отзывов
+    </div>
+    {% endif %}
+
+    <style>
+    .review--extra { animation: fadeUpIn .4s both; }
+    @keyframes fadeUpIn {
+      from { opacity:0; transform:translateY(16px); }
+      to   { opacity:1; transform:none; }
+    }
+    #reviewsGridExtra .review--extra:nth-child(1) { animation-delay:.05s; }
+    #reviewsGridExtra .review--extra:nth-child(2) { animation-delay:.12s; }
+    #reviewsGridExtra .review--extra:nth-child(3) { animation-delay:.19s; }
+    #reviewsGridExtra .review--extra:nth-child(n+4) { animation-delay:.26s; }
+    </style>
     <script>
-    (function(){
-      var allCards = Array.from(document.querySelectorAll('[data-review-idx]'));
-      var total = allCards.length;
-      if (total === 0) return;
-
-      var grid  = document.getElementById('reviewsGrid');
-      var prev  = document.getElementById('reviewsPrev');
-      var next  = document.getElementById('reviewsNext');
-      var dots  = document.getElementById('reviewsDots');
-
-      var page = 0;
-      var perPage = 1;
-      var pages = 1;
-
-      function getPerPage() {
-        return window.innerWidth >= 900 ? 3 : window.innerWidth >= 540 ? 2 : 1;
+    function toggleReviews() {
+      var extra = document.getElementById('reviewsGridExtra');
+      var btn   = document.getElementById('reviewsToggleBtn');
+      if (!extra) return;
+      var open = extra.style.display !== 'none';
+      if (open) {
+        extra.style.display = 'none';
+        btn.textContent = 'Показать все отзывы →';
+      } else {
+        extra.style.display = '';
+        btn.textContent = 'Свернуть ↑';
       }
-
-      function buildDots() {
-        dots.innerHTML = '';
-        pages = Math.ceil(total / perPage);
-        for (var i = 0; i < pages; i++) {
-          var d = document.createElement('button');
-          d.className = 'reviews-nav__dot' + (i === 0 ? ' active' : '');
-          d.setAttribute('aria-label', 'Страница ' + (i+1));
-          d.dataset.page = i;
-          d.addEventListener('click', function(){ goTo(+this.dataset.page); });
-          dots.appendChild(d);
-        }
-      }
-
-      function goTo(p) {
-        page = Math.max(0, Math.min(pages - 1, p));
-        grid.style.opacity = '0';
-        grid.style.transform = 'translateY(8px)';
-        setTimeout(function(){
-          allCards.forEach(function(c, idx){
-            var show = idx >= page * perPage && idx < (page + 1) * perPage;
-            c.style.display = show ? '' : 'none';
-          });
-          grid.style.opacity = '1';
-          grid.style.transform = 'none';
-          prev.disabled = page === 0;
-          next.disabled = page === pages - 1;
-          dots.querySelectorAll('.reviews-nav__dot').forEach(function(d){ d.classList.toggle('active', +d.dataset.page === page); });
-        }, 180);
-      }
-
-      function reinit() {
-        var newPer = getPerPage();
-        if (newPer === perPage) return;
-        perPage = newPer;
-        buildDots();
-        goTo(0);
-      }
-
-      grid.style.transition = 'opacity .2s, transform .2s';
-      prev.addEventListener('click', function(){ goTo(page - 1); });
-      next.addEventListener('click', function(){ goTo(page + 1); });
-
-      // Keyboard support
-      document.addEventListener('keydown', function(e){
-        if (e.key === 'ArrowRight') goTo(page + 1);
-        if (e.key === 'ArrowLeft') goTo(page - 1);
-      });
-
-      // Responsive resize
-      var _resizeTimer;
-      window.addEventListener('resize', function(){
-        clearTimeout(_resizeTimer);
-        _resizeTimer = setTimeout(reinit, 200);
-      }, { passive: true });
-
-      // Init
-      perPage = getPerPage();
-      buildDots();
-      goTo(0);
-    })();
+    }
     </script>
   </div>
 </section>

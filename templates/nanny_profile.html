@@ -15,6 +15,64 @@
     "description":"{{ nanny.exp_short }}",
     "worksFor":{"@type":"Organization","name":"Няня на час — Нячанг"}
   }</script>
+<!-- Reviews section -->
+{% if nanny_reviews %}
+<section class="section section--alt" style="padding-top:var(--s10); padding-bottom:var(--s12);">
+  <div class="container">
+    <div class="section-title reveal" style="margin-bottom:var(--s6);">
+      <span class="section-title__sub">Реальные отзывы</span>
+      <h2>Отзывы о {{ nanny.name }}</h2>
+      <div class="section-title__line"><span></span><span></span><span></span></div>
+    </div>
+
+    <!-- Pinned reviews first -->
+    {% set pinned = nanny_reviews | selectattr("pinned") | list %}
+    {% set regular = nanny_reviews | rejectattr("pinned") | list %}
+
+    {% if pinned %}
+    <div style="margin-bottom:var(--s5);">
+      {% for review in pinned %}
+      <div class="review reveal" style="border:2px solid var(--c-teal); position:relative; max-width:700px; margin:0 auto var(--s4);" itemscope itemtype="https://schema.org/Review">
+        <div style="position:absolute; top:14px; right:16px; font-size:12px; font-weight:700; color:var(--c-teal-dk); background:rgba(20,184,166,.1); padding:3px 10px; border-radius:20px; letter-spacing:.3px;">
+          📌 Рекомендуем
+        </div>
+        <div class="review__quote" aria-hidden="true">“</div>
+        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд">
+          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
+        </div>
+        <div class="review__author">{{ review.author }}</div>
+        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+        <div class="review__text">{{ review.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Regular reviews grid -->
+    {% if regular %}
+    <div class="reviews-grid">
+      {% for review in regular %}
+      <div class="review reveal reveal-delay-{{ (loop.index0 % 3) + 1 }}" itemscope itemtype="https://schema.org/Review">
+        <div class="review__quote" aria-hidden="true">“</div>
+        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд">
+          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
+        </div>
+        <div class="review__author">{{ review.author }}</div>
+        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+        <div class="review__text">{{ review.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div style="text-align:center; margin-top:var(--s5); color:var(--c-text-2); font-size:14px;">
+      Всего <strong>{{ nanny_reviews|length }}</strong> отзывов о {{ nanny.name }}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+
 {% endblock %}
 {% block title %}Няня {{ nanny.name }}{% if nanny.age %}, {{ nanny.age }} лет{% endif %} — Нячанг{% endblock %}
 
@@ -103,6 +161,64 @@
   }
 }
 </style>
+
+<!-- Reviews section -->
+{% if nanny_reviews %}
+<section class="section section--alt" style="padding-top:var(--s10); padding-bottom:var(--s12);">
+  <div class="container">
+    <div class="section-title reveal" style="margin-bottom:var(--s6);">
+      <span class="section-title__sub">Реальные отзывы</span>
+      <h2>Отзывы о {{ nanny.name }}</h2>
+      <div class="section-title__line"><span></span><span></span><span></span></div>
+    </div>
+
+    <!-- Pinned reviews first -->
+    {% set pinned = nanny_reviews | selectattr("pinned") | list %}
+    {% set regular = nanny_reviews | rejectattr("pinned") | list %}
+
+    {% if pinned %}
+    <div style="margin-bottom:var(--s5);">
+      {% for review in pinned %}
+      <div class="review reveal" style="border:2px solid var(--c-teal); position:relative; max-width:700px; margin:0 auto var(--s4);" itemscope itemtype="https://schema.org/Review">
+        <div style="position:absolute; top:14px; right:16px; font-size:12px; font-weight:700; color:var(--c-teal-dk); background:rgba(20,184,166,.1); padding:3px 10px; border-radius:20px; letter-spacing:.3px;">
+          📌 Рекомендуем
+        </div>
+        <div class="review__quote" aria-hidden="true">“</div>
+        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд">
+          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
+        </div>
+        <div class="review__author">{{ review.author }}</div>
+        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+        <div class="review__text">{{ review.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Regular reviews grid -->
+    {% if regular %}
+    <div class="reviews-grid">
+      {% for review in regular %}
+      <div class="review reveal reveal-delay-{{ (loop.index0 % 3) + 1 }}" itemscope itemtype="https://schema.org/Review">
+        <div class="review__quote" aria-hidden="true">“</div>
+        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд">
+          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
+        </div>
+        <div class="review__author">{{ review.author }}</div>
+        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+        <div class="review__text">{{ review.text }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div style="text-align:center; margin-top:var(--s5); color:var(--c-text-2); font-size:14px;">
+      Всего <strong>{{ nanny_reviews|length }}</strong> отзывов о {{ nanny.name }}
+    </div>
+  </div>
+</section>
+{% endif %}
+
 
 {% endblock %}
 

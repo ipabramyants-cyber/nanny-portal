@@ -424,7 +424,9 @@ def create_app() -> Flask:
                         db.session.rollback()
                     rows = Review.query.filter_by(is_visible=True).order_by(Review.created_at.desc()).all()
             return [{'id': r.id, 'author': r.author, 'role': r.role, 'stars': r.stars,
-                     'text': r.text, 'created_at': r.created_at.isoformat() if r.created_at else ''} for r in rows]
+                     'text': r.text, 'created_at': r.created_at.isoformat() if r.created_at else '',
+                     'nanny_id': getattr(r, 'nanny_id', None),
+                     'pinned': bool(getattr(r, 'pinned', False))} for r in rows]
 
         # JSON fallback
         raw = _read_json(REVIEWS_FILE, [])
@@ -454,6 +456,8 @@ def create_app() -> Flask:
                 'stars': stars,
                 'text': (item.get('text') or '').strip(),
                 'created_at': item.get('created_at') or item.get('submitted_at') or datetime.datetime.utcnow().isoformat(),
+                'nanny_id': item.get('nanny_id') or None,
+                'pinned': bool(item.get('pinned', False)),
             }
             if review['id'] != item.get('id') or review['author'] != item.get('author') or review['role'] != item.get('role') or review['stars'] != item.get('stars'):
                 changed = True
@@ -1508,7 +1512,11 @@ def create_app() -> Flask:
         nanny = next((n for n in nannies if n.get('portal_token') == portal_token), None)
         if not nanny:
             return 'Няня не найдена', 404
-        return render_template('nanny_profile.html', nanny=nanny)
+        all_reviews = load_reviews()
+        # Pinned first, then newest first
+        nanny_reviews = [r for r in all_reviews if r.get('nanny_id') == portal_token]
+        nanny_reviews.sort(key=lambda r: (not bool(r.get('pinned')), r.get('created_at', '')))
+        return render_template('nanny_profile.html', nanny=nanny, nanny_reviews=nanny_reviews)
 
     @app.route('/api/nanny/<portal_token>/upload_receipt', methods=['POST'])
     def api_nanny_upload_receipt(portal_token: str):
@@ -2138,10 +2146,12 @@ def create_app() -> Flask:
     @app.route('/admin/review/save', methods=['POST'])
     @require_admin
     def admin_review_save():
-        review_id = (request.form.get('id') or '').strip()
-        author = (request.form.get('author') or '').strip() or 'Родитель'
-        role = (request.form.get('role') or '').strip()
+        review_id  = (request.form.get('id') or '').strip()
+        author     = (request.form.get('author') or '').strip() or 'Родитель'
+        role       = (request.form.get('role') or '').strip()
         text_value = (request.form.get('text') or '').strip()
+        nanny_id   = (request.form.get('nanny_id') or '').strip() or None
+        pinned     = bool(request.form.get('pinned'))
         try:
             stars = max(1, min(5, int((request.form.get('stars') or '5').strip())))
         except Exception:
@@ -2154,16 +2164,19 @@ def create_app() -> Flask:
         if use_sql:
             existing = Review.query.get(review_id) if review_id else None
             if existing:
-                existing.author = author
-                existing.role = role
-                existing.stars = stars
-                existing.text = text_value
+                existing.author  = author
+                existing.role    = role
+                existing.stars   = stars
+                existing.text    = text_value
+                existing.nanny_id = nanny_id
+                existing.pinned  = pinned
                 flash('Отзыв обновлён', 'success')
             else:
                 r = Review(
                     id=_legacy_token('rev-', f"{author}-{time.time()}"),
                     author=author, role=role, stars=stars, text=text_value,
                     created_at=datetime.datetime.utcnow(), is_visible=True,
+                    nanny_id=nanny_id, pinned=pinned,
                 )
                 db.session.add(r)
                 flash('Отзыв добавлен', 'success')
@@ -2172,16 +2185,19 @@ def create_app() -> Flask:
             reviews = load_reviews()
             existing = next((r for r in reviews if r.get('id') == review_id), None) if review_id else None
             if existing:
-                existing['author'] = author
-                existing['role'] = role
-                existing['stars'] = stars
-                existing['text'] = text_value
+                existing['author']   = author
+                existing['role']     = role
+                existing['stars']    = stars
+                existing['text']     = text_value
+                existing['nanny_id'] = nanny_id
+                existing['pinned']   = pinned
                 flash('Отзыв обновлён', 'success')
             else:
                 reviews.insert(0, {
                     'id': _legacy_token('rev-', f"{author}-{time.time()}"),
                     'author': author, 'role': role, 'stars': stars, 'text': text_value,
                     'created_at': datetime.datetime.utcnow().isoformat(),
+                    'nanny_id': nanny_id, 'pinned': pinned,
                 })
                 flash('Отзыв добавлен', 'success')
             save_reviews(reviews)

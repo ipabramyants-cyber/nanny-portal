@@ -126,6 +126,8 @@ class Review(db.Model):
     text = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
     is_visible = db.Column(db.Boolean, default=True, nullable=False)
+    nanny_id = db.Column(db.String(100), nullable=True)   # portal_token of nanny
+    pinned = db.Column(db.Boolean, default=False, nullable=False)
 
 
 class Article(db.Model):

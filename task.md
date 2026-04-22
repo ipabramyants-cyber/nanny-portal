@@ -1,18 +1,46 @@
-# Task: Improvements batch 2,3,4,5,6,7,8,11,12
+# Task: Fix all UX/Design/Security issues in nanny-portal
 
-## Items
-- [x] 2. Success screen after form submit
-- [ ] 3. Sticky Telegram/WhatsApp button always visible
-- [ ] 4. Telephone in Schema.org
-- [ ] 5. Telegram notification to client when nanny assigned
-- [ ] 6. Cancel/reschedule date from LK
-- [ ] 7. PWA Service Worker
-- [ ] 8. /tariffs page with text
-- [ ] 11. PostgreSQL migration (STORAGE=sql docs + Railway instructions)
-- [ ] 12. Auto-compress photos to WebP on upload
+## Status: IN PROGRESS
 
-## Notes
-- Repo: https://github.com/ipabramyants-cyber/nanny-portal
-- Railway URL: https://web-production-2ebe9.up.railway.app
-- App is Flask + JSON storage (default), SQL optional
-- Token for push: in /home/user/nanny-portal/.env.push (deleted from disk, stored in memory)
+## Priority fixes:
+
+### 🔴 CRITICAL
+- [x] Audit done
+- [ ] Calendar: block past dates (JS + CSS)
+- [ ] Calendar: fix .cal-time 9px → 11px bold
+- [ ] Calendar: fix prev/next button contrast (2.45:1 → 4.5+)
+- [ ] Calendar: animate month switch (slide/fade)
+- [ ] Calendar: add legend (colors meaning)
+- [ ] Calendar: add "Today" button
+- [ ] Calendar: right-click delete animation (flash/shake)
+
+### 🟡 IMPORTANT
+- [ ] /nanny/login page — proper design with instructions
+- [ ] /client/app page — proper design with instructions
+- [ ] FAQ Schema.org markup
+- [ ] Blog: add loading="lazy" to images
+- [ ] Heading hierarchy: h1→h3 fix (add h2)
+- [ ] Type scale: reduce 16 sizes → 7
+- [ ] Font families: remove Georgia
+- [ ] Mobile: hamburger menu
+- [ ] Reviews carousel: add prev/next arrows
+- [ ] Contrast fixes for .hint text and h3
+
+### 🟢 POLISH
+- [ ] Success screen confetti/emoji
+- [ ] Today button in calendar
+- [ ] Swipe gesture for calendar months
+- [ ] Skeleton loaders
+- [ ] Nanny profile back button
+- [ ] Empty state for articles
+- [ ] Tariffs: move prices to config
+
+## Files to edit:
+- static/js/calendar.js
+- static/css/style.css
+- templates/nanny_login.html
+- templates/client_app.html
+- templates/faq.html
+- templates/base.html
+- templates/blog.html
+- templates/index.html
