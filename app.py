@@ -1106,6 +1106,7 @@ def create_app() -> Flask:
                         result[k] = {}
             return result
 
+        work_dates = _val_work_dates(work_dates_raw)
         token = secrets.token_urlsafe(16)
 
         if use_sql:
