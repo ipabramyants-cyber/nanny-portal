@@ -14,7 +14,7 @@ from config import admin_ids
 from telegram_notify import send_message
 from telegram_auth import validate_webapp_init_data, TelegramAuthError
 
-from models import db, Nanny, Lead, User, Shift, Client, NannyBlock
+from models import db, Nanny, Lead, User, Shift, Client, NannyBlock, Review
 
 def _save_image_webp(file_storage, upload_dir: str, prefix: str = 'img') -> str:
     """
@@ -27,7 +27,6 @@ def _save_image_webp(file_storage, upload_dir: str, prefix: str = 'img') -> str:
         from PIL import Image as _PIL_Image
         img = _PIL_Image.open(file_storage.stream)
         img = img.convert('RGB')
-        # Max 1200px wide, preserve aspect ratio
         max_w = 1200
         if img.width > max_w:
             ratio = max_w / img.width
@@ -39,13 +38,42 @@ def _save_image_webp(file_storage, upload_dir: str, prefix: str = 'img') -> str:
     except Exception as _e:
         import logging
         logging.getLogger(__name__).warning('WebP conversion failed: %s', _e)
-        # Fallback: save as-is
         file_storage.stream.seek(0)
         safe = secure_filename(file_storage.filename or 'photo.jpg')
         fname = f"{prefix}_{int(time.time())}_{safe}"
         fpath = os.path.join(upload_dir, fname)
         file_storage.save(fpath)
         return fname
+
+
+def _image_to_data_url(file_storage) -> str:
+    """
+    Convert uploaded image to a base64 data URL (stored in DB — survives redeploys).
+    Resizes to max 600px wide and compresses to JPEG quality 80.
+    """
+    import io, base64
+    try:
+        from PIL import Image as _PIL_Image
+        file_storage.stream.seek(0)
+        img = _PIL_Image.open(file_storage.stream)
+        img = img.convert('RGB')
+        max_w = 600
+        if img.width > max_w:
+            ratio = max_w / img.width
+            img = img.resize((max_w, int(img.height * ratio)), _PIL_Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, 'JPEG', quality=80, optimize=True)
+        b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+        return f"data:image/jpeg;base64,{b64}"
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning('data URL conversion failed: %s', e)
+        file_storage.stream.seek(0)
+        import base64
+        raw = file_storage.stream.read()
+        b64 = base64.b64encode(raw).decode('ascii')
+        mime = 'image/jpeg'
+        return f"data:{mime};base64,{b64}"
 
 
 
@@ -129,6 +157,9 @@ def create_app() -> Flask:
         if not photo:
             return url_for('static', filename='img/nanny_placeholder.jpg')
         photo = str(photo)
+        # data URL — use directly (stored in DB as base64)
+        if photo.startswith('data:'):
+            return photo
         if photo.startswith('http://') or photo.startswith('https://'):
             return photo
         if photo.startswith('uploads/'):
@@ -359,6 +390,31 @@ def create_app() -> Flask:
         ]
 
     def load_reviews():
+        if use_sql:
+            rows = Review.query.filter_by(is_visible=True).order_by(Review.created_at.desc()).all()
+            if not rows:
+                # Seed default reviews into DB (only once — if table is truly empty)
+                if Review.query.count() == 0:
+                    for s in _seed_reviews():
+                        r = Review(
+                            id=s['id'],
+                            author=s['author'],
+                            role=s.get('role', ''),
+                            stars=s.get('stars', 5),
+                            text=s.get('text', ''),
+                            created_at=datetime.datetime.utcnow(),
+                            is_visible=True,
+                        )
+                        db.session.add(r)
+                    try:
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+                    rows = Review.query.filter_by(is_visible=True).order_by(Review.created_at.desc()).all()
+            return [{'id': r.id, 'author': r.author, 'role': r.role, 'stars': r.stars,
+                     'text': r.text, 'created_at': r.created_at.isoformat() if r.created_at else ''} for r in rows]
+
+        # JSON fallback
         raw = _read_json(REVIEWS_FILE, [])
         changed = False
         reviews = []
@@ -1634,8 +1690,8 @@ def create_app() -> Flask:
             photo = (request.form.get('photo') or '').strip() or None
             photo_file = request.files.get('photo_file')
             if photo_file and getattr(photo_file, 'filename', ''):
-                fn = _save_image_webp(photo_file, app.config['UPLOAD_DIR'], prefix='nanny')
-                photo = f"uploads/{fn}"
+                # Store as base64 data URL — survives Railway redeploys
+                photo = _image_to_data_url(photo_file)
             tid_raw = (request.form.get('telegram_user_id') or '').strip() or None
 
             if not name:
@@ -1689,11 +1745,10 @@ def create_app() -> Flask:
         bio = (request.form.get('bio') or '').strip()
         photo = (request.form.get('photo') or '').strip()
         tid_raw_json = (request.form.get('telegram_user_id') or '').strip() or None
-        # Photo upload support in JSON mode
+        # Photo upload support in JSON mode — store as data URL (no filesystem dependency)
         photo_file_json = request.files.get('photo_file')
         if photo_file_json and getattr(photo_file_json, 'filename', ''):
-            fn_json = _save_image_webp(photo_file_json, app.config['UPLOAD_DIR'], prefix='nanny')
-            photo = f"uploads/{fn_json}"
+            photo = _image_to_data_url(photo_file_json)
 
 
         if not name:
@@ -2003,7 +2058,6 @@ def create_app() -> Flask:
     @app.route('/admin/review/save', methods=['POST'])
     @require_admin
     def admin_review_save():
-        reviews = load_reviews()
         review_id = (request.form.get('id') or '').strip()
         author = (request.form.get('author') or '').strip() or 'Родитель'
         role = (request.form.get('role') or '').strip()
@@ -2017,38 +2071,62 @@ def create_app() -> Flask:
             flash('Текст отзыва обязателен', 'error')
             return redirect(url_for('admin'))
 
-        existing = next((r for r in reviews if r.get('id') == review_id), None) if review_id else None
-        if existing:
-            existing['author'] = author
-            existing['role'] = role
-            existing['stars'] = stars
-            existing['text'] = text_value
-            flash('Отзыв обновлён', 'success')
+        if use_sql:
+            existing = Review.query.get(review_id) if review_id else None
+            if existing:
+                existing.author = author
+                existing.role = role
+                existing.stars = stars
+                existing.text = text_value
+                flash('Отзыв обновлён', 'success')
+            else:
+                r = Review(
+                    id=_legacy_token('rev-', f"{author}-{time.time()}"),
+                    author=author, role=role, stars=stars, text=text_value,
+                    created_at=datetime.datetime.utcnow(), is_visible=True,
+                )
+                db.session.add(r)
+                flash('Отзыв добавлен', 'success')
+            db.session.commit()
         else:
-            reviews.insert(0, {
-                'id': _legacy_token('rev-', f"{author}-{time.time()}"),
-                'author': author,
-                'role': role,
-                'stars': stars,
-                'text': text_value,
-                'created_at': datetime.datetime.utcnow().isoformat(),
-            })
-            flash('Отзыв добавлен', 'success')
-
-        save_reviews(reviews)
+            reviews = load_reviews()
+            existing = next((r for r in reviews if r.get('id') == review_id), None) if review_id else None
+            if existing:
+                existing['author'] = author
+                existing['role'] = role
+                existing['stars'] = stars
+                existing['text'] = text_value
+                flash('Отзыв обновлён', 'success')
+            else:
+                reviews.insert(0, {
+                    'id': _legacy_token('rev-', f"{author}-{time.time()}"),
+                    'author': author, 'role': role, 'stars': stars, 'text': text_value,
+                    'created_at': datetime.datetime.utcnow().isoformat(),
+                })
+                flash('Отзыв добавлен', 'success')
+            save_reviews(reviews)
         return redirect(url_for('admin'))
 
     @app.route('/admin/review/delete', methods=['POST'])
     @require_admin
     def admin_review_delete():
         review_id = (request.form.get('id') or '').strip()
-        reviews = load_reviews()
-        new_reviews = [r for r in reviews if r.get('id') != review_id]
-        if len(new_reviews) == len(reviews):
-            flash('Отзыв не найден', 'error')
+        if use_sql:
+            r = Review.query.get(review_id)
+            if not r:
+                flash('Отзыв не найден', 'error')
+            else:
+                db.session.delete(r)
+                db.session.commit()
+                flash('Отзыв удалён', 'success')
         else:
-            save_reviews(new_reviews)
-            flash('Отзыв удалён', 'success')
+            reviews = load_reviews()
+            new_reviews = [r for r in reviews if r.get('id') != review_id]
+            if len(new_reviews) == len(reviews):
+                flash('Отзыв не найден', 'error')
+            else:
+                save_reviews(new_reviews)
+                flash('Отзыв удалён', 'success')
         return redirect(url_for('admin'))
 
     @app.route('/cron/remind_2h')

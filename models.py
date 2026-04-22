@@ -114,3 +114,15 @@ class NannyBlock(db.Model):
     note = db.Column(db.String(500), nullable=True)
     kind = db.Column(db.String(50), default='dayoff', nullable=False)  # dayoff | busy
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+
+class Review(db.Model):
+    __tablename__ = 'reviews'
+
+    id = db.Column(db.String(64), primary_key=True)
+    author = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(200), nullable=True)
+    stars = db.Column(db.Integer, default=5, nullable=False)
+    text = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
+    is_visible = db.Column(db.Boolean, default=True, nullable=False)
