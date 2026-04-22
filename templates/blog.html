@@ -21,25 +21,27 @@
 <div class="container" style="padding:var(--s6) 0 var(--s10);">
 
   <!-- Breadcrumb -->
-  <nav style="font-size:13px;color:var(--c-muted);margin-bottom:var(--s5);">
-    <a href="/" style="color:var(--c-teal);text-decoration:none;">Главная</a>
-    <span style="margin:0 6px;">›</span>
-    <span>Статьи</span>
+  <nav style="font-size:13px;color:var(--c-text-2,#666);margin-bottom:var(--s5);">
+    <a href="/" style="color:var(--c-teal);text-decoration:none;font-weight:600;">Главная</a>
+    <span style="margin:0 8px;opacity:.5;">›</span>
+    <span style="color:var(--c-text);">Статьи</span>
   </nav>
 
   {% if articles %}
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--s5);">
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--s5);max-width:960px;margin:0 auto;">
     {% for art in articles %}
     <a href="/blog/{{ art.slug }}" style="text-decoration:none;color:inherit;">
       <div class="panel" style="padding:0;overflow:hidden;transition:transform .2s,box-shadow .2s;cursor:pointer;"
            onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.12)'"
            onmouseout="this.style.transform='';this.style.boxShadow=''">
         {% if art.cover_url %}
-        <img src="{{ art.cover_url }}" alt="{{ art.title }}"
-             style="width:100%;height:200px;object-fit:cover;display:block;" loading="lazy"
-             onerror="this.style.display='none'">
+        <div style="position:relative;width:100%;height:200px;overflow:hidden;">
+          <img src="{{ art.cover_url }}" alt="{{ art.title }}"
+               style="width:100%;height:200px;object-fit:cover;display:block;" loading="lazy"
+               onerror="this.parentNode.innerHTML='<div style=\'width:100%;height:200px;background:linear-gradient(135deg,#e8f8f8,#f5fadc);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px\'><span style=\'font-size:48px\'>📝</span><span style=\'font-size:12px;color:#888\'>Nanny Nha Trang</span></div>'">
+        </div>
         {% else %}
-        <div style="width:100%;height:160px;background:linear-gradient(135deg,var(--c-teal-lt),var(--c-yellow-lt));display:flex;align-items:center;justify-content:center;font-size:48px;">📝</div>
+        <div style="width:100%;height:200px;background:linear-gradient(135deg,var(--c-teal-lt),var(--c-yellow-lt));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:48px;">📝<span style="font-size:12px;color:var(--c-muted)">Nanny Nha Trang</span></div>
         {% endif %}
         <div style="padding:var(--s4);">
           <div style="font-size:12px;color:var(--c-muted);margin-bottom:6px;">

@@ -1390,7 +1390,7 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
   .hero-cta { flex-direction: column; align-items: center; }
   .hero-cta .btn { width: 100%; max-width: 280px; }
   .chat-button .chat-label { display: none; }
-  .chat-button { padding: 14px; border-radius: 50%; width: 52px; height: 52px; justify-content: center; }
+  .chat-button { padding: 14px; border-radius: 50%; width: 52px; height: 52px; justify-content: center; bottom: 80px; right: 16px; }
   .chat-button::before { margin: 0; }
   .hero-banner { padding: 28px 0 24px; }
   .features, .reviews-grid { grid-template-columns: 1fr; }
@@ -1793,3 +1793,63 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
   }
   .tg-app .tg-topbar { display: none; }
 }
+
+/* ── SITE NAV (inner pages) ──────────────────────────────── */
+.site-nav {
+  background: #fff;
+  border-bottom: 1px solid var(--c-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 8px rgba(0,0,0,.06);
+}
+.site-nav__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.site-nav__logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--c-teal-dk);
+  font-family: var(--f-display);
+  font-weight: 800;
+  font-size: 15px;
+}
+.site-nav__logo img {
+  border-radius: 50%;
+}
+.site-nav__links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.site-nav__link {
+  color: var(--c-text-2, #555);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--r-sm);
+  transition: background .15s, color .15s;
+}
+.site-nav__link:hover,
+.site-nav__link.active {
+  background: var(--c-teal-lt);
+  color: var(--c-teal-dk);
+}
+.site-nav__cta {
+  font-size: 13px;
+  padding: 8px 16px;
+  margin-left: 8px;
+}
+@media (max-width: 480px) {
+  .site-nav__logo span { display: none; }
+  .site-nav__link { padding: 6px 8px; font-size: 13px; }
+  .site-nav__cta { padding: 7px 12px; font-size: 12px; margin-left: 4px; }
+}
+.tg-app .site-nav { display: none; }

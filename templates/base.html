@@ -47,7 +47,23 @@
     </div>
   </div>
 
-  <!-- header removed -->
+  <!-- Site navbar — shown on inner pages, hidden on main page and TG app -->
+  {% if request.path != '/' %}
+  <nav class="site-nav" aria-label="Навигация по сайту">
+    <div class="container site-nav__inner">
+      <a href="/" class="site-nav__logo" aria-label="На главную">
+        <img src="/static/img/logo.webp" alt="Няня на час" width="32" height="32" loading="eager">
+        <span>Няня на час</span>
+      </a>
+      <div class="site-nav__links">
+        <a href="/tariffs" class="site-nav__link {% if request.path == '/tariffs' %}active{% endif %}">Тарифы</a>
+        <a href="/faq" class="site-nav__link {% if request.path == '/faq' %}active{% endif %}">FAQ</a>
+        <a href="/blog" class="site-nav__link {% if request.path.startswith('/blog') %}active{% endif %}">Блог</a>
+        <a href="/#leadForm" class="btn primary site-nav__cta">Заявка</a>
+      </div>
+    </div>
+  </nav>
+  {% endif %}
 
 
   {% with messages = get_flashed_messages(with_categories=true) %}
