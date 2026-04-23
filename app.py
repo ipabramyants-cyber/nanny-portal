@@ -813,12 +813,17 @@ def create_app() -> Flask:
                         lead_row = Lead.query.filter(
                             db.func.lower(Lead.telegram).in_([tg_username, '@' + tg_username])
                         ).order_by(Lead.submitted_at.desc()).first()
+                        # Save numeric tg_user_id so next login finds by ID, not username
+                        if lead_row and not lead_row.telegram_user_id:
+                            lead_row.telegram_user_id = telegram_user_id
+                            db.session.commit()
                     if lead_row and lead_row.token:
                         lk_url = f"/client/{lead_row.token}"
                 except Exception:
                     pass
             else:
                 leads_list = _read_json(LEADS_FILE, [])
+                found_lead = None
                 for lead in leads_list:
                     lead_tg = str(lead.get('telegram_user_id') or '')
                     lead_uname = str(lead.get('telegram_username') or '').lstrip('@').lower()
@@ -827,7 +832,12 @@ def create_app() -> Flask:
                        (tg_username and (lead_uname == tg_username or lead_field == tg_username)):
                         if lead.get('token'):
                             lk_url = f"/client/{lead['token']}"
+                            found_lead = lead
                             break
+                # Save numeric tg_user_id into JSON lead so next login finds by ID
+                if found_lead and not found_lead.get('telegram_user_id') and telegram_user_id:
+                    found_lead['telegram_user_id'] = telegram_user_id
+                    save_leads(leads_list)
 
         return {
             'ok': True,
@@ -1346,6 +1356,72 @@ def create_app() -> Flask:
                     blocks = NannyBlock.query.filter_by(nanny_id=int(nanny_id), kind='dayoff').order_by(NannyBlock.date.asc()).all()
                     nanny_dayoffs = [{'date': b.date, 'start': b.start, 'end': b.end, 'note': b.note} for b in blocks]
         return render_template('client_portal.html', lead=lead, nanny=nanny, nanny_dayoffs=nanny_dayoffs)
+
+    @app.route('/api/client/<token>/link_tg', methods=['POST'])
+    def api_client_link_tg(token: str):
+        """
+        Called from client_portal.html when opened inside Telegram Mini App.
+        Verifies initData, saves telegram_user_id to the lead so:
+        - Next /api/auth/telegram login finds the LK automatically
+        - Notifications to client via bot will work
+        """
+        data = request.get_json(force=True) or {}
+        tg_init_data = (data.get('init_data') or '').strip()
+        if not tg_init_data:
+            return {'error': 'init_data required'}, 400
+
+        bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+        if not bot_token:
+            return {'error': 'bot not configured'}, 500
+
+        try:
+            pairs = validate_webapp_init_data(tg_init_data, bot_token)
+            user_obj = json.loads(pairs.get('user', '{}'))
+            tg_user_id = int(user_obj.get('id') or 0)
+            tg_username = (user_obj.get('username') or '').strip()
+            tg_name = ' '.join(filter(None, [
+                (user_obj.get('first_name') or '').strip(),
+                (user_obj.get('last_name') or '').strip(),
+            ])) or None
+        except Exception as e:
+            return {'error': f'invalid initData: {e}'}, 403
+
+        if not tg_user_id:
+            return {'error': 'no user id in initData'}, 400
+
+        if use_sql:
+            lead = Lead.query.filter_by(token=token).first()
+            if not lead:
+                return {'error': 'not found'}, 404
+            changed = False
+            if not lead.telegram_user_id:
+                lead.telegram_user_id = tg_user_id
+                changed = True
+            # Also fill telegram field if empty
+            if not lead.telegram and tg_username:
+                lead.telegram = '@' + tg_username
+                changed = True
+            if changed:
+                db.session.commit()
+        else:
+            leads = load_leads()
+            lead = next((x for x in leads if x.get('token') == token), None)
+            if not lead:
+                return {'error': 'not found'}, 404
+            changed = False
+            if not lead.get('telegram_user_id'):
+                lead['telegram_user_id'] = tg_user_id
+                changed = True
+            if not lead.get('telegram_username') and tg_username:
+                lead['telegram_username'] = tg_username
+                changed = True
+            if not lead.get('telegram') and tg_username:
+                lead['telegram'] = '@' + tg_username
+                changed = True
+            if changed:
+                save_leads(leads)
+
+        return {'ok': True, 'telegram_user_id': tg_user_id, 'name': tg_name}
 
     @app.route('/api/client/<token>/update', methods=['POST'])
     def api_client_update(token: str):

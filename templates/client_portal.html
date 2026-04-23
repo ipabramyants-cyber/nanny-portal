@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Личный кабинет — {{ lead.parent_name }}{% endblock %}
+{% block scripts_pre %}<script src="https://telegram.org/js/telegram-web-app.js"></script>{% endblock %}
 
 {% block head_meta %}
   <meta name="robots" content="noindex, nofollow">
@@ -15,6 +16,32 @@
     client_rate: {{ lead.client_rate_per_hour | default(130000) }},
     nanny_dayoffs: {{ nanny_dayoffs | tojson }}
   };
+</script>
+<script>
+// Auto-link Telegram user ID when opened inside Telegram Mini App
+(function(){
+  var tries = 0;
+  var timer = setInterval(function(){
+    tries++;
+    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+      clearInterval(timer);
+      var tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      var initData = tg.initData;
+      if (!initData) return;
+      // Link TG user ID to this lead (silently, best-effort)
+      fetch('/api/client/' + window.__LK__.token + '/link_tg', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({init_data: initData}),
+        credentials: 'include',
+      }).catch(function(){});
+    } else if (tries > 40) {
+      clearInterval(timer); // not in Telegram — skip
+    }
+  }, 100);
+})();
 </script>
 
 <!-- Page header -->
