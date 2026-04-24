@@ -189,8 +189,8 @@
       <div id="calendar" class="calendar" role="grid"></div>
       <div id="calCounter" style="opacity:0;"></div>
       <p class="hint" style="margin-top:var(--s3); font-size:12px; line-height:1.7;">
-        🟩 <strong>Даты работы</strong> &nbsp;·&nbsp; 🟣 <strong>Знакомство</strong>{% if nanny_dayoffs %} &nbsp;·&nbsp; 🔴 <strong>Выходной няни</strong>{% endif %}<br>
-        Нажмите на выделенную дату — увидите чеки. Долгий тап — убрать дату.
+        🟩 <strong>Подтверждено</strong> &nbsp;·&nbsp; 🟦 <strong>Факт на проверке</strong> &nbsp;·&nbsp; 🩵 <strong>Запланировано</strong>{% if nanny_dayoffs %} &nbsp;·&nbsp; 🔴 <strong>Выходной няни</strong>{% endif %}<br>
+        Нажмите на дату — статус и чеки. Долгий тап — убрать дату.
       </p>
 
       <!-- Cost calculator (client view) -->
@@ -325,34 +325,51 @@ function openTgLink(path) {
         if(iso === today) cell.classList.add('today');
 
         if(WORK_DATES[iso] !== undefined){
-          cell.classList.add('work');
-          // Show time hint if available
-          const slot = WORK_DATES[iso];
-          const timeText = (typeof slot === 'object' && slot !== null)
-            ? (slot.start && slot.end ? `${slot.start}–${slot.end}` : '')
-            : (typeof slot === 'string' ? slot : '');
+          const slot = WORK_DATES[iso] || {};
+          const dateStatus = (typeof slot === 'object' && slot !== null) ? (slot.status || '') : '';
+          // Visual style by status
+          const STATUS_STYLE = {
+            'confirmed':    {bg:'#f0fdf4', border:'#16a34a', label:'✅ Подтверждена', color:'#16a34a'},
+            'waiting_fact': {bg:'#eff6ff', border:'#3b82f6', label:'⏱ Ждёт подтверждения', color:'#3b82f6'},
+            'cancelled':    {bg:'#f9fafb', border:'#9ca3af', label:'❌ Отменена', color:'#9ca3af'},
+            '':             {bg:'', border:'', label:'📅 Запланировано', color:'var(--c-teal-dk)'},
+          };
+          const ss = STATUS_STYLE[dateStatus] || STATUS_STYLE[''];
+          if(ss.bg) { cell.style.background = ss.bg; cell.style.borderTop = `2px solid ${ss.border}`; }
+          else       { cell.classList.add('work'); }
+
+          // Time
+          const timeText = typeof slot === 'object' ? (slot.time || '') : (typeof slot === 'string' ? slot : '');
           if(timeText){
             const t = document.createElement('div');
-            t.style.cssText = 'font-size:10px;font-weight:700;margin-top:2px;color:var(--c-teal-dk);';
+            t.style.cssText = `font-size:10px;font-weight:700;margin-top:2px;color:${ss.color};`;
             t.textContent = timeText;
             cell.appendChild(t);
           }
-          cell.style.cursor = 'pointer';
-          cell.title = 'Нажмите, чтобы увидеть чеки и управлять датой';
-          cell.addEventListener('click', () => { loadReceipts(iso); showDateActions(iso); });
+          // Status badge
+          const sb = document.createElement('div');
+          sb.style.cssText = `font-size:9px;font-weight:700;margin-top:1px;color:${ss.color};`;
+          sb.textContent = ss.label;
+          cell.appendChild(sb);
+
+          if(dateStatus !== 'cancelled'){
+            cell.style.cursor = 'pointer';
+            cell.addEventListener('click', () => { loadReceipts(iso); showDateActions(iso); });
+          }
         }
 
         if(iso === MEETING_DATE){
           cell.classList.add('meeting');
           const badge = document.createElement('div');
           badge.style.cssText = 'font-size:10px;font-weight:700;margin-top:2px;color:var(--c-purple,#7c3aed);';
-          badge.textContent = 'Знакомство';
+          badge.textContent = '🤝 Знакомство';
           cell.appendChild(badge);
         }
 
-        // Show nanny dayoff if applicable
+        // Nanny dayoff — show even if work date (overlap)
         if(NANNY_DAYOFFS[iso]){
-          cell.style.background = '#fee2e2';
+          cell.style.background = '#fef2f2';
+          cell.style.borderTop = '2px solid #dc2626';
           const db = document.createElement('div');
           db.style.cssText = 'font-size:9px;font-weight:700;margin-top:2px;color:#dc2626;';
           db.textContent = '🚫 вых. няни';

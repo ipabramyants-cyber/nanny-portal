@@ -1156,6 +1156,41 @@ def create_app() -> Flask:
         for tid in ids:
             _safe_send_message(tid, text)
 
+    def _notify_on_new_dates(parent_name, child_name, added_dates, lead_token,
+                              assigned_nanny_id, client_tg_id):
+        """Notify admin + nanny when client adds new work dates after nanny is assigned."""
+        site = os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')
+        dates_text = ', '.join(added_dates[:10])
+        admin_msg = (
+            f"📅 Клиент добавил новые даты\n"
+            f"Клиент: {parent_name or '—'}\n"
+            f"Ребёнок: {child_name or '—'}\n"
+            f"Новые даты: {dates_text}\n"
+            f"ЛК: {site}/client/{lead_token}"
+        )
+        _notify_admins(admin_msg)
+        # Notify nanny
+        try:
+            nannies = load_nannies()
+            if use_sql:
+                nanny_obj = Nanny.query.get(int(assigned_nanny_id)) if assigned_nanny_id else None
+                nanny_tg = nanny_obj.telegram_user_id if nanny_obj else None
+                nanny_name = nanny_obj.name if nanny_obj else None
+                nanny_portal = f"{site}/nanny/app"
+            else:
+                nanny_obj = next((n for n in nannies if str(n.get('id')) == str(assigned_nanny_id)), None)
+                nanny_tg = nanny_obj.get('telegram_user_id') if nanny_obj else None
+                nanny_name = nanny_obj.get('name') if nanny_obj else None
+                portal_token = nanny_obj.get('portal_token') if nanny_obj else None
+                nanny_portal = f"{site}/nanny/portal/{portal_token}" if portal_token else site
+            if nanny_tg:
+                _safe_send_message(int(nanny_tg),
+                    f"📅 Клиент {parent_name or '—'} добавил новые даты: {dates_text}\n"
+                    f"Ожидается подтверждение. Проверьте: {nanny_portal}"
+                )
+        except Exception as _e:
+            app.logger.warning("_notify_on_new_dates nanny notify failed: %s", _e)
+
     # Simple in-memory rate limiter for /api/lead (max 5 per IP per 10 minutes)
     _lead_rate: dict = {}
 
@@ -1455,18 +1490,33 @@ def create_app() -> Flask:
             lead = Lead.query.filter_by(token=token).first()
             if not lead:
                 return {'error': 'ЛК не найден'}, 404
+            old_dates = set((lead.work_dates or {}).keys())
+            new_dates = set(work_dates.keys())
+            added = new_dates - old_dates
             lead.meeting_date = meeting_date
             lead.work_dates = work_dates
             db.session.commit()
+            # Notify if new dates added AFTER nanny was already assigned
+            if added and lead.assigned_nanny_id:
+                _notify_on_new_dates(lead.parent_name, lead.child_name, sorted(added),
+                                     lead.token, lead.assigned_nanny_id, lead.telegram_user_id)
             return {'ok': True}
 
         leads = load_leads()
         lead = next((x for x in leads if x.get('token') == token), None)
         if not lead:
             return {'error': 'ЛК не найден'}, 404
+        old_dates = set((lead.get('work_dates') or {}).keys())
+        new_dates = set(work_dates.keys())
+        added = new_dates - old_dates
         lead['meeting_date'] = meeting_date
         lead['work_dates'] = work_dates
         save_leads(leads)
+        # Notify if new dates added AFTER nanny was already assigned
+        if added and lead.get('assigned_nanny_id'):
+            _notify_on_new_dates(lead.get('parent_name'), lead.get('child_name'),
+                                 sorted(added), lead.get('token'),
+                                 lead.get('assigned_nanny_id'), lead.get('telegram_user_id'))
         return {'ok': True}
 
     @app.route('/api/client/<token>/upload_receipt', methods=['POST'])
@@ -1587,14 +1637,22 @@ def create_app() -> Flask:
         events_with_rate = []
         for l in clients:
             rate = l.get('nanny_rate_per_hour') or DEFAULT_NANNY_RATE_VND
+            receipts = (l.get('documents') or {}).get('receipts') or {}
             for d, info in (l.get('work_dates') or {}).items():
+                slot = info if isinstance(info, dict) else {}
+                date_status = slot.get('status')  # confirmed/cancelled/waiting_fact/None
                 events_with_rate.append({
                     'date': d,
                     'child_name': l.get('child_name'),
                     'child_age': l.get('child_age'),
+                    'parent_name': l.get('parent_name'),
                     'client_token': l.get('token'),
-                    'time': (info or {}).get('time') if isinstance(info, dict) else None,
+                    'time': slot.get('time'),
                     'nanny_rate': rate,
+                    'status': date_status,
+                    'fact_start': slot.get('fact_start'),
+                    'fact_end': slot.get('fact_end'),
+                    'has_receipt': bool(receipts.get(d)),
                 })
         events_with_rate.sort(key=lambda x: x.get('date') or '')
         today = datetime.datetime.utcnow().date().isoformat()
@@ -1660,6 +1718,51 @@ def create_app() -> Flask:
         }
         save_leads(leads)
         return {'ok': True, 'filename': filename}
+
+    @app.route('/api/nanny/<portal_token>/submit_fact', methods=['POST'])
+    def api_nanny_submit_fact(portal_token: str):
+        """Nanny submits actual start/end time for a work date (JSON mode)."""
+        session_token = session.get('nanny_portal_token') or ''
+        if session_token != portal_token:
+            return {'error': 'Forbidden'}, 403
+        if use_sql:
+            return {'error': 'Use /api/nanny/shifts/<id>/actual in SQL mode'}, 400
+
+        data = request.get_json(force=True) or {}
+        client_token = (data.get('client_token') or '').strip()
+        date_str = (data.get('date') or '').strip()
+        fact_start = (data.get('fact_start') or '').strip()
+        fact_end = (data.get('fact_end') or '').strip()
+
+        if not client_token or not date_str or not fact_start or not fact_end:
+            return {'error': 'client_token, date, fact_start, fact_end required'}, 400
+
+        leads = load_leads()
+        lead = next((x for x in leads if x.get('token') == client_token), None)
+        if not lead:
+            return {'error': 'Клиент не найден'}, 404
+
+        wd = dict(lead.get('work_dates') or {})
+        if date_str not in wd:
+            return {'error': 'Дата не найдена'}, 404
+
+        slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+        slot['fact_start'] = fact_start
+        slot['fact_end'] = fact_end
+        slot['status'] = 'waiting_fact'  # admin needs to confirm
+        wd[date_str] = slot
+        lead['work_dates'] = wd
+        save_leads(leads)
+
+        # Notify admins
+        _notify_admins(
+            f"⏱ Няня отправила фактическое время\n"
+            f"Клиент: {lead.get('parent_name','—')}\n"
+            f"Дата: {date_str}\n"
+            f"Факт: {fact_start}–{fact_end}\n"
+            f"ЛК: {os.environ.get('SITE_URL','https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{client_token}"
+        )
+        return {'ok': True}
 
     @app.route('/api/nanny/<portal_token>/blocks')
     def api_nanny_public_blocks(portal_token: str):
@@ -1744,19 +1847,44 @@ def create_app() -> Flask:
         # Admin panel (protected)
         leads = load_leads()
         nannies = load_nannies()
-        # Build calendar events from leads (show BOTH assigned and unassigned).
-        # Unassigned leads are still important and should be visible in the calendar.
+        # Build enriched calendar events for admin
+        # type: 'open' | 'assigned' | 'confirmed' | 'waiting_fact' | 'cancelled'
+        nanny_map = {n['id']: n for n in nannies} if isinstance(nannies, list) else {}
         events = []
         for l in leads:
+            nanny_id = l.get('assigned_nanny_id')
+            nanny_obj = nanny_map.get(nanny_id) if nanny_id else None
+            nanny_name = nanny_obj.get('name') if nanny_obj else None
+            receipts = (l.get('documents') or {}).get('receipts') or {}
             for d, info in (l.get('work_dates') or {}).items():
+                slot = info if isinstance(info, dict) else {}
+                date_status = slot.get('status')  # confirmed / cancelled / waiting_fact / None
+                # Derive display type
+                if date_status == 'cancelled':
+                    evt_type = 'cancelled'
+                elif date_status == 'confirmed':
+                    evt_type = 'confirmed'
+                elif date_status == 'waiting_fact':
+                    evt_type = 'waiting_fact'
+                elif nanny_id:
+                    evt_type = 'assigned'
+                else:
+                    evt_type = 'open'
+                has_receipt = bool(receipts.get(d))
                 events.append({
                     'date': d,
-                    'nanny_id': l.get('assigned_nanny_id'),  # may be null
+                    'nanny_id': nanny_id,
+                    'nanny_name': nanny_name,
                     'child_name': l.get('child_name'),
                     'child_age': l.get('child_age'),
+                    'parent_name': l.get('parent_name'),
                     'token': l.get('token'),
-                    'time': (info or {}).get('time') if isinstance(info, dict) else None,
-                    'type': 'assigned' if l.get('assigned_nanny_id') else 'open',
+                    'time': slot.get('time'),
+                    'status': date_status,
+                    'type': evt_type,
+                    'has_receipt': has_receipt,
+                    'fact_start': slot.get('fact_start'),
+                    'fact_end': slot.get('fact_end'),
                 })
         events.sort(key=lambda x: x.get('date') or '')
 

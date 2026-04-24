@@ -55,8 +55,8 @@
       </div>
       <div id="calendar" class="calendar"></div>
       <p class="hint" style="margin-top:8px; line-height:1.7;">
-        🟢 <strong>Назначенная смена</strong> &nbsp;·&nbsp; 🔴 <strong>Выходной</strong><br>
-        Нажмите на дату для просмотра назначений, загрузки чека или отметки выходного.
+        🟩 <strong>Подтверждено</strong> &nbsp;·&nbsp; 🟦 <strong>Факт на проверке</strong> &nbsp;·&nbsp; 🩵 <strong>Запланировано</strong> &nbsp;·&nbsp; ⬜ <strong>Прошедшая (нет факта)</strong> &nbsp;·&nbsp; 🔴 <strong>Выходной</strong><br>
+        Нажмите на дату — статус смены, загрузка чека, отправка фактического времени.
       </p>
       <div id="selectedBox" style="margin-top:14px;"></div>
     </div>
@@ -332,6 +332,15 @@
     });
   }
 
+  // Status → cell background/badge colour
+  function shiftColor(status, isPast){
+    if(status==='confirmed')   return {bg:'rgba(34,197,94,.18)',border:'rgba(34,197,94,.5)',txt:'#15803d',label:'✓ подтверждено'};
+    if(status==='waiting_fact')return {bg:'rgba(59,130,246,.18)',border:'rgba(59,130,246,.5)',txt:'#1d4ed8',label:'⏳ на проверке'};
+    if(status==='cancelled')   return {bg:'rgba(239,68,68,.12)',border:'rgba(239,68,68,.4)',txt:'var(--c-danger)',label:'✗ отменено'};
+    if(isPast)                 return {bg:'rgba(156,163,175,.15)',border:'rgba(156,163,175,.4)',txt:'var(--c-text-muted)',label:'⬜ нет факта'};
+    return                            {bg:'rgba(20,184,166,.18)',border:'rgba(20,184,166,.5)',txt:'var(--c-teal-dk)',label:'📅 назначено'};
+  }
+
   function renderCalendar(){
     const y=cur.getFullYear(),m=cur.getMonth();
     mlabel.textContent=`${monthNames[m]} ${y}`;cal.innerHTML='';
@@ -348,9 +357,24 @@
         if((r===0&&c<startDow)||day>dim){cell.classList.add('muted');row.appendChild(cell);continue;}
         const iso=`${y}-${pad(m+1)}-${pad(day)}`;
         const items=byDate[iso]||[];const block=blocksByDate[iso]||null;
+        const isPast=iso<today;
         cell.innerHTML=`<div class="cal-num">${day}</div>`;
         if(iso===today)cell.classList.add('today');
-        if(items.length){cell.classList.add('work');const m2=document.createElement('div');m2.style.cssText='font-size:10px;font-weight:700;margin-top:3px;color:var(--c-teal-dk);';m2.textContent=`${items.length} назн.`;cell.appendChild(m2);}
+        if(items.length){
+          // pick "worst" status: confirmed < waiting_fact < '' (planned/no-fact)
+          const topStatus = items.reduce((acc,e)=>{
+            if(!acc)return e.status||'';
+            if(acc==='waiting_fact'&&(!e.status||e.status===''))return e.status||'';
+            return acc;
+          }, null);
+          const col=shiftColor(topStatus||'',isPast);
+          cell.style.background=col.bg;
+          cell.style.border=`1.5px solid ${col.border}`;
+          const badge=document.createElement('div');
+          badge.style.cssText=`font-size:9px;font-weight:700;margin-top:3px;color:${col.txt};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
+          badge.textContent=items.length>1?`${items.length} смены`:col.label;
+          cell.appendChild(badge);
+        }
         if(block){cell.classList.add('dayoff');const mb=document.createElement('div');mb.style.cssText='font-size:10px;font-weight:700;margin-top:2px;color:var(--c-danger);';mb.textContent='выходной';cell.appendChild(mb);}
         if(selectedIso===iso)cell.style.outline='3px solid var(--c-teal)';
         cell.addEventListener('click',()=>selectDate(iso));
@@ -368,7 +392,7 @@
   function selectDate(iso){
     selectedIso=iso;
     const items=byDate[iso]||[];const block=blocksByDate[iso]||null;
-    const isPast=!!(today&&iso<=today);
+    const isPast=!!(today&&iso<today);
     renderCalendar();
     uploadDate.value=formatRu(iso);offDate.value=iso;
     offStart.value=block?.start||'';offEnd.value=block?.end||'';offNote.value=block?.note||'';
@@ -380,15 +404,44 @@
     uploadHint.textContent=!items.length?'На выбранную дату нет назначений.'
       :!isPast?'Чек можно загрузить только для прошедшей даты.'
       :`Загрузить чек за ${formatRu(iso)}.`;
-    const assignmentsHtml=items.length?items.map(e=>`
-      <div style="padding:10px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);margin-bottom:6px;">
-        <div style="display:flex;justify-content:space-between;gap:8px;">
+
+    // Build cards for each assignment on this date
+    const assignmentsHtml=items.length?items.map(e=>{
+      const col=shiftColor(e.status||'',isPast);
+      const statusBadge=`<span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;background:${col.bg};color:${col.txt};border:1px solid ${col.border};">${col.label}</span>`;
+      // Fact time row
+      const factRow=(e.fact_start&&e.fact_end)
+        ?`<div class="text-small text-muted" style="margin-top:4px;">Фактическое время: <strong>${e.fact_start}–${e.fact_end}</strong></div>`:'';
+      // Inline fact form — show for past dates without submitted fact
+      const needFact=isPast&&!e.fact_start&&e.status!=='confirmed'&&e.status!=='cancelled';
+      const factFormId=`factForm_${iso}_${(e.client_token||'').slice(-6)}`;
+      const factForm=needFact?`
+        <div id="${factFormId}" style="margin-top:8px;padding:10px 12px;background:rgba(59,130,246,.07);border:1px dashed rgba(59,130,246,.4);border-radius:var(--r-md);">
+          <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:6px;">Отправить фактическое время</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+            <div><label style="font-size:11px;">Начало</label><input type="time" id="fs_${factFormId}" style="width:100%;font-size:13px;" /></div>
+            <div><label style="font-size:11px;">Конец</label><input type="time" id="fe_${factFormId}" style="width:100%;font-size:13px;" /></div>
+          </div>
+          <button type="button" onclick="submitFact('${iso}','${e.client_token}','${factFormId}')"
+            style="background:var(--c-teal);color:#fff;border:none;border-radius:var(--r-md);padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;">
+            Отправить ➤
+          </button>
+          <span id="fs_status_${factFormId}" style="font-size:11px;color:var(--c-text-muted);margin-left:8px;"></span>
+        </div>`:'';
+      return `
+      <div style="padding:10px 12px;border:1.5px solid ${col.border};border-radius:var(--r-md);background:${col.bg};margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;">
           <strong>${e.child_name||'Ребёнок'} (${e.child_age||'-'})</strong>
-          <span class="text-small text-muted">${e.time||'время уточняется'}</span>
+          ${statusBadge}
         </div>
+        <div class="text-small text-muted" style="margin-top:2px;">Запланировано: <strong>${e.time||'время уточняется'}</strong></div>
+        ${factRow}
         <div class="text-small text-muted" style="margin-top:2px;">Клиент: ${clients.find(x=>x.token===e.client_token)?.parent_name||'-'}</div>
         <a class="action-link text-small" href="/client/${e.client_token}" target="_blank" style="margin-top:4px;display:inline-block;">Открыть ЛК →</a>
-      </div>`).join(''):'<div class="hint">Назначений на эту дату нет.</div>';
+        ${factForm}
+      </div>`;
+    }).join(''):'<div class="hint">Назначений на эту дату нет.</div>';
+
     const blockHtml=block?`<div style="margin-top:8px;padding:8px 12px;border-radius:var(--r-md);background:rgba(239,68,68,.08);border:1px dashed rgba(239,68,68,.35);">
       <strong style="color:var(--c-danger);">Выходной</strong>
       <span class="text-small text-muted" style="margin-left:6px;">${block.start||'--:--'}–${block.end||'--:--'} ${block.note?'· '+block.note:''}</span>
@@ -397,6 +450,34 @@
     offStatus.textContent=blocksEnabled
       ?(block?'Выходной найден. Можно удалить или изменить.':'Можно отметить как выходной.')
       :'Отметка выходного работает только в SQL-режиме.';
+  }
+
+  async function submitFact(iso, clientToken, formId){
+    const fsEl=document.getElementById('fs_'+formId);
+    const feEl=document.getElementById('fe_'+formId);
+    const statusEl=document.getElementById('fs_status_'+formId);
+    if(!fsEl||!feEl)return;
+    const fact_start=fsEl.value;const fact_end=feEl.value;
+    if(!fact_start||!fact_end){statusEl.textContent='Заполните оба поля.';statusEl.style.color='var(--c-danger)';return;}
+    statusEl.textContent='Отправляю…';statusEl.style.color='var(--c-text-muted)';
+    try{
+      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/submit_fact`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({date:iso,client_token:clientToken,fact_start,fact_end})
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка сервера');
+      statusEl.textContent='✓ Отправлено!';statusEl.style.color='#15803d';
+      // Refresh events
+      const evRes=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/events`);
+      if(evRes.ok){const evData=await evRes.json().catch(()=>({}));
+        if(evData.events){events.length=0;evData.events.forEach(e=>events.push(e));
+          Object.keys(byDate).forEach(k=>delete byDate[k]);
+          events.forEach(e=>{if(!e.date)return;byDate[e.date]=byDate[e.date]||[];byDate[e.date].push(e);});
+        }
+      }
+      setTimeout(()=>selectDate(iso),400);
+    }catch(e){statusEl.textContent='Ошибка: '+(e.message||e);statusEl.style.color='var(--c-danger)';}
   }
 
   async function loadBlocks(){

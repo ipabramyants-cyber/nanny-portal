@@ -121,28 +121,25 @@
   <div class="admin-section">
     <div class="panel">
       <h2>📅 Сводный календарь</h2>
-      <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:var(--s4);font-size:13px;">
-        <span style="display:flex;align-items:center;gap:6px;">
-          <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#f59e0b;"></span>
-          Открытая заявка
-        </span>
-        <span style="display:flex;align-items:center;gap:6px;">
-          <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#0d9488;"></span>
-          Назначена няня
-        </span>
-        <span style="display:flex;align-items:center;gap:6px;">
-          <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:#dc2626;"></span>
-          Выходной няни
-        </span>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:var(--s4);font-size:12px;line-height:1.4;">
+        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#fef3c7;border:1.5px solid #f59e0b;"></span>⏳ Без няни</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#ccfbf1;border:1.5px solid #0d9488;"></span>👩 Назначена</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#dbeafe;border:1.5px solid #3b82f6;"></span>⏱ Ждёт факта</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#dcfce7;border:1.5px solid #16a34a;"></span>✅ Подтверждена</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#fee2e2;border:1.5px solid #dc2626;"></span>🚫 Вых. няни</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#f3f4f6;border:1.5px solid #9ca3af;"></span>❌ Отменена</span>
       </div>
       <div style="display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3);">
         <button type="button" id="calPrev" class="btn secondary" style="padding:6px 14px;font-size:13px;">‹</button>
         <strong id="calMonthLabel" style="min-width:160px;text-align:center;"></strong>
         <button type="button" id="calNext" class="btn secondary" style="padding:6px 14px;font-size:13px;">›</button>
       </div>
-      <div id="masterCal" class="calendar" style="max-width:440px;"></div>
+      <div id="masterCal" class="calendar" style="max-width:480px;"></div>
       <div id="calDayDetail" style="margin-top:var(--s4);display:none;">
-        <h4 id="calDayTitle" style="margin-bottom:var(--s2);"></h4>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--s3);">
+          <h4 id="calDayTitle" style="margin:0;"></h4>
+          <button onclick="document.getElementById('calDayDetail').style.display='none'" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--c-text-2);">✕</button>
+        </div>
         <div id="calDayList"></div>
       </div>
     </div>
@@ -862,97 +859,119 @@
 
 // ── Master calendar ──────────────────────────────────────
 (function(){
-  const EVENTS    = {{ events | tojson }};       // {date, nanny_id, child_name, child_age, token, time, type}
-  const DAYOFFS   = {{ nanny_dayoffs | tojson }}; // {date, nanny_id, nanny_name, start, end, note}
+  const EVENTS  = {{ events | tojson }};      // enriched: {date,type,nanny_name,child_name,child_age,parent_name,token,time,status,has_receipt,fact_start,fact_end}
+  const DAYOFFS = {{ nanny_dayoffs | tojson }}; // {date,nanny_id,nanny_name,start,end,note}
 
-  // Build per-date lookup for lead events
+  // TYPE → visual config
+  const TYPE_CFG = {
+    open:         { bg:'#fef9ee', border:'#f59e0b', dot:'#f59e0b', label:'⏳ Без няни' },
+    assigned:     { bg:'#f0fdfa', border:'#0d9488', dot:'#0d9488', label:'👩 Назначена' },
+    waiting_fact: { bg:'#eff6ff', border:'#3b82f6', dot:'#3b82f6', label:'⏱ Ждёт факта' },
+    confirmed:    { bg:'#f0fdf4', border:'#16a34a', dot:'#16a34a', label:'✅ Подтверждена' },
+    cancelled:    { bg:'#f9fafb', border:'#9ca3af', dot:'#9ca3af', label:'❌ Отменена' },
+    dayoff:       { bg:'#fef2f2', border:'#dc2626', dot:'#dc2626', label:'🚫 Вых. няни' },
+  };
+
+  // Index events by date
   const byDate = {};
-  EVENTS.forEach(e => {
-    if(!byDate[e.date]) byDate[e.date] = [];
-    byDate[e.date].push(e);
-  });
-
-  // Build per-date lookup for nanny dayoffs
+  EVENTS.forEach(e => { (byDate[e.date]||(byDate[e.date]=[])).push(e); });
   const dayoffByDate = {};
-  DAYOFFS.forEach(b => {
-    if(!dayoffByDate[b.date]) dayoffByDate[b.date] = [];
-    dayoffByDate[b.date].push(b);
-  });
+  DAYOFFS.forEach(b => { (dayoffByDate[b.date]||(dayoffByDate[b.date]=[])).push(b); });
 
   const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь',
                   'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-  const DOW = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
-  const today = new Date().toISOString().slice(0,10);
+  const DOW    = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  const today  = new Date().toISOString().slice(0,10);
 
-  // Start at earliest upcoming event month, or today
-  const allDates = [...Object.keys(byDate), ...Object.keys(dayoffByDate)].filter(d => d >= today).sort();
-  const startDate = allDates[0] || today;
-  let cur = new Date(startDate.slice(0,7) + '-01');
+  const allDates = [...Object.keys(byDate),...Object.keys(dayoffByDate)].filter(d=>d>=today).sort();
+  const startDate = allDates[0]||today;
+  let cur = new Date(startDate.slice(0,7)+'-01');
 
   function pad(n){ return String(n).padStart(2,'0'); }
+  function iso(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
+
+  // Determine dominant type priority for cell background
+  function dominantType(evts, offs) {
+    if(evts.some(e=>e.type==='waiting_fact')) return 'waiting_fact';
+    if(evts.some(e=>e.type==='open'))         return 'open';
+    if(evts.some(e=>e.type==='assigned'))     return 'assigned';
+    if(evts.some(e=>e.type==='confirmed'))    return 'confirmed';
+    if(offs.length)                            return 'dayoff';
+    if(evts.some(e=>e.type==='cancelled'))    return 'cancelled';
+    return null;
+  }
 
   function render(){
     const y = cur.getFullYear(), m = cur.getMonth();
-    document.getElementById('calMonthLabel').textContent = MONTHS[m] + ' ' + y;
+    document.getElementById('calMonthLabel').textContent = MONTHS[m]+' '+y;
     const cal = document.getElementById('masterCal');
     cal.innerHTML = '';
 
-    // header
-    const hr = document.createElement('div'); hr.className = 'cal-row';
-    DOW.forEach(d => { const c=document.createElement('div');c.className='cal-cell dow';c.textContent=d;hr.appendChild(c); });
+    // DOW header
+    const hr = document.createElement('div'); hr.className='cal-row';
+    DOW.forEach(d=>{ const c=document.createElement('div');c.className='cal-cell dow';c.textContent=d;hr.appendChild(c);});
     cal.appendChild(hr);
 
-    const firstDow = (new Date(y,m,1).getDay()+6)%7;
-    const dim = new Date(y,m+1,0).getDate();
-    let day = 1;
+    const firstDow=(new Date(y,m,1).getDay()+6)%7;
+    const dim=new Date(y,m+1,0).getDate();
+    let day=1;
     for(let r=0;r<6;r++){
       if(day>dim) break;
       const row=document.createElement('div');row.className='cal-row';
       for(let c=0;c<7;c++){
         const cell=document.createElement('div');cell.className='cal-cell';
-        if((r===0&&c<firstDow)||day>dim){ cell.classList.add('muted');row.appendChild(cell);continue; }
-        const iso=`${y}-${pad(m+1)}-${pad(day)}`;
+        if((r===0&&c<firstDow)||day>dim){cell.classList.add('muted');row.appendChild(cell);continue;}
+        const dateStr=iso(y,m,day);
         cell.innerHTML=`<div class="cal-num">${day}</div>`;
-        if(iso===today) cell.classList.add('today');
+        if(dateStr===today) cell.classList.add('today');
 
-        const dayEvts   = byDate[iso]     || [];
-        const dayOffs   = dayoffByDate[iso]|| [];
-        const hasOpen   = dayEvts.some(e => e.type === 'open');
-        const hasAssign = dayEvts.some(e => e.type === 'assigned');
-        const hasDayoff = dayOffs.length > 0;
+        const evts = byDate[dateStr]  || [];
+        const offs = dayoffByDate[dateStr] || [];
 
-        // Priority: assigned > open > dayoff for background
-        // But we show all indicators
-        if(hasAssign){
-          cell.style.background = '#ccfbf1'; // teal tint
-        } else if(hasOpen){
-          cell.style.background = '#fef3c7'; // amber tint
-        } else if(hasDayoff){
-          cell.style.background = '#fee2e2'; // red tint
+        const dom = dominantType(evts, offs);
+        if(dom){
+          const cfg = TYPE_CFG[dom];
+          cell.style.background = cfg.bg;
+          cell.style.borderTop  = `2px solid ${cfg.border}`;
         }
 
-        if(hasAssign){
-          const b=document.createElement('div');
-          b.style.cssText='font-size:9px;font-weight:700;margin-top:2px;color:#0d9488;';
-          b.textContent='✓ '+dayEvts.filter(e=>e.type==='assigned').length+' назн.';
-          cell.appendChild(b);
-        }
-        if(hasOpen){
-          const b=document.createElement('div');
-          b.style.cssText='font-size:9px;font-weight:700;margin-top:2px;color:#d97706;';
-          b.textContent='⏳ '+dayEvts.filter(e=>e.type==='open').length+' откр.';
-          cell.appendChild(b);
-        }
-        if(hasDayoff){
-          const b=document.createElement('div');
-          b.style.cssText='font-size:9px;font-weight:700;margin-top:2px;color:#dc2626;';
-          b.textContent='✗ '+dayOffs.length+' вых.';
-          cell.appendChild(b);
+        // Dots row: one dot per unique type
+        const types = new Set(evts.map(e=>e.type));
+        if(offs.length) types.add('dayoff');
+        if(types.size){
+          const dots = document.createElement('div');
+          dots.style.cssText='display:flex;gap:2px;flex-wrap:wrap;margin-top:2px;justify-content:center;';
+          types.forEach(t=>{
+            const cfg=TYPE_CFG[t]||{dot:'#999'};
+            const s=document.createElement('span');
+            s.style.cssText=`display:inline-block;width:7px;height:7px;border-radius:50%;background:${cfg.dot};flex-shrink:0;`;
+            dots.appendChild(s);
+          });
+          cell.appendChild(dots);
         }
 
-        if(dayEvts.length || dayOffs.length){
+        // Count badges: total events
+        const total = evts.length + offs.length;
+        if(total){
+          const cnt=document.createElement('div');
+          cnt.style.cssText='font-size:9px;font-weight:700;margin-top:1px;color:var(--c-text-2);';
+          cnt.textContent = total===1
+            ? (evts[0]?.child_name||offs[0]?.nanny_name||'1')
+            : total+' зап.';
+          cell.appendChild(cnt);
+        }
+
+        // Receipt icon
+        if(evts.some(e=>e.has_receipt)){
+          const ico=document.createElement('div');
+          ico.style.cssText='font-size:10px;margin-top:1px;';
+          ico.textContent='📎';
+          cell.appendChild(ico);
+        }
+
+        if(evts.length||offs.length){
           cell.style.cursor='pointer';
-          cell.addEventListener('click',()=>showDay(iso, dayEvts, dayOffs));
+          cell.addEventListener('click',()=>showDay(dateStr,evts,offs));
         }
         row.appendChild(cell); day++;
       }
@@ -960,41 +979,63 @@
     }
   }
 
-  function showDay(iso, evts, offs){
+  function fmtDate(iso){
+    const[y,m,d]=iso.split('-'); return `${d}.${m}.${y}`;
+  }
+
+  function showDay(dateStr, evts, offs){
     const detail = document.getElementById('calDayDetail');
     const title  = document.getElementById('calDayTitle');
     const list   = document.getElementById('calDayList');
-    const [y,m,d] = iso.split('-');
-    const total = evts.length + offs.length;
-    title.textContent = `${d}.${m}.${y} — ${total} запис.`;
+    title.textContent = fmtDate(dateStr)+' — '+(evts.length+offs.length)+' записей';
 
     let html = '';
 
-    // Lead events
-    evts.forEach(e => {
-      const isAssigned = e.type === 'assigned';
-      html += `<div style="padding:8px 12px;border:2px solid ${isAssigned?'#0d9488':'#f59e0b'};border-radius:var(--r-md);margin-bottom:6px;font-size:13px;background:${isAssigned?'#f0fdfa':'#fffbeb'};">
-        <strong>${e.child_name||'Ребёнок'}${e.child_age?', '+e.child_age:''}</strong>
-        ${e.time?`<span style="color:var(--c-text-muted);margin-left:8px;">${e.time}</span>`:''}
-        <br>
-        ${isAssigned
-          ? `<span style="color:#0d9488;">✅ Назначена няня #${e.nanny_id}</span>`
-          : `<span style="color:#d97706;">⏳ Ожидает назначения</span>`}
-        &nbsp;·&nbsp;
-        <a class="action-link" href="/client/${e.token}" target="_blank" style="font-size:12px;">ЛК →</a>
-      </div>`;
+    // Grouped by type
+    const typeOrder = ['open','assigned','waiting_fact','confirmed','cancelled'];
+    typeOrder.forEach(t=>{
+      const group = evts.filter(e=>e.type===t);
+      group.forEach(e=>{
+        const cfg = TYPE_CFG[t]||TYPE_CFG.assigned;
+        const timeStr = e.time ? `<span style="color:var(--c-text-2);margin-left:6px;font-size:12px;">${e.time}</span>` : '';
+        const factStr = e.fact_start&&e.fact_end
+          ? `<div style="font-size:11px;color:#3b82f6;margin-top:2px;">⏱ Факт: ${e.fact_start}–${e.fact_end}</div>` : '';
+        const receiptStr = e.has_receipt
+          ? `<span style="font-size:11px;margin-left:6px;background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:8px;">📎 чек</span>` : '';
+        html += `
+          <div style="padding:10px 14px;border:1.5px solid ${cfg.border};border-radius:var(--r-md);margin-bottom:8px;background:${cfg.bg};font-size:13px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+              <div>
+                <strong>${e.child_name||'Ребёнок'}${e.child_age?', '+e.child_age:''}</strong>
+                <span style="color:var(--c-text-2);margin-left:6px;font-size:12px;">${e.parent_name||''}</span>
+                ${timeStr}${receiptStr}
+              </div>
+              <span style="font-size:11px;font-weight:700;color:${cfg.border};">${cfg.label}</span>
+            </div>
+            ${e.nanny_name?`<div style="font-size:12px;color:var(--c-text-2);margin-top:3px;">👩 ${e.nanny_name}</div>`:''}
+            ${factStr}
+            <div style="margin-top:6px;">
+              <a class="action-link" href="/client/${e.token}" target="_blank" style="font-size:12px;">ЛК клиента →</a>
+            </div>
+          </div>`;
+      });
     });
 
     // Dayoffs
-    offs.forEach(b => {
-      const timeStr = b.start && b.end ? ` ${b.start}–${b.end}` : '';
-      html += `<div style="padding:8px 12px;border:2px solid #dc2626;border-radius:var(--r-md);margin-bottom:6px;font-size:13px;background:#fef2f2;">
-        <span style="color:#dc2626;">🚫 Выходной — <strong>${b.nanny_name||'Няня #'+b.nanny_id}</strong></span>
-        ${timeStr?`<span style="color:var(--c-text-muted);margin-left:8px;">${timeStr}</span>`:''}
-        ${b.note?`<br><span style="color:#6b7280;font-size:12px;">${b.note}</span>`:''}
-      </div>`;
+    offs.forEach(b=>{
+      const cfg = TYPE_CFG.dayoff;
+      const timeStr = b.start&&b.end ? ` ${b.start}–${b.end}` : '';
+      html += `
+        <div style="padding:10px 14px;border:1.5px solid ${cfg.border};border-radius:var(--r-md);margin-bottom:8px;background:${cfg.bg};font-size:13px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span>🚫 <strong>${b.nanny_name||'Няня #'+b.nanny_id}</strong>${timeStr}</span>
+            <span style="font-size:11px;font-weight:700;color:${cfg.border};">Выходной</span>
+          </div>
+          ${b.note?`<div style="font-size:11px;color:#6b7280;margin-top:3px;">${b.note}</div>`:''}
+        </div>`;
     });
 
+    if(!html) html = '<div class="hint">Нет данных</div>';
     list.innerHTML = html;
     detail.style.display = 'block';
     detail.scrollIntoView({behavior:'smooth',block:'nearest'});
