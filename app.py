@@ -1761,6 +1761,8 @@ def create_app() -> Flask:
             slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
             if action == 'confirm':
                 slot.pop('pending_admin', None)
+                if not slot.get('pending_nanny'):
+                    slot['status'] = 'confirmed'
             else:
                 slot['status'] = 'cancelled'
                 slot.pop('pending_admin', None)
@@ -1779,6 +1781,8 @@ def create_app() -> Flask:
             slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
             if action == 'confirm':
                 slot.pop('pending_admin', None)
+                if not slot.get('pending_nanny'):
+                    slot['status'] = 'confirmed'
             else:
                 slot['status'] = 'cancelled'
                 slot.pop('pending_admin', None)
@@ -1809,6 +1813,8 @@ def create_app() -> Flask:
             slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
             if action == 'confirm':
                 slot.pop('pending_nanny', None)
+                if not slot.get('pending_admin'):
+                    slot['status'] = 'confirmed'
             else:
                 slot['status'] = 'cancelled'
                 slot.pop('pending_admin', None)
@@ -1827,6 +1833,8 @@ def create_app() -> Flask:
             slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
             if action == 'confirm':
                 slot.pop('pending_nanny', None)
+                if not slot.get('pending_admin'):
+                    slot['status'] = 'confirmed'
             else:
                 slot['status'] = 'cancelled'
                 slot.pop('pending_admin', None)
