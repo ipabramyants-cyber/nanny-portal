@@ -549,9 +549,15 @@
       const items = byDate[date]||[];
       const ev = items.find(e=>e.client_token===clientToken && e.date===date);
       if(ev) {
-        ev.pending_nanny = false;
-        if(action==='confirm') ev.pending_admin = false;
-        else ev.status = 'cancelled';
+        if(action==='confirm') {
+          ev.pending_nanny = false;
+          // If admin also already confirmed, mark as confirmed
+          if(!ev.pending_admin) ev.status = 'confirmed';
+        } else {
+          ev.status = 'cancelled';
+          ev.pending_nanny = false;
+          ev.pending_admin = false;
+        }
       }
       renderCalendar();
       selectDate(date);

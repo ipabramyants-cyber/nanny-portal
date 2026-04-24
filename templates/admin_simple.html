@@ -1029,6 +1029,15 @@
               style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">❌ Отклонить</button>
           </div>` : '';
 
+        // Resolve waiting_fact (confirm actual time)
+        const resolveFactActions = (e.type==='waiting_fact') ? `
+          <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+            <button onclick="adminResolveFact('${e.token}','${dateStr}','confirm',this)"
+              style="background:#dcfce7;color:#16a34a;border:1px solid #86efac;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">✅ Подтвердить время</button>
+            <button onclick="adminResolveFact('${e.token}','${dateStr}','reject',this)"
+              style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">❌ Оспорить</button>
+          </div>` : '';
+
         // Assign nanny dropdown (for open dates)
         const assignAction = (e.type==='open') ? `
           <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap;">
@@ -1053,7 +1062,7 @@
             ${e.nanny_name?`<div style="font-size:12px;color:var(--c-text-2);margin-top:3px;">👩 ${e.nanny_name}</div>`:''}
             ${factNanny}${factClient}
             ${nannyComment}${clientComment}${reviewStr}
-            ${pendingActions}${assignAction}
+            ${pendingActions}${resolveFactActions}${assignAction}
             <div style="margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <a class="action-link" href="/client/${e.token}" target="_blank" style="font-size:12px;">ЛК клиента →</a>
             </div>
@@ -1095,7 +1104,7 @@
       const evts = byDate[date] || [];
       const ev = evts.find(e=>e.token===token && e.date===date);
       if(ev) {
-        if(action==='confirm') { ev.type='assigned'; ev.pending_admin=false; }
+        if(action==='confirm') { ev.pending_admin=false; ev.type = ev.pending_nanny ? 'assigned' : 'confirmed'; }
         else { const idx = evts.indexOf(ev); if(idx>-1) evts.splice(idx,1); }
       }
       render();
@@ -1135,6 +1144,33 @@
       showAdminToast(`✅ ${nannyName} назначена`);
     } catch(e) {
       btn.disabled=false; btn.textContent='Назначить';
+      alert(e.message);
+    }
+  };
+
+  window.adminResolveFact = async function(token, date, action, btn) {
+    btn.disabled = true; btn.textContent = '…';
+    try {
+      const r = await fetch(`/api/admin/lead/${token}/resolve_fact`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date, action})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error||'Ошибка');
+      const evts = byDate[date] || [];
+      const ev = evts.find(e=>e.token===token);
+      if(ev) {
+        if(action==='confirm') ev.type='confirmed';
+        else { ev.type='assigned'; delete ev.fact_start; delete ev.fact_end; }
+      }
+      render();
+      const offs = dayoffByDate[date]||[];
+      const remaining = byDate[date]||[];
+      if(remaining.length||offs.length) showDay(date,remaining,offs);
+      else document.getElementById('calDayDetail').style.display='none';
+      showAdminToast(action==='confirm'?'✅ Время подтверждено':'🔄 Время оспорено');
+    } catch(e) {
+      btn.disabled=false; btn.textContent=(action==='confirm'?'✅ Подтвердить время':'❌ Оспорить');
       alert(e.message);
     }
   };

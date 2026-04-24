@@ -1792,6 +1792,52 @@ def create_app() -> Flask:
             save_leads(leads)
         return {'ok': True}
 
+    @app.route('/api/admin/lead/<token>/resolve_fact', methods=['POST'])
+    @require_admin
+    def api_admin_resolve_fact(token: str):
+        """Admin confirms or disputes nanny's submitted actual time."""
+        data = request.get_json(force=True) or {}
+        date_str = (data.get('date') or '').strip()
+        action = (data.get('action') or 'confirm').strip()  # confirm | reject
+
+        if use_sql:
+            lead_row = Lead.query.filter_by(token=token).first()
+            if not lead_row:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead_row.work_dates or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if action == 'confirm':
+                slot['status'] = 'confirmed'
+            else:
+                # Reject: clear fact times, revert to assigned
+                slot.pop('fact_start', None)
+                slot.pop('fact_end', None)
+                slot.pop('status', None)
+            wd[date_str] = slot
+            lead_row.work_dates = wd
+            db.session.commit()
+        else:
+            leads = load_leads()
+            lead = next((x for x in leads if x.get('token') == token), None)
+            if not lead:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead.get('work_dates') or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if action == 'confirm':
+                slot['status'] = 'confirmed'
+            else:
+                slot.pop('fact_start', None)
+                slot.pop('fact_end', None)
+                slot.pop('status', None)
+            wd[date_str] = slot
+            lead['work_dates'] = wd
+            save_leads(leads)
+        return {'ok': True}
+
     @app.route('/api/nanny/<portal_token>/confirm_date', methods=['POST'])
     def api_nanny_confirm_date(portal_token: str):
         """Nanny confirms or rejects a pending work date."""
