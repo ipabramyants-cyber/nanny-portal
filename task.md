@@ -1,46 +1,27 @@
-# Task: Fix all UX/Design/Security issues in nanny-portal
+# Task: Fix app.py syntax errors + push to Railway
 
-## Status: IN PROGRESS
+## Problem
+app.py has truncated functions from previous session edits.
+Each create_app() block has:
+1. `api_client_date_action` truncated at `_d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}\n`
+2. `api_client_add_dates` truncated similarly
+3. Function bodies orphaned AFTER `if __name__ == '__main__':` block
 
-## Priority fixes:
+## Structure
+- app.py has 11 `if __name__ == '__main__':` blocks (one per mode variant)
+- Each block has orphaned code after it  
+- The truncated regex is: `_d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}\n` (missing closing `$'` and rest)
 
-### 🔴 CRITICAL
-- [x] Audit done
-- [ ] Calendar: block past dates (JS + CSS)
-- [ ] Calendar: fix .cal-time 9px → 11px bold
-- [ ] Calendar: fix prev/next button contrast (2.45:1 → 4.5+)
-- [ ] Calendar: animate month switch (slide/fade)
-- [ ] Calendar: add legend (colors meaning)
-- [ ] Calendar: add "Today" button
-- [ ] Calendar: right-click delete animation (flash/shake)
+## Fix Plan
+### Strategy: Python script to fix all occurrences
+1. For each `__main__` block, identify orphaned code after it
+2. Move that code back into the truncated function above `return app`
+3. Fix the truncated regex to be complete: `_d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'`
 
-### 🟡 IMPORTANT
-- [ ] /nanny/login page — proper design with instructions
-- [ ] /client/app page — proper design with instructions
-- [ ] FAQ Schema.org markup
-- [ ] Blog: add loading="lazy" to images
-- [ ] Heading hierarchy: h1→h3 fix (add h2)
-- [ ] Type scale: reduce 16 sizes → 7
-- [ ] Font families: remove Georgia
-- [ ] Mobile: hamburger menu
-- [ ] Reviews carousel: add prev/next arrows
-- [ ] Contrast fixes for .hint text and h3
+## __main__ at lines:
+3063, 4543, 6211, 7682, 9220, 10888, 12349, 14017, 15488, 17026, 18694
 
-### 🟢 POLISH
-- [ ] Success screen confetti/emoji
-- [ ] Today button in calendar
-- [ ] Swipe gesture for calendar months
-- [ ] Skeleton loaders
-- [ ] Nanny profile back button
-- [ ] Empty state for articles
-- [ ] Tariffs: move prices to config
-
-## Files to edit:
-- static/js/calendar.js
-- static/css/style.css
-- templates/nanny_login.html
-- templates/client_app.html
-- templates/faq.html
-- templates/base.html
-- templates/blog.html
-- templates/index.html
+## Status
+- [ ] Fix app.py
+- [ ] Syntax check
+- [ ] Git push

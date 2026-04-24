@@ -14,7 +14,9 @@
     meeting_date: "{{ lead.meeting_date or '' }}",
     work_dates: {{ lead.work_dates | tojson }},
     client_rate: {{ lead.client_rate_per_hour | default(130000) }},
-    nanny_dayoffs: {{ nanny_dayoffs | tojson }}
+    nanny_dayoffs: {{ nanny_dayoffs | tojson }},
+    nanny_name: "{{ nanny.name if nanny else '' }}",
+    nanny_assigned: {{ 'true' if nanny else 'false' }}
   };
 </script>
 <script>
@@ -188,10 +190,15 @@
       </div>
       <div id="calendar" class="calendar" role="grid"></div>
       <div id="calCounter" style="opacity:0;"></div>
-      <p class="hint" style="margin-top:var(--s3); font-size:12px; line-height:1.7;">
-        🟩 <strong>Подтверждено</strong> &nbsp;·&nbsp; 🟦 <strong>Факт на проверке</strong> &nbsp;·&nbsp; 🩵 <strong>Запланировано</strong>{% if nanny_dayoffs %} &nbsp;·&nbsp; 🔴 <strong>Выходной няни</strong>{% endif %}<br>
-        Нажмите на дату — статус и чеки. Долгий тап — убрать дату.
+      <p class="hint" style="margin-top:var(--s3); font-size:12px; line-height:1.8;">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0fdf4;border:1.5px solid #16a34a;vertical-align:middle;margin-right:3px;"></span>✅ Подтверждено &nbsp;·&nbsp;
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fffbeb;border:1.5px solid #f59e0b;vertical-align:middle;margin-right:3px;"></span>⏳ Ждёт подтверждения &nbsp;·&nbsp;
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0f9fc;border:1.5px solid #0d9488;vertical-align:middle;margin-right:3px;"></span>📅 Запланировано{% if nanny_dayoffs %} &nbsp;·&nbsp;
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fef2f2;border:1.5px solid #dc2626;vertical-align:middle;margin-right:3px;"></span>🚫 Выходной няни{% endif %}<br>
+        Нажмите на дату для просмотра и действий (комментарий, чек, отзыв, фактическое время).
       </p>
+      <!-- Selected date detail panel -->
+      <div id="datePanelBox" style="margin-top:var(--s3);"></div>
 
       <!-- Cost calculator (client view) -->
       <div id="calcBox" style="margin-top:var(--s4); padding:var(--s4); background:var(--c-teal-lt); border-radius:var(--r-md); border:1.5px solid rgba(17,138,138,.15); display:none;">
@@ -222,19 +229,22 @@ function openTgLink(path) {
 
 (function(){
   const LK = window.__LK__ || {};
-  const WORK_DATES = LK.work_dates || {};   // { "2025-06-10": {"time":"HH:MM-HH:MM"}, ... }
+  const WORK_DATES = LK.work_dates || {};
   const MEETING_DATE = LK.meeting_date || '';
   const TOKEN = LK.token || '';
   const CLIENT_RATE = LK.client_rate || 130000;
-  // Nanny dayoffs: [{date, start, end, note}, ...]
+  const NANNY_ASSIGNED = LK.nanny_assigned || false;
+  const NANNY_NAME = LK.nanny_name || '';
   const NANNY_DAYOFFS_ARR = LK.nanny_dayoffs || [];
   const NANNY_DAYOFFS = {};
   NANNY_DAYOFFS_ARR.forEach(b => { NANNY_DAYOFFS[b.date] = b; });
 
+  // State for selected date
+  let selectedDate = null;
+
   // ---- Cost calculator ----
   (function buildCalc(){
     function parseHours(timeStr){
-      // "09:00-17:00" → 8
       if(!timeStr || typeof timeStr !== 'string') return 0;
       const parts = timeStr.split('-');
       if(parts.length < 2) return 0;
@@ -254,6 +264,7 @@ function openTgLink(path) {
     const rows = [];
     dates.forEach(function(d){
       const slot = WORK_DATES[d] || {};
+      if(slot.status === 'cancelled') return;
       const timeStr = slot.time || '';
       const h = parseHours(timeStr);
       if(h > 0){
@@ -286,12 +297,23 @@ function openTgLink(path) {
   // Start at the first work date month (or today)
   const workKeys = Object.keys(WORK_DATES).sort();
   const today = new Date().toISOString().slice(0,10);
-
-  // Find best starting month: first upcoming work date, or first work date, or today
   let startISO = workKeys.find(d => d >= today) || workKeys[0] || today;
   if (MEETING_DATE && MEETING_DATE < startISO) startISO = MEETING_DATE;
-
   let cur = new Date(startISO.slice(0,7) + '-01');
+
+  // Status config
+  const STATUS_STYLE = {
+    'confirmed':    {bg:'#f0fdf4', border:'#16a34a', label:'✅ Подтверждена', color:'#16a34a', dot:'#16a34a'},
+    'waiting_fact': {bg:'#eff6ff', border:'#3b82f6', label:'⏱ Факт отправлен', color:'#3b82f6', dot:'#3b82f6'},
+    'cancelled':    {bg:'#f9fafb', border:'#9ca3af', label:'❌ Отменена', color:'#9ca3af', dot:'#9ca3af'},
+    'pending':      {bg:'#fffbeb', border:'#f59e0b', label:'⏳ Ждёт подтверждения', color:'#b45309', dot:'#f59e0b'},
+    '':             {bg:'#f0f9fc', border:'#0d9488', label:'📅 Запланировано', color:'var(--c-teal-dk)', dot:'#0d9488'},
+  };
+
+  function getSlotStyle(slot) {
+    if(slot.pending_admin) return STATUS_STYLE['pending'];
+    return STATUS_STYLE[slot.status || ''] || STATUS_STYLE[''];
+  }
 
   function renderCalendar(){
     const y = cur.getFullYear(), m = cur.getMonth();
@@ -324,56 +346,72 @@ function openTgLink(path) {
 
         if(iso === today) cell.classList.add('today');
 
-        if(WORK_DATES[iso] !== undefined){
-          const slot = WORK_DATES[iso] || {};
-          const dateStatus = (typeof slot === 'object' && slot !== null) ? (slot.status || '') : '';
-          // Visual style by status
-          const STATUS_STYLE = {
-            'confirmed':    {bg:'#f0fdf4', border:'#16a34a', label:'✅ Подтверждена', color:'#16a34a'},
-            'waiting_fact': {bg:'#eff6ff', border:'#3b82f6', label:'⏱ Ждёт подтверждения', color:'#3b82f6'},
-            'cancelled':    {bg:'#f9fafb', border:'#9ca3af', label:'❌ Отменена', color:'#9ca3af'},
-            '':             {bg:'', border:'', label:'📅 Запланировано', color:'var(--c-teal-dk)'},
-          };
-          const ss = STATUS_STYLE[dateStatus] || STATUS_STYLE[''];
-          if(ss.bg) { cell.style.background = ss.bg; cell.style.borderTop = `2px solid ${ss.border}`; }
-          else       { cell.classList.add('work'); }
+        // Nanny dayoff (show first, may be overridden by work date)
+        const hasDayoff = !!NANNY_DAYOFFS[iso];
 
-          // Time
-          const timeText = typeof slot === 'object' ? (slot.time || '') : (typeof slot === 'string' ? slot : '');
+        if(WORK_DATES[iso] !== undefined){
+          const slot = typeof WORK_DATES[iso] === 'object' ? (WORK_DATES[iso] || {}) : {};
+          const ss = getSlotStyle(slot);
+          cell.style.background = ss.bg;
+          cell.style.borderTop = `2.5px solid ${ss.border}`;
+
+          const timeText = slot.time || '';
           if(timeText){
             const t = document.createElement('div');
             t.style.cssText = `font-size:10px;font-weight:700;margin-top:2px;color:${ss.color};`;
             t.textContent = timeText;
             cell.appendChild(t);
           }
-          // Status badge
+
+          // Show receipt icon if slot has receipts or actual time
+          const hasComment = !!(slot.client_comment || slot.nanny_comment);
+          const hasActual = !!(slot.client_actual_start && slot.client_actual_end);
+          const hasReview = !!(slot.client_review);
+
+          if(hasComment || hasActual || hasReview) {
+            const icons = document.createElement('div');
+            icons.style.cssText = 'font-size:10px;margin-top:1px;line-height:1;';
+            icons.textContent = (hasComment ? '💬' : '') + (hasActual ? '⏱' : '') + (hasReview ? '⭐' : '');
+            cell.appendChild(icons);
+          }
+
+          // Status label (mini)
           const sb = document.createElement('div');
-          sb.style.cssText = `font-size:9px;font-weight:700;margin-top:1px;color:${ss.color};`;
+          sb.style.cssText = `font-size:9px;font-weight:700;margin-top:1px;color:${ss.color};line-height:1.2;`;
           sb.textContent = ss.label;
           cell.appendChild(sb);
 
-          if(dateStatus !== 'cancelled'){
+          if(slot.status !== 'cancelled'){
             cell.style.cursor = 'pointer';
-            cell.addEventListener('click', () => { loadReceipts(iso); showDateActions(iso); });
+            const capturedIso = iso;
+            const capturedSlot = slot;
+            cell.addEventListener('click', () => { selectedDate = capturedIso; openDatePanel(capturedIso, capturedSlot); });
           }
         }
 
+        // Meeting date
         if(iso === MEETING_DATE){
           cell.classList.add('meeting');
           const badge = document.createElement('div');
-          badge.style.cssText = 'font-size:10px;font-weight:700;margin-top:2px;color:var(--c-purple,#7c3aed);';
-          badge.textContent = '🤝 Знакомство';
+          badge.style.cssText = 'font-size:9px;font-weight:700;margin-top:2px;color:var(--c-purple,#7c3aed);';
+          badge.textContent = '🤝 Встреча';
           cell.appendChild(badge);
         }
 
-        // Nanny dayoff — show even if work date (overlap)
-        if(NANNY_DAYOFFS[iso]){
+        // Nanny dayoff overlay
+        if(hasDayoff){
           cell.style.background = '#fef2f2';
           cell.style.borderTop = '2px solid #dc2626';
           const db = document.createElement('div');
-          db.style.cssText = 'font-size:9px;font-weight:700;margin-top:2px;color:#dc2626;';
+          db.style.cssText = 'font-size:9px;font-weight:700;margin-top:1px;color:#dc2626;line-height:1.2;';
           db.textContent = '🚫 вых. няни';
           cell.appendChild(db);
+        }
+
+        // Highlight selected date
+        if(iso === selectedDate) {
+          cell.style.outline = '2px solid var(--c-teal-dk)';
+          cell.style.outlineOffset = '-2px';
         }
 
         row.appendChild(cell); day++;
@@ -382,78 +420,264 @@ function openTgLink(path) {
     }
   }
 
-  function showDateActions(dateStr){
-    const box = document.getElementById('dateActionsBox');
-    if(!box) return;
-    const isPast = dateStr < today;
-    box.innerHTML = `
-      <div style="margin-top:var(--s3);padding:var(--s3) var(--s4);background:#f0f9fc;border-radius:var(--r-lg);border:1px solid rgba(1,107,130,.15);">
-        <div style="font-weight:800;font-size:14px;color:#016b82;margin-bottom:var(--s2);">📅 ${fmtRu(dateStr)}</div>
-        ${isPast
-          ? '<div class="hint">Прошедшие даты нельзя отменить</div>'
-          : `<button onclick="cancelDate('${dateStr}')" style="background:#fee2e2;color:#dc2626;border:none;padding:8px 16px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;width:100%;">
-              ❌ Отменить эту дату
-            </button>
-            <div class="hint" style="margin-top:6px;font-size:11px;">Администратор будет уведомлён автоматически</div>`
-        }
-      </div>`;
-  }
+  // ─── Date Detail Panel ────────────────────────────────────────────────────
+  function openDatePanel(dateStr, slot) {
+    const panel = document.getElementById('datePanelBox');
+    if(!panel) return;
+    const today_str = new Date().toISOString().slice(0,10);
+    const isPast = dateStr < today_str;
+    const ss = getSlotStyle(slot);
 
-  async function cancelDate(dateStr){
-    if(!confirm(\`Отменить дату \${fmtRu(dateStr)}? Это действие нельзя отменить.\`)) return;
-    try {
-      const res = await fetch(\`/api/client/${TOKEN}/cancel_date\`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({date: dateStr})
-      });
-      const data = await res.json();
-      if(!res.ok) throw new Error(data.error || 'Ошибка');
-      // Update local state and re-render
-      delete WORK_DATES[dateStr];
-      document.getElementById('dateActionsBox').innerHTML =
-        '<div class="hint" style="color:#16a34a;font-weight:700;">✅ Дата отменена</div>';
-      renderCalendar();
-    } catch(e) {
-      alert('Ошибка: ' + e.message);
+    // Build HTML for panel
+    let html = `
+      <div style="background:${ss.bg};border:1.5px solid ${ss.border};border-radius:var(--r-lg);padding:var(--s4);">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:var(--s3);">
+          <div>
+            <div style="font-weight:800;font-size:15px;color:${ss.color};">${fmtRu(dateStr)}</div>
+            <div style="font-size:12px;margin-top:2px;color:${ss.color};">${ss.label}</div>
+          </div>
+          <button onclick="document.getElementById('datePanelBox').innerHTML='';selectedDate=null;renderCalendar();"
+            style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--c-text-2);padding:4px;">✕</button>
+        </div>`;
+
+    // Time info
+    if(slot.time) {
+      html += `<div style="font-size:13px;margin-bottom:var(--s2);">⏰ Запланировано: <strong>${slot.time}</strong></div>`;
     }
+    if(slot.client_actual_start && slot.client_actual_end) {
+      html += `<div style="font-size:13px;color:#3b82f6;margin-bottom:var(--s2);">⏱ Фактически (клиент): <strong>${slot.client_actual_start}–${slot.client_actual_end}</strong></div>`;
+    }
+    if(slot.fact_start && slot.fact_end) {
+      html += `<div style="font-size:13px;color:#0d9488;margin-bottom:var(--s2);">⏱ Фактически (няня): <strong>${slot.fact_start}–${slot.fact_end}</strong></div>`;
+    }
+
+    // Comments
+    if(slot.nanny_comment) {
+      html += `<div style="background:rgba(13,148,136,.08);padding:8px 12px;border-radius:8px;margin-bottom:var(--s2);font-size:13px;"><strong>Комментарий няни:</strong><br>${slot.nanny_comment}</div>`;
+    }
+    if(slot.client_comment) {
+      html += `<div style="background:rgba(59,130,246,.08);padding:8px 12px;border-radius:8px;margin-bottom:var(--s2);font-size:13px;"><strong>Ваш комментарий:</strong><br>${slot.client_comment}</div>`;
+    }
+    if(slot.client_review) {
+      const stars = '⭐'.repeat(slot.client_review_stars || 5);
+      html += `<div style="background:rgba(245,158,11,.1);padding:8px 12px;border-radius:8px;margin-bottom:var(--s2);font-size:13px;">${stars}<br>${slot.client_review}</div>`;
+    }
+
+    // Pending info
+    if(slot.pending_admin) {
+      html += `<div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;margin-bottom:var(--s2);font-size:12px;color:#b45309;">⏳ Ожидает подтверждения администратором</div>`;
+    }
+
+    html += `</div>`;
+
+    // Actions section
+    if(isPast && slot.status !== 'cancelled') {
+      // Past date — show action forms
+      html += `
+        <div style="margin-top:var(--s3);padding:var(--s3);background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);">
+          <div style="font-weight:700;font-size:13px;margin-bottom:var(--s3);">Действия за ${fmtRu(dateStr)}:</div>
+
+          <!-- Comment form -->
+          <details open>
+            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--c-teal-dk);margin-bottom:8px;">💬 Добавить комментарий</summary>
+            <div style="margin-top:8px;">
+              <textarea id="clientComment_${dateStr}" rows="3" placeholder="Ваш комментарий к этой дате..."
+                style="width:100%;border:1.5px solid var(--c-border-str);border-radius:8px;padding:8px;font-size:13px;resize:vertical;">${slot.client_comment||''}</textarea>
+              <button onclick="saveComment('${dateStr}')" class="btn primary" style="width:auto;margin-top:6px;font-size:12px;padding:6px 14px;">Сохранить</button>
+            </div>
+          </details>
+
+          <!-- Actual time form -->
+          <details style="margin-top:var(--s3);">
+            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--c-teal-dk);">⏱ Фактическое время</summary>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
+              <div><label style="font-size:12px;">С</label><input type="time" id="actStart_${dateStr}" value="${slot.client_actual_start||''}" style="width:100%;"></div>
+              <div><label style="font-size:12px;">До</label><input type="time" id="actEnd_${dateStr}" value="${slot.client_actual_end||''}" style="width:100%;"></div>
+            </div>
+            <button onclick="saveActualTime('${dateStr}')" class="btn primary" style="width:auto;margin-top:8px;font-size:12px;padding:6px 14px;">Сохранить время</button>
+          </details>
+
+          <!-- Receipt upload -->
+          <details style="margin-top:var(--s3);">
+            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--c-teal-dk);">🧾 Загрузить чек</summary>
+            <div style="margin-top:8px;">
+              <input type="file" id="receiptFile_${dateStr}" accept="image/*,application/pdf" style="font-size:12px;margin-bottom:6px;">
+              <button onclick="uploadReceipt('${dateStr}')" class="btn secondary" style="width:auto;font-size:12px;padding:6px 14px;">Загрузить</button>
+              <div id="receiptList_${dateStr}" style="margin-top:8px;"></div>
+            </div>
+          </details>
+
+          <!-- Review -->
+          <details style="margin-top:var(--s3);">
+            <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--c-teal-dk);">⭐ Оставить отзыв</summary>
+            <div style="margin-top:8px;">
+              <div style="margin-bottom:6px;">
+                <label style="font-size:12px;">Оценка:</label>
+                <select id="reviewStars_${dateStr}" style="margin-left:8px;padding:4px 8px;border-radius:6px;border:1.5px solid var(--c-border-str);">
+                  <option value="5" ${(slot.client_review_stars||5)==5?'selected':''}>⭐⭐⭐⭐⭐</option>
+                  <option value="4" ${slot.client_review_stars==4?'selected':''}>⭐⭐⭐⭐</option>
+                  <option value="3" ${slot.client_review_stars==3?'selected':''}>⭐⭐⭐</option>
+                  <option value="2" ${slot.client_review_stars==2?'selected':''}>⭐⭐</option>
+                  <option value="1" ${slot.client_review_stars==1?'selected':''}>⭐</option>
+                </select>
+              </div>
+              <textarea id="reviewText_${dateStr}" rows="3" placeholder="Ваш отзыв о работе няни в этот день..."
+                style="width:100%;border:1.5px solid var(--c-border-str);border-radius:8px;padding:8px;font-size:13px;">${slot.client_review||''}</textarea>
+              <button onclick="saveReview('${dateStr}')" class="btn primary" style="width:auto;margin-top:6px;font-size:12px;padding:6px 14px;">Сохранить отзыв</button>
+            </div>
+          </details>
+
+          <!-- Cancel date -->
+          ${slot.status !== 'confirmed' && !slot.pending_admin ?
+            `<details style="margin-top:var(--s3);">
+              <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#dc2626;">❌ Отменить дату</summary>
+              <div style="margin-top:8px;">
+                <button onclick="cancelDate('${dateStr}')" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:8px 16px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;width:100%;">Отменить эту дату</button>
+                <div style="font-size:11px;color:var(--c-text-muted);margin-top:4px;">Администратор будет уведомлён</div>
+              </div>
+            </details>` : ''
+          }
+        </div>`;
+    } else if(!isPast && slot.status !== 'cancelled') {
+      // Future date — can cancel
+      html += `
+        <div style="margin-top:var(--s3);">
+          <button onclick="cancelDate('${dateStr}')" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:8px 16px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;width:100%;">❌ Отменить эту дату</button>
+          <div style="font-size:11px;color:var(--c-text-muted);margin-top:4px;text-align:center;">Администратор будет уведомлён</div>
+        </div>`;
+    }
+
+    panel.innerHTML = html;
+    panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+
+    // Load receipts for this date
+    loadReceipts(dateStr, document.getElementById(`receiptList_${dateStr}`));
+    renderCalendar();
   }
 
-  async function loadReceipts(dateStr){
-    if(!TOKEN){ receiptsBox.innerHTML = '<div class="hint">Нет данных</div>'; return; }
-    receiptsBox.innerHTML = '<div class="hint">Загрузка…</div>';
+  // ─── Actions ──────────────────────────────────────────────────────────────
+  window.saveComment = async function(dateStr) {
+    const comment = (document.getElementById(`clientComment_${dateStr}`)?.value || '').trim();
     try {
-      const res = await fetch(`/api/client/${TOKEN}/receipts?date=${encodeURIComponent(dateStr)}`);
-      const data = await res.json();
-      if(!res.ok) throw new Error(data.error || 'err');
-      const items = data.items || [];
-      if(!items.length){
-        receiptsBox.innerHTML = `<div class="hint">Чеков за <strong>${fmtRu(dateStr)}</strong> пока нет.</div>`;
+      const r = await fetch(`/api/client/${TOKEN}/date_action`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date: dateStr, comment})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || 'Ошибка');
+      // Update local state
+      if(!WORK_DATES[dateStr]) WORK_DATES[dateStr] = {};
+      WORK_DATES[dateStr].client_comment = comment;
+      showToast('✅ Комментарий сохранён');
+    } catch(e) { showToast('❌ ' + e.message); }
+  };
+
+  window.saveActualTime = async function(dateStr) {
+    const start = document.getElementById(`actStart_${dateStr}`)?.value || '';
+    const end = document.getElementById(`actEnd_${dateStr}`)?.value || '';
+    if(!start || !end) { showToast('Укажите время начала и конца'); return; }
+    try {
+      const r = await fetch(`/api/client/${TOKEN}/date_action`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date: dateStr, actual_start: start, actual_end: end})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || 'Ошибка');
+      if(!WORK_DATES[dateStr]) WORK_DATES[dateStr] = {};
+      WORK_DATES[dateStr].client_actual_start = start;
+      WORK_DATES[dateStr].client_actual_end = end;
+      showToast('✅ Время сохранено');
+    } catch(e) { showToast('❌ ' + e.message); }
+  };
+
+  window.saveReview = async function(dateStr) {
+    const text = (document.getElementById(`reviewText_${dateStr}`)?.value || '').trim();
+    const stars = parseInt(document.getElementById(`reviewStars_${dateStr}`)?.value || '5');
+    if(!text) { showToast('Напишите текст отзыва'); return; }
+    try {
+      const r = await fetch(`/api/client/${TOKEN}/date_action`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date: dateStr, review: text, review_stars: stars})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || 'Ошибка');
+      if(!WORK_DATES[dateStr]) WORK_DATES[dateStr] = {};
+      WORK_DATES[dateStr].client_review = text;
+      WORK_DATES[dateStr].client_review_stars = stars;
+      showToast('✅ Отзыв сохранён');
+    } catch(e) { showToast('❌ ' + e.message); }
+  };
+
+  window.uploadReceipt = async function(dateStr) {
+    const fileInput = document.getElementById(`receiptFile_${dateStr}`);
+    if(!fileInput || !fileInput.files[0]) { showToast('Выберите файл'); return; }
+    const fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    try {
+      const r = await fetch(`/api/client/${TOKEN}/upload_receipt?date=${encodeURIComponent(dateStr)}`, {
+        method:'POST', body: fd
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || 'Ошибка');
+      showToast('✅ Чек загружен');
+      loadReceipts(dateStr, document.getElementById(`receiptList_${dateStr}`));
+    } catch(e) { showToast('❌ ' + e.message); }
+  };
+
+  async function loadReceipts(dateStr, container) {
+    if(!TOKEN || !container) return;
+    try {
+      const r = await fetch(`/api/client/${TOKEN}/receipts?date=${encodeURIComponent(dateStr)}`);
+      const d = await r.json();
+      if(!r.ok) return;
+      const items = d.items || [];
+      if(!items.length) {
+        container.innerHTML = '<div style="font-size:12px;color:var(--c-text-muted);">Чеков пока нет</div>';
         return;
       }
-      receiptsBox.innerHTML =
-        `<div style="font-weight:700;font-size:13px;margin-bottom:var(--s2);">Чеки за ${fmtRu(dateStr)}:</div>` +
+      container.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:4px;">Чеки:</div>' +
         items.map(f =>
-          `<div style="margin-top:5px;"><a class="action-link" href="/uploads/${encodeURIComponent(f)}"
-             target="_blank" style="font-size:13px;">📎 ${f}</a></div>`
+          `<div style="margin-top:4px;"><a href="/uploads/${encodeURIComponent(f)}" target="_blank"
+            style="font-size:12px;color:var(--c-teal-dk);">📎 ${f}</a></div>`
         ).join('');
-    } catch(e) {
-      receiptsBox.innerHTML = '<div class="hint">Ошибка загрузки чеков</div>';
+    } catch(e) {}
+  }
+
+  window.cancelDate = async function(dateStr) {
+    if(!confirm(`Отменить дату ${fmtRu(dateStr)}?`)) return;
+    try {
+      const r = await fetch(`/api/client/${TOKEN}/cancel_date`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date: dateStr})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || 'Ошибка');
+      delete WORK_DATES[dateStr];
+      selectedDate = null;
+      document.getElementById('datePanelBox').innerHTML = '';
+      renderCalendar();
+      showToast('✅ Дата отменена');
+    } catch(e) { showToast('❌ ' + e.message); }
+  };
+
+  function showToast(msg) {
+    let t = document.getElementById('lkToast');
+    if(!t) {
+      t = document.createElement('div');
+      t.id = 'lkToast';
+      t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;text-align:center;';
+      document.body.appendChild(t);
     }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2500);
   }
 
   renderCalendar();
   document.getElementById('prevMonth').addEventListener('click', () => { cur.setMonth(cur.getMonth()-1); renderCalendar(); });
   document.getElementById('nextMonth').addEventListener('click', () => { cur.setMonth(cur.getMonth()+1); renderCalendar(); });
 
-  // Auto-click first upcoming work date to show context
-  const firstUpcoming = workKeys.find(d => d >= today);
-  if(firstUpcoming){
-    const startMonth = firstUpcoming.slice(0,7);
-    if(startMonth === cur.toISOString().slice(0,7)){
-      // It's already rendered — trigger receipt load silently (no auto-fetch, just highlight is enough)
-    }
-  }
 })();
 
 // Load latest articles
@@ -498,3 +722,4 @@ function openTgLink(path) {
 </style>
 
 {% endblock %}
+

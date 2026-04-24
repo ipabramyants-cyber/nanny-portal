@@ -121,13 +121,14 @@
   <div class="admin-section">
     <div class="panel">
       <h2>📅 Сводный календарь</h2>
-      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:var(--s4);font-size:12px;line-height:1.4;">
-        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#fef3c7;border:1.5px solid #f59e0b;"></span>⏳ Без няни</span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#ccfbf1;border:1.5px solid #0d9488;"></span>👩 Назначена</span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#dbeafe;border:1.5px solid #3b82f6;"></span>⏱ Ждёт факта</span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#dcfce7;border:1.5px solid #16a34a;"></span>✅ Подтверждена</span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#fee2e2;border:1.5px solid #dc2626;"></span>🚫 Вых. няни</span>
-        <span style="display:flex;align-items:center;gap:5px;"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#f3f4f6;border:1.5px solid #9ca3af;"></span>❌ Отменена</span>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:var(--s4);font-size:11px;line-height:1.4;">
+        <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#fef9ee;border:1.5px solid #f59e0b;"></span>⏳ Без няни</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#fff7ed;border:1.5px solid #ea580c;"></span>🔔 Ждёт подтвержд.</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#f0fdfa;border:1.5px solid #0d9488;"></span>👩 Назначена</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#eff6ff;border:1.5px solid #3b82f6;"></span>⏱ Ждёт факта</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#f0fdf4;border:1.5px solid #16a34a;"></span>✅ Подтверждена</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#fef2f2;border:1.5px solid #dc2626;"></span>🚫 Вых. няни</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="display:inline-block;width:11px;height:11px;border-radius:2px;background:#f3f4f6;border:1.5px solid #9ca3af;"></span>❌ Отменена</span>
       </div>
       <div style="display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s3);">
         <button type="button" id="calPrev" class="btn secondary" style="padding:6px 14px;font-size:13px;">‹</button>
@@ -859,12 +860,14 @@
 
 // ── Master calendar ──────────────────────────────────────
 (function(){
-  const EVENTS  = {{ events | tojson }};      // enriched: {date,type,nanny_name,child_name,child_age,parent_name,token,time,status,has_receipt,fact_start,fact_end}
-  const DAYOFFS = {{ nanny_dayoffs | tojson }}; // {date,nanny_id,nanny_name,start,end,note}
+  const EVENTS  = {{ events | tojson }};
+  const DAYOFFS = {{ nanny_dayoffs | tojson }};
+  const NANNIES_LIST = {{ nannies | tojson }};  // for assign dropdown
 
   // TYPE → visual config
   const TYPE_CFG = {
     open:         { bg:'#fef9ee', border:'#f59e0b', dot:'#f59e0b', label:'⏳ Без няни' },
+    pending:      { bg:'#fff7ed', border:'#ea580c', dot:'#ea580c', label:'🔔 Ждёт подтвержд.' },
     assigned:     { bg:'#f0fdfa', border:'#0d9488', dot:'#0d9488', label:'👩 Назначена' },
     waiting_fact: { bg:'#eff6ff', border:'#3b82f6', dot:'#3b82f6', label:'⏱ Ждёт факта' },
     confirmed:    { bg:'#f0fdf4', border:'#16a34a', dot:'#16a34a', label:'✅ Подтверждена' },
@@ -892,6 +895,7 @@
 
   // Determine dominant type priority for cell background
   function dominantType(evts, offs) {
+    if(evts.some(e=>e.type==='pending'))      return 'pending';
     if(evts.some(e=>e.type==='waiting_fact')) return 'waiting_fact';
     if(evts.some(e=>e.type==='open'))         return 'open';
     if(evts.some(e=>e.type==='assigned'))     return 'assigned';
@@ -991,30 +995,66 @@
 
     let html = '';
 
+    // Nanny select options (for assign dropdown)
+    const nannyOpts = NANNIES_LIST.map(n=>
+      `<option value="${n.id}">${n.name}</option>`
+    ).join('');
+
     // Grouped by type
-    const typeOrder = ['open','assigned','waiting_fact','confirmed','cancelled'];
+    const typeOrder = ['pending','open','assigned','waiting_fact','confirmed','cancelled'];
     typeOrder.forEach(t=>{
       const group = evts.filter(e=>e.type===t);
       group.forEach(e=>{
         const cfg = TYPE_CFG[t]||TYPE_CFG.assigned;
         const timeStr = e.time ? `<span style="color:var(--c-text-2);margin-left:6px;font-size:12px;">${e.time}</span>` : '';
-        const factStr = e.fact_start&&e.fact_end
-          ? `<div style="font-size:11px;color:#3b82f6;margin-top:2px;">⏱ Факт: ${e.fact_start}–${e.fact_end}</div>` : '';
+        const factNanny = e.fact_start&&e.fact_end
+          ? `<div style="font-size:11px;color:#3b82f6;margin-top:2px;">⏱ Факт (няня): ${e.fact_start}–${e.fact_end}</div>` : '';
+        const factClient = e.client_actual_start&&e.client_actual_end
+          ? `<div style="font-size:11px;color:#7c3aed;margin-top:2px;">⏱ Факт (клиент): ${e.client_actual_start}–${e.client_actual_end}</div>` : '';
         const receiptStr = e.has_receipt
           ? `<span style="font-size:11px;margin-left:6px;background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:8px;">📎 чек</span>` : '';
+        const nannyComment = e.nanny_comment
+          ? `<div style="font-size:11px;color:#0d9488;margin-top:3px;background:rgba(13,148,136,.06);padding:4px 8px;border-radius:6px;">💬 Няня: ${e.nanny_comment}</div>` : '';
+        const clientComment = e.client_comment
+          ? `<div style="font-size:11px;color:#3b82f6;margin-top:3px;background:rgba(59,130,246,.06);padding:4px 8px;border-radius:6px;">💬 Клиент: ${e.client_comment}</div>` : '';
+        const reviewStr = e.client_review
+          ? `<div style="font-size:11px;color:#b45309;margin-top:3px;background:rgba(245,158,11,.1);padding:4px 8px;border-radius:6px;">${'⭐'.repeat(e.client_review_stars||5)} ${e.client_review}</div>` : '';
+
+        // Confirm/reject buttons for pending dates
+        const pendingActions = (e.type==='pending') ? `
+          <div style="display:flex;gap:6px;margin-top:8px;">
+            <button onclick="adminConfirmDate('${e.token}','${dateStr}','confirm',this)" 
+              style="background:#dcfce7;color:#16a34a;border:1px solid #86efac;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">✅ Подтвердить</button>
+            <button onclick="adminConfirmDate('${e.token}','${dateStr}','reject',this)" 
+              style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">❌ Отклонить</button>
+          </div>` : '';
+
+        // Assign nanny dropdown (for open dates)
+        const assignAction = (e.type==='open') ? `
+          <div style="display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap;">
+            <select id="assignNanny_${e.token}_${dateStr}" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--c-border-str);font-size:12px;">
+              <option value="">— выбрать няню —</option>
+              ${nannyOpts}
+            </select>
+            <button onclick="adminAssignNanny('${e.token}','${dateStr}',this)"
+              style="background:var(--c-teal);color:#fff;border:none;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">Назначить</button>
+          </div>` : '';
+
         html += `
           <div style="padding:10px 14px;border:1.5px solid ${cfg.border};border-radius:var(--r-md);margin-bottom:8px;background:${cfg.bg};font-size:13px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:4px;">
               <div>
                 <strong>${e.child_name||'Ребёнок'}${e.child_age?', '+e.child_age:''}</strong>
                 <span style="color:var(--c-text-2);margin-left:6px;font-size:12px;">${e.parent_name||''}</span>
                 ${timeStr}${receiptStr}
               </div>
-              <span style="font-size:11px;font-weight:700;color:${cfg.border};">${cfg.label}</span>
+              <span style="font-size:11px;font-weight:700;color:${cfg.border};white-space:nowrap;">${cfg.label}</span>
             </div>
             ${e.nanny_name?`<div style="font-size:12px;color:var(--c-text-2);margin-top:3px;">👩 ${e.nanny_name}</div>`:''}
-            ${factStr}
-            <div style="margin-top:6px;">
+            ${factNanny}${factClient}
+            ${nannyComment}${clientComment}${reviewStr}
+            ${pendingActions}${assignAction}
+            <div style="margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
               <a class="action-link" href="/client/${e.token}" target="_blank" style="font-size:12px;">ЛК клиента →</a>
             </div>
           </div>`;
@@ -1039,6 +1079,78 @@
     list.innerHTML = html;
     detail.style.display = 'block';
     detail.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+
+  // Admin actions from calendar
+  window.adminConfirmDate = async function(token, date, action, btn) {
+    btn.disabled = true; btn.textContent = '…';
+    try {
+      const r = await fetch(`/api/admin/lead/${token}/confirm_date`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date, action})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error||'Ошибка');
+      // Update event in memory
+      const evts = byDate[date] || [];
+      const ev = evts.find(e=>e.token===token && e.date===date);
+      if(ev) {
+        if(action==='confirm') { ev.type='assigned'; ev.pending_admin=false; }
+        else { const idx = evts.indexOf(ev); if(idx>-1) evts.splice(idx,1); }
+      }
+      render();
+      // Re-show the day
+      const remaining = byDate[date]||[];
+      const offs = dayoffByDate[date]||[];
+      if(remaining.length||offs.length) showDay(date,remaining,offs);
+      else document.getElementById('calDayDetail').style.display='none';
+      showAdminToast(action==='confirm'?'✅ Дата подтверждена':'❌ Дата отклонена');
+    } catch(e) {
+      btn.disabled=false; btn.textContent=(action==='confirm'?'✅ Подтвердить':'❌ Отклонить');
+      alert(e.message);
+    }
+  };
+
+  window.adminAssignNanny = async function(token, date, btn) {
+    const selId = `assignNanny_${token}_${date}`;
+    const sel = document.getElementById(selId);
+    if(!sel || !sel.value) { alert('Выберите няню'); return; }
+    const nannyId = sel.value;
+    btn.disabled=true; btn.textContent='…';
+    try {
+      // Use the existing assign nanny endpoint (form POST)
+      const fd = new FormData();
+      fd.append('token', token);
+      fd.append('nanny_id', nannyId);
+      const r = await fetch('/admin/assign', {method:'POST', body:fd});
+      if(!r.ok) throw new Error('Ошибка назначения');
+      const nanny = NANNIES_LIST.find(n=>String(n.id)===String(nannyId));
+      const nannyName = nanny ? nanny.name : 'Няня';
+      // Update in memory
+      const evts = byDate[date]||[];
+      evts.forEach(ev=>{ if(ev.token===token){ ev.type='assigned'; ev.nanny_id=nannyId; ev.nanny_name=nannyName; }});
+      render();
+      const offs = dayoffByDate[date]||[];
+      showDay(date, byDate[date]||[], offs);
+      showAdminToast(`✅ ${nannyName} назначена`);
+    } catch(e) {
+      btn.disabled=false; btn.textContent='Назначить';
+      alert(e.message);
+    }
+  };
+
+  function showAdminToast(msg) {
+    let t = document.getElementById('adminCalToast');
+    if(!t) {
+      t = document.createElement('div');
+      t.id = 'adminCalToast';
+      t.style.cssText='position:fixed;bottom:24px;right:24px;background:#1e293b;color:#fff;padding:10px 20px;border-radius:12px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity='1';
+    clearTimeout(t._t);
+    t._t = setTimeout(()=>{ t.style.opacity='0'; }, 2500);
   }
 
   render();

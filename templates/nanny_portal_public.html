@@ -12,6 +12,7 @@
     nanny: {{ nanny | tojson }},
     clients: {{ clients | tojson }},
     events: {{ events | tojson }},
+    nanny_dayoffs: {{ nanny_dayoffs | default([]) | tojson }},
     today: "{{ today }}",
     default_nanny_rate: {{ default_nanny_rate | default(110000) }}
   };
@@ -55,8 +56,12 @@
       </div>
       <div id="calendar" class="calendar"></div>
       <p class="hint" style="margin-top:8px; line-height:1.7;">
-        🟩 <strong>Подтверждено</strong> &nbsp;·&nbsp; 🟦 <strong>Факт на проверке</strong> &nbsp;·&nbsp; 🩵 <strong>Запланировано</strong> &nbsp;·&nbsp; ⬜ <strong>Прошедшая (нет факта)</strong> &nbsp;·&nbsp; 🔴 <strong>Выходной</strong><br>
-        Нажмите на дату — статус смены, загрузка чека, отправка фактического времени.
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0fdf4;border:1.5px solid #16a34a;vertical-align:middle;margin-right:3px;"></span>✅ Подтверждено &nbsp;·&nbsp;
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#eff6ff;border:1.5px solid #3b82f6;vertical-align:middle;margin-right:3px;"></span>⏱ Факт отправлен &nbsp;·&nbsp;
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(20,184,166,.18);border:1.5px solid rgba(20,184,166,.5);vertical-align:middle;margin-right:3px;"></span>📅 Запланировано &nbsp;·&nbsp;
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fff7ed;border:1.5px solid #ea580c;vertical-align:middle;margin-right:3px;"></span>🔔 Ждёт подтвержд. &nbsp;·&nbsp;
+        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fef2f2;border:1.5px solid #dc2626;vertical-align:middle;margin-right:3px;"></span>🚫 Выходной<br>
+        Нажмите на дату — статус, комментарий, чек, фактическое время.
       </p>
       <div id="selectedBox" style="margin-top:14px;"></div>
     </div>
@@ -242,6 +247,9 @@
 <script>
 (function(){
   const {nanny, clients, events, today, default_nanny_rate} = window.__NANNY__;
+  const NANNY_DAYOFFS = (window.__NANNY__.nanny_dayoffs || []);
+  const dayoffsMap = {};
+  NANNY_DAYOFFS.forEach(b => { dayoffsMap[b.date] = b; });
 
   // ---- Earnings calculator ----
   (function buildEarnings(){
@@ -259,7 +267,6 @@
     if(!events || !events.length){ return; }
     let totalEarnings = 0;
     const rows = [];
-    // Group by date
     const byDate = {};
     events.forEach(function(ev){
       if(!byDate[ev.date]) byDate[ev.date] = [];
@@ -267,22 +274,23 @@
     });
     Object.keys(byDate).sort().forEach(function(d){
       byDate[d].forEach(function(ev){
-        const timeStr = ev.time || '';
+        const timeStr = ev.fact_start && ev.fact_end
+          ? `${ev.fact_start}–${ev.fact_end}`
+          : (ev.time || '');
         const h = parseHours(timeStr);
         const rate = ev.nanny_rate || default_nanny_rate || 110000;
         const dateStr = d.split('-').reverse().join('.');
-        if(h > 0){
+        if(h > 0 && ev.status === 'confirmed'){
           totalEarnings += h * rate;
           rows.push(`<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span>${dateStr}${ev.child_name?' — '+ev.child_name:''}${timeStr?' ('+timeStr+')':''}</span><strong>${(h*rate).toLocaleString('ru-RU')} ₫</strong></div>`);
-        } else {
-          rows.push(`<div style="color:var(--c-text-muted);">${dateStr}${ev.child_name?' — '+ev.child_name:''} — время не указано</div>`);
         }
       });
     });
-    rowsEl.innerHTML = rows.join('');
-    totalEl.textContent = totalEarnings.toLocaleString('ru-RU') + ' ₫';
-    panel.style.display = 'block';
+    if(rowsEl) rowsEl.innerHTML = rows.length ? rows.join('') : '<div style="color:var(--c-text-muted);font-size:13px;">Подтверждённых смен пока нет</div>';
+    if(totalEl) totalEl.textContent = totalEarnings.toLocaleString('ru-RU') + ' ₫';
+    if(panel) panel.style.display = 'block';
   })();
+
   const monthNames=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
   const dow=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
   const pad=n=>String(n).padStart(2,'0');
@@ -315,7 +323,12 @@
   let blocksEnabled=false;
   let blocksByDate={};
 
+  // Copy initial dayoffs from server
+  Object.assign(blocksByDate, dayoffsMap);
+  if(NANNY_DAYOFFS.length) blocksEnabled=true;
+
   function renderClients(){
+    if(!clientListEl) return;
     clientListEl.innerHTML='';
     if(!clients.length){
       clientListEl.innerHTML='<div class="hint">Нет назначенных клиентов.</div>';
@@ -323,22 +336,27 @@
     }
     clients.forEach(l=>{
       const wd=Object.keys(l.work_dates||{}).sort();
+      const pending = wd.filter(d=>{const s=l.work_dates[d];return s&&(s.pending_admin||s.pending_nanny);});
       const el=document.createElement('div');
       el.style.cssText='padding:10px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);';
       el.innerHTML=`<div style="font-weight:800;font-size:14px;">${l.child_name||'Ребёнок'}<span style="font-weight:400;font-size:12px;color:var(--c-text-muted);margin-left:4px;">(${l.child_age||'-'})</span></div>
         <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">Родитель: ${l.parent_name||'-'}</div>
-        <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">Дат: ${wd.length?wd.map(formatRu).join(', '):'—'}</div>`;
+        <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">Дат: ${wd.length}</div>
+        ${pending.length?`<div style="font-size:11px;color:#ea580c;margin-top:4px;">🔔 Ожидают подтверждения: ${pending.length}</div>`:''}`;
       clientListEl.appendChild(el);
     });
   }
 
-  // Status → cell background/badge colour
-  function shiftColor(status, isPast){
-    if(status==='confirmed')   return {bg:'rgba(34,197,94,.18)',border:'rgba(34,197,94,.5)',txt:'#15803d',label:'✓ подтверждено'};
-    if(status==='waiting_fact')return {bg:'rgba(59,130,246,.18)',border:'rgba(59,130,246,.5)',txt:'#1d4ed8',label:'⏳ на проверке'};
-    if(status==='cancelled')   return {bg:'rgba(239,68,68,.12)',border:'rgba(239,68,68,.4)',txt:'var(--c-danger)',label:'✗ отменено'};
-    if(isPast)                 return {bg:'rgba(156,163,175,.15)',border:'rgba(156,163,175,.4)',txt:'var(--c-text-muted)',label:'⬜ нет факта'};
-    return                            {bg:'rgba(20,184,166,.18)',border:'rgba(20,184,166,.5)',txt:'var(--c-teal-dk)',label:'📅 назначено'};
+  // Status → cell colour
+  function shiftColor(ev, isPast){
+    const status = ev ? ev.status : null;
+    if(ev && ev.pending_nanny) return {bg:'#fff7ed', border:'#ea580c', txt:'#b45309', label:'🔔 Ждёт подтвержд.'};
+    if(ev && ev.pending_admin) return {bg:'#fff7ed', border:'#ea580c', txt:'#b45309', label:'🔔 Ждёт подтвержд.'};
+    if(status==='confirmed')   return {bg:'rgba(34,197,94,.18)',  border:'rgba(34,197,94,.5)',  txt:'#15803d', label:'✅ Подтверждено'};
+    if(status==='waiting_fact')return {bg:'rgba(59,130,246,.18)', border:'rgba(59,130,246,.5)', txt:'#1d4ed8', label:'⏱ Факт отправлен'};
+    if(status==='cancelled')   return {bg:'rgba(239,68,68,.12)',  border:'rgba(239,68,68,.4)',  txt:'var(--c-danger)', label:'❌ Отменено'};
+    if(isPast)                 return {bg:'rgba(156,163,175,.15)',border:'rgba(156,163,175,.4)',txt:'var(--c-text-muted)', label:'⬜ Нет факта'};
+    return                            {bg:'rgba(20,184,166,.18)', border:'rgba(20,184,166,.5)', txt:'var(--c-teal-dk)', label:'📅 Назначено'};
   }
 
   function renderCalendar(){
@@ -356,26 +374,46 @@
         const cell=document.createElement('div');cell.className='cal-cell';
         if((r===0&&c<startDow)||day>dim){cell.classList.add('muted');row.appendChild(cell);continue;}
         const iso=`${y}-${pad(m+1)}-${pad(day)}`;
-        const items=byDate[iso]||[];const block=blocksByDate[iso]||null;
+        const items=byDate[iso]||[];
+        const block=blocksByDate[iso]||null;
         const isPast=iso<today;
         cell.innerHTML=`<div class="cal-num">${day}</div>`;
         if(iso===today)cell.classList.add('today');
+
         if(items.length){
-          // pick "worst" status: confirmed < waiting_fact < '' (planned/no-fact)
-          const topStatus = items.reduce((acc,e)=>{
-            if(!acc)return e.status||'';
-            if(acc==='waiting_fact'&&(!e.status||e.status===''))return e.status||'';
-            return acc;
-          }, null);
-          const col=shiftColor(topStatus||'',isPast);
+          // Dominant status: pending > waiting_fact > confirmed > '' > cancelled
+          let topEv = items.find(e=>e.pending_nanny||e.pending_admin)
+            || items.find(e=>e.status==='waiting_fact')
+            || items.find(e=>!e.status||e.status==='')
+            || items[0];
+          const col=shiftColor(topEv,isPast);
           cell.style.background=col.bg;
-          cell.style.border=`1.5px solid ${col.border}`;
+          cell.style.borderTop=`2.5px solid ${col.border}`;
           const badge=document.createElement('div');
-          badge.style.cssText=`font-size:9px;font-weight:700;margin-top:3px;color:${col.txt};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;`;
-          badge.textContent=items.length>1?`${items.length} смены`:col.label;
+          badge.style.cssText=`font-size:9px;font-weight:700;margin-top:2px;color:${col.txt};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;`;
+          badge.textContent=items.length>1?`${items.length} клиента`:col.label;
           cell.appendChild(badge);
+
+          // Comment/receipt indicator
+          const hasComment = items.some(e=>e.nanny_comment);
+          const hasReceipt = items.some(e=>e.has_receipt);
+          if(hasComment||hasReceipt){
+            const icons=document.createElement('div');
+            icons.style.cssText='font-size:9px;margin-top:1px;line-height:1;';
+            icons.textContent=(hasComment?'💬':'')+(hasReceipt?'📎':'');
+            cell.appendChild(icons);
+          }
         }
-        if(block){cell.classList.add('dayoff');const mb=document.createElement('div');mb.style.cssText='font-size:10px;font-weight:700;margin-top:2px;color:var(--c-danger);';mb.textContent='выходной';cell.appendChild(mb);}
+
+        if(block){
+          cell.style.background='#fef2f2';
+          cell.style.borderTop='2px solid #dc2626';
+          const mb=document.createElement('div');
+          mb.style.cssText='font-size:9px;font-weight:700;margin-top:1px;color:#dc2626;line-height:1.2;';
+          mb.textContent='🚫 Выходной';
+          cell.appendChild(mb);
+        }
+
         if(selectedIso===iso)cell.style.outline='3px solid var(--c-teal)';
         cell.addEventListener('click',()=>selectDate(iso));
         row.appendChild(cell);day++;
@@ -386,71 +424,166 @@
 
   function fillClientSelect(items){
     uploadClient.innerHTML='';
-    items.forEach(e=>{const opt=document.createElement('option');opt.value=e.client_token;opt.textContent=`${e.child_name||'Ребёнок'} (${e.child_age||'-'})${e.time?' — '+e.time:''}`;uploadClient.appendChild(opt);});
+    items.forEach(e=>{
+      const opt=document.createElement('option');
+      opt.value=e.client_token;
+      opt.textContent=`${e.child_name||'Ребёнок'} (${e.child_age||'-'})${e.time?' — '+e.time:''}`;
+      uploadClient.appendChild(opt);
+    });
   }
 
   function selectDate(iso){
     selectedIso=iso;
-    const items=byDate[iso]||[];const block=blocksByDate[iso]||null;
+    const items=byDate[iso]||[];
+    const block=blocksByDate[iso]||null;
     const isPast=!!(today&&iso<today);
     renderCalendar();
-    uploadDate.value=formatRu(iso);offDate.value=iso;
-    offStart.value=block?.start||'';offEnd.value=block?.end||'';offNote.value=block?.note||'';
+    if(uploadDate) uploadDate.value=formatRu(iso);
+    if(offDate) offDate.value=iso;
+    if(offStart) offStart.value=block?.start||'';
+    if(offEnd) offEnd.value=block?.end||'';
+    if(offNote) offNote.value=block?.note||'';
     selectedOffId=block?.id||null;
-    deleteOffBtn.disabled=!selectedOffId||!blocksEnabled;
+    if(deleteOffBtn) deleteOffBtn.disabled=!selectedOffId||!blocksEnabled;
     fillClientSelect(items);
-    const canUpload=items.length>0&&isPast;
-    uploadClient.disabled=!canUpload;uploadBtn.disabled=!canUpload;
-    uploadHint.textContent=!items.length?'На выбранную дату нет назначений.'
-      :!isPast?'Чек можно загрузить только для прошедшей даты.'
-      :`Загрузить чек за ${formatRu(iso)}.`;
 
-    // Build cards for each assignment on this date
+    const canUpload=items.length>0;
+    if(uploadClient) uploadClient.disabled=!canUpload;
+    if(uploadBtn) uploadBtn.disabled=!canUpload;
+    if(uploadHint) uploadHint.textContent=!items.length?'На выбранную дату нет назначений.':
+      `Загрузить чек за ${formatRu(iso)}.`;
+
+    // Build detailed cards
     const assignmentsHtml=items.length?items.map(e=>{
-      const col=shiftColor(e.status||'',isPast);
+      const col=shiftColor(e,isPast);
+      const clientInfo = clients.find(x=>x.token===e.client_token);
+      const parentName = clientInfo?.parent_name || e.parent_name || '—';
       const statusBadge=`<span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;background:${col.bg};color:${col.txt};border:1px solid ${col.border};">${col.label}</span>`;
-      // Fact time row
-      const factRow=(e.fact_start&&e.fact_end)
-        ?`<div class="text-small text-muted" style="margin-top:4px;">Фактическое время: <strong>${e.fact_start}–${e.fact_end}</strong></div>`:'';
-      // Inline fact form — show for past dates without submitted fact
-      const needFact=isPast&&!e.fact_start&&e.status!=='confirmed'&&e.status!=='cancelled';
+
+      // Existing data display
+      const factDisplay = (e.fact_start&&e.fact_end)
+        ?`<div style="font-size:12px;color:#1d4ed8;margin-top:4px;">⏱ Факт отправлен: <strong>${e.fact_start}–${e.fact_end}</strong></div>`:'';
+      const nannyCommentDisplay = e.nanny_comment
+        ?`<div style="font-size:11px;color:#0d9488;margin-top:3px;background:rgba(13,148,136,.06);padding:4px 8px;border-radius:6px;">💬 Ваш комментарий: ${e.nanny_comment}</div>`:'';
+      const clientCommentDisplay = e.client_comment
+        ?`<div style="font-size:11px;color:#3b82f6;margin-top:3px;background:rgba(59,130,246,.06);padding:4px 8px;border-radius:6px;">💬 Клиент: ${e.client_comment}</div>`:'';
+      const clientReviewDisplay = e.client_review
+        ?`<div style="font-size:11px;color:#b45309;margin-top:3px;background:rgba(245,158,11,.1);padding:4px 8px;border-radius:6px;">${'⭐'.repeat(e.client_review_stars||5)} ${e.client_review}</div>`:'';
+
+      // Pending confirmation button
+      const needsNannyConfirm = e.pending_nanny;
+      const pendingActions = needsNannyConfirm ? `
+        <div style="background:#fffbeb;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;margin-top:8px;">
+          <div style="font-size:12px;font-weight:700;color:#b45309;margin-bottom:6px;">🔔 Клиент добавил эту дату — нужно ваше подтверждение</div>
+          <div style="display:flex;gap:6px;">
+            <button onclick="nannyConfirmDate('${e.client_token}','${iso}','confirm',this)"
+              style="background:#dcfce7;color:#16a34a;border:1px solid #86efac;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">✅ Принять</button>
+            <button onclick="nannyConfirmDate('${e.client_token}','${iso}','reject',this)"
+              style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:5px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">❌ Отклонить</button>
+          </div>
+        </div>` : '';
+
+      // Fact form (for past dates)
+      const needFact=isPast&&!e.fact_start&&e.status!=='confirmed'&&e.status!=='cancelled'&&!e.pending_admin&&!e.pending_nanny;
       const factFormId=`factForm_${iso}_${(e.client_token||'').slice(-6)}`;
       const factForm=needFact?`
         <div id="${factFormId}" style="margin-top:8px;padding:10px 12px;background:rgba(59,130,246,.07);border:1px dashed rgba(59,130,246,.4);border-radius:var(--r-md);">
-          <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:6px;">Отправить фактическое время</div>
+          <div style="font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:6px;">⏱ Отправить фактическое время</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-            <div><label style="font-size:11px;">Начало</label><input type="time" id="fs_${factFormId}" style="width:100%;font-size:13px;" /></div>
-            <div><label style="font-size:11px;">Конец</label><input type="time" id="fe_${factFormId}" style="width:100%;font-size:13px;" /></div>
+            <div><label style="font-size:11px;">Начало</label><input type="time" id="fs_${factFormId}" value="${e.fact_start||''}" style="width:100%;font-size:13px;" /></div>
+            <div><label style="font-size:11px;">Конец</label><input type="time" id="fe_${factFormId}" value="${e.fact_end||''}" style="width:100%;font-size:13px;" /></div>
           </div>
           <button type="button" onclick="submitFact('${iso}','${e.client_token}','${factFormId}')"
-            style="background:var(--c-teal);color:#fff;border:none;border-radius:var(--r-md);padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;">
-            Отправить ➤
-          </button>
+            style="background:var(--c-teal);color:#fff;border:none;border-radius:var(--r-md);padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;">Отправить ➤</button>
           <span id="fs_status_${factFormId}" style="font-size:11px;color:var(--c-text-muted);margin-left:8px;"></span>
         </div>`:'';
+
+      // Comment form
+      const commentFormId = `commentForm_${iso}_${(e.client_token||'').slice(-6)}`;
+      const commentForm = `
+        <details style="margin-top:8px;">
+          <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--c-teal-dk);">💬 Добавить комментарий</summary>
+          <div style="margin-top:6px;">
+            <textarea id="nc_${commentFormId}" rows="2" placeholder="Ваш комментарий к этой дате..."
+              style="width:100%;border:1.5px solid var(--c-border-str);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;">${e.nanny_comment||''}</textarea>
+            <button onclick="saveNannyComment('${iso}','${e.client_token}','nc_${commentFormId}',this)"
+              style="background:var(--c-teal);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-top:4px;">Сохранить</button>
+          </div>
+        </details>`;
+
       return `
       <div style="padding:10px 12px;border:1.5px solid ${col.border};border-radius:var(--r-md);background:${col.bg};margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;">
           <strong>${e.child_name||'Ребёнок'} (${e.child_age||'-'})</strong>
           ${statusBadge}
         </div>
-        <div class="text-small text-muted" style="margin-top:2px;">Запланировано: <strong>${e.time||'время уточняется'}</strong></div>
-        ${factRow}
-        <div class="text-small text-muted" style="margin-top:2px;">Клиент: ${clients.find(x=>x.token===e.client_token)?.parent_name||'-'}</div>
-        <a class="action-link text-small" href="/client/${e.client_token}" target="_blank" style="margin-top:4px;display:inline-block;">Открыть ЛК →</a>
-        ${factForm}
+        <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">⏰ ${e.time||'время уточняется'} · Клиент: ${parentName}</div>
+        ${factDisplay}${nannyCommentDisplay}${clientCommentDisplay}${clientReviewDisplay}
+        ${pendingActions}${factForm}${commentForm}
+        <a class="action-link" href="/client/${e.client_token}" target="_blank" style="font-size:12px;display:inline-block;margin-top:6px;">ЛК клиента →</a>
       </div>`;
     }).join(''):'<div class="hint">Назначений на эту дату нет.</div>';
 
     const blockHtml=block?`<div style="margin-top:8px;padding:8px 12px;border-radius:var(--r-md);background:rgba(239,68,68,.08);border:1px dashed rgba(239,68,68,.35);">
-      <strong style="color:var(--c-danger);">Выходной</strong>
-      <span class="text-small text-muted" style="margin-left:6px;">${block.start||'--:--'}–${block.end||'--:--'} ${block.note?'· '+block.note:''}</span>
-      </div>`:'';
-    selectedBox.innerHTML=`<div style="font-weight:800;margin-bottom:8px;color:var(--c-teal);">${formatRu(iso)}</div>${assignmentsHtml}${blockHtml}`;
-    offStatus.textContent=blocksEnabled
+      <strong style="color:var(--c-danger);">🚫 Выходной</strong>
+      <span style="font-size:12px;color:var(--c-text-muted);margin-left:6px;">${block.start||''}${block.end?'–'+block.end:''} ${block.note?'· '+block.note:''}</span>
+    </div>`:'';
+
+    if(selectedBox) selectedBox.innerHTML=`<div style="font-weight:800;font-size:14px;margin-bottom:8px;color:var(--c-teal);">📅 ${formatRu(iso)}</div>${assignmentsHtml}${blockHtml}`;
+    if(offStatus) offStatus.textContent=blocksEnabled
       ?(block?'Выходной найден. Можно удалить или изменить.':'Можно отметить как выходной.')
       :'Отметка выходного работает только в SQL-режиме.';
   }
+
+  // Nanny confirms or rejects a pending date
+  window.nannyConfirmDate = async function(clientToken, date, action, btn) {
+    btn.disabled=true; btn.textContent='…';
+    try {
+      const r = await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/confirm_date`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({client_token: clientToken, date, action})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error||'Ошибка');
+      // Update local event
+      const items = byDate[date]||[];
+      const ev = items.find(e=>e.client_token===clientToken && e.date===date);
+      if(ev) {
+        ev.pending_nanny = false;
+        if(action==='confirm') ev.pending_admin = false;
+        else ev.status = 'cancelled';
+      }
+      renderCalendar();
+      selectDate(date);
+      showNannyToast(action==='confirm'?'✅ Дата принята':'❌ Дата отклонена');
+    } catch(e) {
+      btn.disabled=false;
+      btn.textContent = action==='confirm'?'✅ Принять':'❌ Отклонить';
+      alert(e.message);
+    }
+  };
+
+  // Save nanny comment
+  window.saveNannyComment = async function(date, clientToken, inputId, btn) {
+    const comment = (document.getElementById(inputId)?.value || '').trim();
+    btn.disabled=true; btn.textContent='…';
+    try {
+      const r = await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/date_action`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({client_token: clientToken, date, comment})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error||'Ошибка');
+      const items = byDate[date]||[];
+      const ev = items.find(e=>e.client_token===clientToken);
+      if(ev) ev.nanny_comment = comment;
+      btn.disabled=false; btn.textContent='Сохранить';
+      showNannyToast('✅ Комментарий сохранён');
+    } catch(e) {
+      btn.disabled=false; btn.textContent='Сохранить';
+      showNannyToast('❌ ' + e.message);
+    }
+  };
 
   async function submitFact(iso, clientToken, formId){
     const fsEl=document.getElementById('fs_'+formId);
@@ -458,81 +591,106 @@
     const statusEl=document.getElementById('fs_status_'+formId);
     if(!fsEl||!feEl)return;
     const fact_start=fsEl.value;const fact_end=feEl.value;
-    if(!fact_start||!fact_end){statusEl.textContent='Заполните оба поля.';statusEl.style.color='var(--c-danger)';return;}
-    statusEl.textContent='Отправляю…';statusEl.style.color='var(--c-text-muted)';
+    if(!fact_start||!fact_end){if(statusEl){statusEl.textContent='Заполните оба поля.';statusEl.style.color='var(--c-danger)';}return;}
+    if(statusEl){statusEl.textContent='Отправляю…';statusEl.style.color='var(--c-text-muted)';}
     try{
-      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/submit_fact`,{
+      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/date_action`,{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({date:iso,client_token:clientToken,fact_start,fact_end})
+        body:JSON.stringify({date:iso,client_token:clientToken,actual_start:fact_start,actual_end:fact_end})
       });
       const data=await res.json().catch(()=>({}));
       if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка сервера');
-      statusEl.textContent='✓ Отправлено!';statusEl.style.color='#15803d';
-      // Refresh events
-      const evRes=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/events`);
-      if(evRes.ok){const evData=await evRes.json().catch(()=>({}));
-        if(evData.events){events.length=0;evData.events.forEach(e=>events.push(e));
-          Object.keys(byDate).forEach(k=>delete byDate[k]);
-          events.forEach(e=>{if(!e.date)return;byDate[e.date]=byDate[e.date]||[];byDate[e.date].push(e);});
-        }
-      }
+      if(statusEl){statusEl.textContent='✓ Отправлено!';statusEl.style.color='#15803d';}
+      // Update local event
+      const items = byDate[iso]||[];
+      const ev = items.find(e=>e.client_token===clientToken);
+      if(ev){ev.fact_start=fact_start;ev.fact_end=fact_end;ev.status='waiting_fact';}
       setTimeout(()=>selectDate(iso),400);
-    }catch(e){statusEl.textContent='Ошибка: '+(e.message||e);statusEl.style.color='var(--c-danger)';}
+      renderCalendar();
+    }catch(e){if(statusEl){statusEl.textContent='Ошибка: '+(e.message||e);statusEl.style.color='var(--c-danger)';}}
   }
 
   async function loadBlocks(){
     blocksByDate={};blocksEnabled=false;
+    // Copy dayoffs from server data first
+    NANNY_DAYOFFS.forEach(b=>{if(b&&b.date)blocksByDate[b.date]=b;});
     try{
       const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks`);
-      const data=await res.json();if(!res.ok||!data.ok)throw new Error(data?.error||'err');
+      const data=await res.json();
+      if(!res.ok||!data.ok)throw new Error(data?.error||'err');
       (data.items||[]).forEach(b=>{if(b&&b.date)blocksByDate[b.date]=b;});
-      blocksEnabled=true;saveOffBtn.disabled=false;
-    }catch(e){blocksEnabled=false;saveOffBtn.disabled=true;deleteOffBtn.disabled=true;}
+      blocksEnabled=true;
+      if(saveOffBtn) saveOffBtn.disabled=false;
+    }catch(e){
+      blocksEnabled=!!NANNY_DAYOFFS.length;
+    }
   }
 
-  saveOffBtn.addEventListener('click',async()=>{
-    if(!blocksEnabled){alert('Отметка выходного доступна только в SQL-режиме.');return;}
-    if(!offDate.value){alert('Сначала выберите дату.');return;}
-    if(selectedOffId)await deleteOff();
-    const payload={date:offDate.value,start:offStart.value||null,end:offEnd.value||null,note:offNote.value||null};
-    offStatus.textContent='Сохраняю…';
-    try{
-      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      const data=await res.json();if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка');
-      await loadBlocks();selectDate(offDate.value);offStatus.textContent='Выходной сохранён ✓';
-    }catch(e){offStatus.textContent='Ошибка: '+(e.message||e);}
-  });
-
   async function deleteOff(){
-    if(!blocksEnabled||!selectedOffId)return;
+    if(!selectedOffId)return;
     const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks/${selectedOffId}`,{method:'DELETE'});
-    const data=await res.json().catch(()=>({}));if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка');
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка');
     await loadBlocks();
   }
 
-  deleteOffBtn.addEventListener('click',async()=>{
-    if(!selectedOffId){alert('На выбранную дату выходной не найден.');return;}
-    try{await deleteOff();selectDate(offDate.value);offStatus.textContent='Выходной удалён.';}
-    catch(e){offStatus.textContent='Ошибка: '+(e.message||e);}
+  if(saveOffBtn) saveOffBtn.addEventListener('click',async()=>{
+    if(!blocksEnabled){alert('Отметка выходного доступна только в SQL-режиме.');return;}
+    if(!offDate||!offDate.value){alert('Сначала выберите дату.');return;}
+    if(selectedOffId){ try{await deleteOff();}catch(e){} }
+    const payload={date:offDate.value,start:offStart?.value||null,end:offEnd?.value||null,note:offNote?.value||null};
+    if(offStatus) offStatus.textContent='Сохраняю…';
+    try{
+      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const data=await res.json();if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка');
+      await loadBlocks();selectDate(offDate.value);if(offStatus)offStatus.textContent='Выходной сохранён ✓';
+    }catch(e){if(offStatus)offStatus.textContent='Ошибка: '+(e.message||e);}
   });
 
-  uploadBtn.addEventListener('click',async()=>{
+  if(deleteOffBtn) deleteOffBtn.addEventListener('click',async()=>{
+    if(!selectedOffId){alert('На выбранную дату выходной не найден.');return;}
+    try{await deleteOff();selectDate(offDate.value);if(offStatus)offStatus.textContent='Выходной удалён.';}
+    catch(e){if(offStatus)offStatus.textContent='Ошибка: '+(e.message||e);}
+  });
+
+  if(uploadBtn) uploadBtn.addEventListener('click',async()=>{
     if(uploadBtn.disabled)return;
     if(!selectedIso){alert('Сначала выберите дату.');return;}
-    if(!uploadClient.value){alert('Выберите клиента.');return;}
-    if(!uploadFile.files||!uploadFile.files[0]){alert('Выберите файл.');return;}
+    if(!uploadClient||!uploadClient.value){alert('Выберите клиента.');return;}
+    if(!uploadFile||!uploadFile.files||!uploadFile.files[0]){alert('Выберите файл.');return;}
     const fd=new FormData();
     fd.append('client_token',uploadClient.value);
     fd.append('date',selectedIso);
-    fd.append('comment',uploadComment.value||'');
+    fd.append('comment',uploadComment?.value||'');
     fd.append('file',uploadFile.files[0]);
     uploadBtn.disabled=true;uploadBtn.textContent='Загрузка…';
     const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/upload_receipt`,{method:'POST',body:fd});
     const data=await res.json().catch(()=>({}));
     uploadBtn.disabled=false;uploadBtn.textContent='Загрузить чек';
     if(!res.ok){alert(data?.error||'Ошибка загрузки');return;}
-    alert('Чек успешно загружен ✓');uploadFile.value='';uploadComment.value='';
+    // Update has_receipt in local event
+    const items=byDate[selectedIso]||[];
+    const ev=items.find(e=>e.client_token===uploadClient.value);
+    if(ev) ev.has_receipt=true;
+    renderCalendar();
+    showNannyToast('✅ Чек загружен');
+    if(uploadFile) uploadFile.value='';
+    if(uploadComment) uploadComment.value='';
   });
+
+  function showNannyToast(msg) {
+    let t = document.getElementById('nannyToast');
+    if(!t) {
+      t = document.createElement('div');
+      t.id = 'nannyToast';
+      t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;max-width:90vw;text-align:center;';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; }, 2500);
+  }
 
   document.getElementById('prevMonth').addEventListener('click',()=>{cur.setMonth(cur.getMonth()-1);renderCalendar();});
   document.getElementById('nextMonth').addEventListener('click',()=>{cur.setMonth(cur.getMonth()+1);renderCalendar();});
@@ -540,9 +698,16 @@
   (async function(){
     renderClients();
     await loadBlocks();
+    // Navigate to first relevant month
+    const allKeys = Object.keys(byDate).sort();
+    const firstUpcoming = allKeys.find(d=>d>=today) || allKeys[0];
+    if(firstUpcoming) {
+      const d = new Date(firstUpcoming.slice(0,7)+'-01');
+      cur = d;
+    }
     renderCalendar();
-    const initialDate=today||Object.keys(byDate).sort()[0];
-    if(initialDate)selectDate(initialDate);
+    const initialDate=today||allKeys[0];
+    if(initialDate) selectDate(initialDate);
   })();
 })();
 

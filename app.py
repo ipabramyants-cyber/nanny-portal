@@ -1498,6 +1498,15 @@ def create_app() -> Flask:
             db.session.commit()
             # Notify if new dates added AFTER nanny was already assigned
             if added and lead.assigned_nanny_id:
+                # Mark newly added dates as pending when nanny is already assigned
+                wd = lead.work_dates or {}
+                for d in added:
+                    slot = wd.get(d) or {}
+                    slot['pending_admin'] = True
+                    slot['pending_nanny'] = True
+                    wd[d] = slot
+                lead.work_dates = wd
+                db.session.commit()
                 _notify_on_new_dates(lead.parent_name, lead.child_name, sorted(added),
                                      lead.token, lead.assigned_nanny_id, lead.telegram_user_id)
             return {'ok': True}
@@ -1511,6 +1520,15 @@ def create_app() -> Flask:
         added = new_dates - old_dates
         lead['meeting_date'] = meeting_date
         lead['work_dates'] = work_dates
+        if added and lead.get('assigned_nanny_id'):
+            # Mark newly added dates as pending when nanny is already assigned
+            wd = lead.get('work_dates') or {}
+            for d in added:
+                slot = wd.get(d) or {}
+                slot['pending_admin'] = True
+                slot['pending_nanny'] = True
+                wd[d] = slot
+            lead['work_dates'] = wd
         save_leads(leads)
         # Notify if new dates added AFTER nanny was already assigned
         if added and lead.get('assigned_nanny_id'):
@@ -1621,6 +1639,255 @@ def create_app() -> Flask:
         )
         return {'ok': True}
 
+    @app.route('/api/client/<token>/date_action', methods=['POST'])
+    def api_client_date_action(token: str):
+        """Client adds comment / actual time / review to a specific work date."""
+        data = request.get_json(force=True) or {}
+        date_str = (data.get('date') or '').strip()
+        _d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        if not date_str or not re.match(_d_re, date_str):
+            return {'error': 'Неверный формат даты'}, 400
+
+        comment = (data.get('comment') or '').strip()[:500]
+        actual_start = (data.get('actual_start') or '').strip()[:5]
+        actual_end = (data.get('actual_end') or '').strip()[:5]
+        review_text = (data.get('review') or '').strip()[:1000]
+        review_stars = int(data.get('review_stars') or 5)
+        review_stars = max(1, min(5, review_stars))
+
+        if use_sql:
+            lead_row = Lead.query.filter_by(token=token).first()
+            if not lead_row:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead_row.work_dates or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if comment:
+                slot['client_comment'] = comment
+            if actual_start and actual_end:
+                slot['client_actual_start'] = actual_start
+                slot['client_actual_end'] = actual_end
+            if review_text:
+                slot['client_review'] = review_text
+                slot['client_review_stars'] = review_stars
+            wd[date_str] = slot
+            lead_row.work_dates = wd
+            db.session.commit()
+        else:
+            leads = load_leads()
+            lead = next((x for x in leads if x.get('token') == token), None)
+            if not lead:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead.get('work_dates') or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if comment:
+                slot['client_comment'] = comment
+            if actual_start and actual_end:
+                slot['client_actual_start'] = actual_start
+                slot['client_actual_end'] = actual_end
+            if review_text:
+                slot['client_review'] = review_text
+                slot['client_review_stars'] = review_stars
+            wd[date_str] = slot
+            lead['work_dates'] = wd
+            save_leads(leads)
+        return {'ok': True}
+
+    @app.route('/api/client/<token>/add_dates', methods=['POST'])
+    def api_client_add_dates(token: str):
+        """Client adds extra work dates after nanny is assigned — needs admin+nanny confirmation."""
+        data = request.get_json(force=True) or {}
+        new_dates = data.get('dates') or []
+        _d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        today_str = datetime.datetime.utcnow().date().isoformat()
+        valid_dates = [d for d in new_dates
+                       if isinstance(d, str) and re.match(_d_re, d) and d >= today_str][:30]
+        if not valid_dates:
+            return {'error': 'Нет корректных дат'}, 400
+
+        if use_sql:
+            lead_row = Lead.query.filter_by(token=token).first()
+            if not lead_row:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead_row.work_dates or {})
+            truly_new = []
+            for d in valid_dates:
+                if d not in wd:
+                    wd[d] = {'pending_admin': True, 'pending_nanny': True}
+                    truly_new.append(d)
+            lead_row.work_dates = wd
+            db.session.commit()
+            if truly_new and lead_row.assigned_nanny_id:
+                _notify_on_new_dates(lead_row.parent_name, lead_row.child_name, sorted(truly_new),
+                                     lead_row.token, lead_row.assigned_nanny_id, lead_row.telegram_user_id)
+            return {'ok': True, 'added': truly_new}
+        else:
+            leads = load_leads()
+            lead = next((x for x in leads if x.get('token') == token), None)
+            if not lead:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead.get('work_dates') or {})
+            truly_new = []
+            for d in valid_dates:
+                if d not in wd:
+                    wd[d] = {'pending_admin': True, 'pending_nanny': True}
+                    truly_new.append(d)
+            lead['work_dates'] = wd
+            save_leads(leads)
+            if truly_new and lead.get('assigned_nanny_id'):
+                _notify_on_new_dates(lead.get('parent_name'), lead.get('child_name'),
+                                     sorted(truly_new), lead.get('token'),
+                                     lead.get('assigned_nanny_id'), lead.get('telegram_user_id'))
+            return {'ok': True, 'added': truly_new}
+
+    @app.route('/api/admin/lead/<token>/confirm_date', methods=['POST'])
+    @require_admin
+    def api_admin_confirm_date(token: str):
+        """Admin confirms or rejects a pending work date."""
+        data = request.get_json(force=True) or {}
+        date_str = (data.get('date') or '').strip()
+        action = (data.get('action') or 'confirm').strip()  # confirm | reject
+
+        if use_sql:
+            lead_row = Lead.query.filter_by(token=token).first()
+            if not lead_row:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead_row.work_dates or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if action == 'confirm':
+                slot.pop('pending_admin', None)
+            else:
+                slot['status'] = 'cancelled'
+                slot.pop('pending_admin', None)
+                slot.pop('pending_nanny', None)
+            wd[date_str] = slot
+            lead_row.work_dates = wd
+            db.session.commit()
+        else:
+            leads = load_leads()
+            lead = next((x for x in leads if x.get('token') == token), None)
+            if not lead:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead.get('work_dates') or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if action == 'confirm':
+                slot.pop('pending_admin', None)
+            else:
+                slot['status'] = 'cancelled'
+                slot.pop('pending_admin', None)
+                slot.pop('pending_nanny', None)
+            wd[date_str] = slot
+            lead['work_dates'] = wd
+            save_leads(leads)
+        return {'ok': True}
+
+    @app.route('/api/nanny/<portal_token>/confirm_date', methods=['POST'])
+    def api_nanny_confirm_date(portal_token: str):
+        """Nanny confirms or rejects a pending work date."""
+        session_token = session.get('nanny_portal_token') or ''
+        if session_token != portal_token:
+            return {'error': 'Forbidden'}, 403
+        data = request.get_json(force=True) or {}
+        client_token = (data.get('client_token') or '').strip()
+        date_str = (data.get('date') or '').strip()
+        action = (data.get('action') or 'confirm').strip()  # confirm | reject
+
+        if use_sql:
+            lead_row = Lead.query.filter_by(token=client_token).first()
+            if not lead_row:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead_row.work_dates or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if action == 'confirm':
+                slot.pop('pending_nanny', None)
+            else:
+                slot['status'] = 'cancelled'
+                slot.pop('pending_admin', None)
+                slot.pop('pending_nanny', None)
+            wd[date_str] = slot
+            lead_row.work_dates = wd
+            db.session.commit()
+        else:
+            leads = load_leads()
+            lead = next((x for x in leads if x.get('token') == client_token), None)
+            if not lead:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead.get('work_dates') or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if action == 'confirm':
+                slot.pop('pending_nanny', None)
+            else:
+                slot['status'] = 'cancelled'
+                slot.pop('pending_admin', None)
+                slot.pop('pending_nanny', None)
+            wd[date_str] = slot
+            lead['work_dates'] = wd
+            save_leads(leads)
+        return {'ok': True}
+
+    @app.route('/api/nanny/<portal_token>/date_action', methods=['POST'])
+    def api_nanny_date_action(portal_token: str):
+        """Nanny submits comment or actual time for a work date."""
+        session_token = session.get('nanny_portal_token') or ''
+        if session_token != portal_token:
+            return {'error': 'Forbidden'}, 403
+        data = request.get_json(force=True) or {}
+        client_token = (data.get('client_token') or '').strip()
+        date_str = (data.get('date') or '').strip()
+        _d_re = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        if not date_str or not re.match(_d_re, date_str):
+            return {'error': 'Неверный формат даты'}, 400
+
+        comment = (data.get('comment') or '').strip()[:500]
+        fact_start = (data.get('fact_start') or '').strip()[:5]
+        fact_end = (data.get('fact_end') or '').strip()[:5]
+
+        if use_sql:
+            lead_row = Lead.query.filter_by(token=client_token).first()
+            if not lead_row:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead_row.work_dates or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if comment:
+                slot['nanny_comment'] = comment
+            if fact_start and fact_end:
+                slot['fact_start'] = fact_start
+                slot['fact_end'] = fact_end
+            wd[date_str] = slot
+            lead_row.work_dates = wd
+            db.session.commit()
+        else:
+            leads = load_leads()
+            lead = next((x for x in leads if x.get('token') == client_token), None)
+            if not lead:
+                return {'error': 'ЛК не найден'}, 404
+            wd = dict(lead.get('work_dates') or {})
+            if date_str not in wd:
+                return {'error': 'Дата не найдена'}, 404
+            slot = dict(wd[date_str]) if isinstance(wd[date_str], dict) else {}
+            if comment:
+                slot['nanny_comment'] = comment
+            if fact_start and fact_end:
+                slot['fact_start'] = fact_start
+                slot['fact_end'] = fact_end
+            wd[date_str] = slot
+            lead['work_dates'] = wd
+            save_leads(leads)
+        return {'ok': True}
+
     @app.route('/nanny/portal/<portal_token>')
     def nanny_portal(portal_token: str):
         nannies = load_nannies()
@@ -1653,12 +1920,21 @@ def create_app() -> Flask:
                     'fact_start': slot.get('fact_start'),
                     'fact_end': slot.get('fact_end'),
                     'has_receipt': bool(receipts.get(d)),
+                    'pending_admin': bool(slot.get('pending_admin')),
+                    'pending_nanny': bool(slot.get('pending_nanny')),
+                    'client_comment': slot.get('client_comment', ''),
+                    'nanny_comment': slot.get('nanny_comment', ''),
+                    'client_review': slot.get('client_review', ''),
+                    'client_review_stars': slot.get('client_review_stars', 0),
                 })
         events_with_rate.sort(key=lambda x: x.get('date') or '')
         today = datetime.datetime.utcnow().date().isoformat()
+        # Build nanny_dayoffs from NannyBlock (JSON mode has no NannyBlock; use empty list)
+        nanny_dayoffs_list = []
         return render_template('nanny_portal_public.html', nanny=nanny, clients=clients,
                                events=events_with_rate, today=today,
-                               default_nanny_rate=DEFAULT_NANNY_RATE_VND)
+                               default_nanny_rate=DEFAULT_NANNY_RATE_VND,
+                               nanny_dayoffs=nanny_dayoffs_list)
 
     @app.route('/nanny/<portal_token>')
     def nanny_profile(portal_token: str):
@@ -1860,12 +2136,16 @@ def create_app() -> Flask:
                 slot = info if isinstance(info, dict) else {}
                 date_status = slot.get('status')  # confirmed / cancelled / waiting_fact / None
                 # Derive display type
+                pending_a = bool(slot.get('pending_admin'))
+                pending_n = bool(slot.get('pending_nanny'))
                 if date_status == 'cancelled':
                     evt_type = 'cancelled'
                 elif date_status == 'confirmed':
                     evt_type = 'confirmed'
                 elif date_status == 'waiting_fact':
                     evt_type = 'waiting_fact'
+                elif pending_a or pending_n:
+                    evt_type = 'pending'
                 elif nanny_id:
                     evt_type = 'assigned'
                 else:
@@ -1885,6 +2165,14 @@ def create_app() -> Flask:
                     'has_receipt': has_receipt,
                     'fact_start': slot.get('fact_start'),
                     'fact_end': slot.get('fact_end'),
+                    'pending_admin': bool(slot.get('pending_admin')),
+                    'pending_nanny': bool(slot.get('pending_nanny')),
+                    'client_comment': slot.get('client_comment', ''),
+                    'nanny_comment': slot.get('nanny_comment', ''),
+                    'client_actual_start': slot.get('client_actual_start', ''),
+                    'client_actual_end': slot.get('client_actual_end', ''),
+                    'client_review': slot.get('client_review', ''),
+                    'client_review_stars': slot.get('client_review_stars', 0),
                 })
         events.sort(key=lambda x: x.get('date') or '')
 
