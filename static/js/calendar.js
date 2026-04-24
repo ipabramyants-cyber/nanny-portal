@@ -13,7 +13,9 @@
   const isLeadPage = !!document.getElementById('leadForm');
   const isClientLK = !!(window.__LK__ && window.__LK__.token);
   const hasControls = !!(document.getElementById('modeMeeting') || document.getElementById('modeWork') || document.getElementById('saveBtn'));
-  if (!isLeadPage && !isClientLK && !hasControls) return;
+  // Client LK portal manages its own calendar with status colors — skip this shared widget
+  if (isClientLK) return;
+  if (!isLeadPage && !hasControls) return;
 
   const monthLabel = document.getElementById('monthLabel');
   const prevBtn    = document.getElementById('prevMonth');
