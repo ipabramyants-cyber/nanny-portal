@@ -231,7 +231,9 @@
           } else {
             if (!workDates[key]) workDates[key] = {};
             const existing = String(workDates[key].time || '');
-            const picked = await _pickTime(existing);
+            const picked = window.NannyTimePicker
+              ? await window.NannyTimePicker.pick(existing, { title: 'Время работы' })
+              : await _pickTime(existing);
             if (picked !== null) workDates[key].time = picked;
             render();
             updateCounter();

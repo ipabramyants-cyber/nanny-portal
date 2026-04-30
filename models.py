@@ -92,8 +92,10 @@ class Shift(db.Model):
 
     nanny_actual_start = db.Column(db.String(5), nullable=True)
     nanny_actual_end = db.Column(db.String(5), nullable=True)
+    nanny_actual_note = db.Column(db.Text, nullable=True)
     client_actual_start = db.Column(db.String(5), nullable=True)
     client_actual_end = db.Column(db.String(5), nullable=True)
+    client_actual_note = db.Column(db.Text, nullable=True)
     resolved_start = db.Column(db.String(5), nullable=True)
     resolved_end = db.Column(db.String(5), nullable=True)
 
@@ -102,6 +104,7 @@ class Shift(db.Model):
 
     notes = db.Column(db.Text, nullable=True)
     reminder_sent_at = db.Column(db.DateTime, nullable=True)
+    post_reminder_sent_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
 
 

@@ -210,6 +210,8 @@
   const NANNY_DAYOFFS = (window.__NANNY__.nanny_dayoffs || []);
   const dayoffsMap = {};
   NANNY_DAYOFFS.forEach(b => { dayoffsMap[b.date] = b; });
+  const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  window.escapeHtml = window.escapeHtml || escapeHtml;
 
   // ---- Earnings calculator ----
   (function buildEarnings(){
@@ -242,7 +244,7 @@
         const dateStr = d.split('-').reverse().join('.');
         if(h > 0 && ev.status === 'confirmed'){
           totalEarnings += h * rate;
-          rows.push(`<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span>${dateStr}${ev.child_name?' — '+ev.child_name:''}${timeStr?' ('+timeStr+')':''}</span><strong>${(h*rate).toLocaleString('ru-RU')} ₫</strong></div>`);
+          rows.push(`<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span>${escapeHtml(dateStr)}${ev.child_name?' — '+escapeHtml(ev.child_name):''}${timeStr?' ('+escapeHtml(timeStr)+')':''}</span><strong>${(h*rate).toLocaleString('ru-RU')} ₫</strong></div>`);
         }
       });
     });
@@ -255,7 +257,6 @@
   const dow=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
   const pad=n=>String(n).padStart(2,'0');
   const formatRu=ymd=>{if(!ymd||ymd.length!==10)return ymd;const[y,m,d]=ymd.split('-');return`${d}.${m}.${y}`;};
-
   const byDate={};
   events.forEach(e=>{if(!e.date)return;byDate[e.date]=byDate[e.date]||[];byDate[e.date].push(e);});
 
@@ -299,8 +300,8 @@
       const pending = wd.filter(d=>{const s=l.work_dates[d];return s&&(s.pending_admin||s.pending_nanny);});
       const el=document.createElement('div');
       el.style.cssText='padding:10px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface-2);';
-      el.innerHTML=`<div style="font-weight:800;font-size:14px;">${l.child_name||'Ребёнок'}<span style="font-weight:400;font-size:12px;color:var(--c-text-muted);margin-left:4px;">(${l.child_age||'-'})</span></div>
-        <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">Родитель: ${l.parent_name||'-'}</div>
+      el.innerHTML=`<div style="font-weight:800;font-size:14px;">${escapeHtml(l.child_name||'Ребёнок')}<span style="font-weight:400;font-size:12px;color:var(--c-text-muted);margin-left:4px;">(${escapeHtml(l.child_age||'-')})</span></div>
+        <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">Родитель: ${escapeHtml(l.parent_name||'-')}</div>
         <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">Дат: ${wd.length}</div>
         ${pending.length?`<div style="font-size:11px;color:#ea580c;margin-top:4px;">🔔 Ожидают подтверждения: ${pending.length}</div>`:''}`;
       clientListEl.appendChild(el);
@@ -434,17 +435,21 @@
       const col=shiftColor(e,isPast);
       const clientInfo = clients.find(x=>x.token===e.client_token);
       const parentName = clientInfo?.parent_name || e.parent_name || '—';
+      const safeParentName = escapeHtml(parentName);
+      const safeChildName = escapeHtml(e.child_name || 'Ребёнок');
+      const safeChildAge = escapeHtml(e.child_age || '-');
+      const safeTime = escapeHtml(e.time || 'время уточняется');
       const statusBadge=`<span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:10px;background:${col.bg};color:${col.txt};border:1px solid ${col.border};">${col.label}</span>`;
 
       // Existing data display
       const factDisplay = (e.fact_start&&e.fact_end)
-        ?`<div style="font-size:12px;color:#1d4ed8;margin-top:4px;">⏱ Факт отправлен: <strong>${e.fact_start}–${e.fact_end}</strong></div>`:'';
+        ?`<div style="font-size:12px;color:#1d4ed8;margin-top:4px;">⏱ Факт отправлен: <strong>${escapeHtml(e.fact_start)}–${escapeHtml(e.fact_end)}</strong></div>`:'';
       const nannyCommentDisplay = e.nanny_comment
-        ?`<div style="font-size:11px;color:#0d9488;margin-top:3px;background:rgba(13,148,136,.06);padding:4px 8px;border-radius:6px;">💬 Ваш комментарий: ${e.nanny_comment}</div>`:'';
+        ?`<div style="font-size:11px;color:#0d9488;margin-top:3px;background:rgba(13,148,136,.06);padding:4px 8px;border-radius:6px;">💬 Ваш комментарий: ${escapeHtml(e.nanny_comment)}</div>`:'';
       const clientCommentDisplay = e.client_comment
-        ?`<div style="font-size:11px;color:#3b82f6;margin-top:3px;background:rgba(59,130,246,.06);padding:4px 8px;border-radius:6px;">💬 Клиент: ${e.client_comment}</div>`:'';
+        ?`<div style="font-size:11px;color:#3b82f6;margin-top:3px;background:rgba(59,130,246,.06);padding:4px 8px;border-radius:6px;">💬 Клиент: ${escapeHtml(e.client_comment)}</div>`:'';
       const clientReviewDisplay = e.client_review
-        ?`<div style="font-size:11px;color:#b45309;margin-top:3px;background:rgba(245,158,11,.1);padding:4px 8px;border-radius:6px;">${'⭐'.repeat(e.client_review_stars||5)} ${e.client_review}</div>`:'';
+        ?`<div style="font-size:11px;color:#b45309;margin-top:3px;background:rgba(245,158,11,.1);padding:4px 8px;border-radius:6px;">${'⭐'.repeat(Math.max(1,Math.min(5,parseInt(e.client_review_stars||5,10)||5)))} ${escapeHtml(e.client_review)}</div>`:'';
 
       // Pending confirmation button
       const needsNannyConfirm = e.pending_nanny;
@@ -469,6 +474,7 @@
             <div><label style="font-size:11px;">Начало</label><input type="time" step="300" id="fs_${factFormId}" value="${e.fact_start||''}" style="width:100%;font-size:13px;" /></div>
             <div><label style="font-size:11px;">Конец</label><input type="time" step="300" id="fe_${factFormId}" value="${e.fact_end||''}" style="width:100%;font-size:13px;" /></div>
           </div>
+          <button type="button" class="time-range-btn" data-time-range-start="fs_${factFormId}" data-time-range-end="fe_${factFormId}" data-time-title="Фактическое время">Выбрать время как в календаре</button>
           <button type="button" onclick="submitFact('${iso}','${e.client_token}','${factFormId}')"
             style="background:var(--c-teal);color:#fff;border:none;border-radius:var(--r-md);padding:6px 14px;font-size:12px;font-weight:700;cursor:pointer;">Отправить ➤</button>
           <span id="fs_status_${factFormId}" style="font-size:11px;color:var(--c-text-muted);margin-left:8px;"></span>
@@ -481,7 +487,7 @@
           <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--c-teal-dk);">💬 Добавить комментарий</summary>
           <div style="margin-top:6px;">
             <textarea id="nc_${commentFormId}" rows="2" placeholder="Ваш комментарий к этой дате..."
-              style="width:100%;border:1.5px solid var(--c-border-str);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;">${e.nanny_comment||''}</textarea>
+              style="width:100%;border:1.5px solid var(--c-border-str);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;">${escapeHtml(e.nanny_comment||'')}</textarea>
             <button onclick="saveNannyComment('${iso}','${e.client_token}','nc_${commentFormId}',this)"
               style="background:var(--c-teal);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-top:4px;">Сохранить</button>
           </div>
@@ -503,10 +509,10 @@
       return `
       <div style="padding:10px 12px;border:1.5px solid ${col.border};border-radius:var(--r-md);background:${col.bg};margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;">
-          <strong>${e.child_name||'Ребёнок'} (${e.child_age||'-'})</strong>
+          <strong>${safeChildName} (${safeChildAge})</strong>
           ${statusBadge}
         </div>
-        <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">⏰ ${e.time||'время уточняется'} · Клиент: ${parentName}</div>
+        <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">⏰ ${safeTime} · Клиент: ${safeParentName}</div>
         ${factDisplay}${nannyCommentDisplay}${clientCommentDisplay}${clientReviewDisplay}
         ${pendingActions}${factForm}${commentForm}${receiptForm}
         <a class="action-link" href="/client/${e.client_token}" target="_blank" style="font-size:12px;display:inline-block;margin-top:6px;">ЛК клиента →</a>
@@ -515,7 +521,7 @@
 
     const blockHtml=block?`<div style="margin-top:8px;padding:8px 12px;border-radius:var(--r-md);background:rgba(239,68,68,.08);border:1px dashed rgba(239,68,68,.35);">
       <strong style="color:var(--c-danger);">🚫 Выходной</strong>
-      <span style="font-size:12px;color:var(--c-text-muted);margin-left:6px;">${block.start||''}${block.end?'–'+block.end:''} ${block.note?'· '+block.note:''}</span>
+      <span style="font-size:12px;color:var(--c-text-muted);margin-left:6px;">${escapeHtml(block.start||'')}${block.end?'–'+escapeHtml(block.end):''} ${block.note?'· '+escapeHtml(block.note):''}</span>
     </div>`:'';
 
     const dayoffForm = `
@@ -525,6 +531,7 @@
           <div><label style="font-size:11px;">С</label><input id="modalOffStart_${iso}" type="time" step="300" value="${block?.start||''}" style="width:100%;font-size:13px;" /></div>
           <div><label style="font-size:11px;">До</label><input id="modalOffEnd_${iso}" type="time" step="300" value="${block?.end||''}" style="width:100%;font-size:13px;" /></div>
         </div>
+        <button type="button" class="time-range-btn" data-time-range-start="modalOffStart_${iso}" data-time-range-end="modalOffEnd_${iso}" data-time-title="Время выходного">Выбрать время как в календаре</button>
         <textarea id="modalOffNote_${iso}" rows="2" placeholder="Комментарий: выходной, личная встреча..."
           style="width:100%;border:1.5px solid var(--c-border-str);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;">${block?.note||''}</textarea>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
@@ -818,14 +825,17 @@
       }
       grid.innerHTML = arts.map(function(a){
         var date = a.created_at ? a.created_at.slice(0,10).split('-').reverse().join('.') : '';
+        var title = window.escapeHtml ? window.escapeHtml(a.title || '') : String(a.title || '');
+        var slug = encodeURIComponent(a.slug || '');
+        var coverUrl = String(a.cover_url || '').replace(/"/g, '&quot;');
         var cover = a.cover_url
-          ? '<img src="'+a.cover_url+'" alt="'+a.title+'" style="width:64px;height:50px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
+          ? '<img src="'+coverUrl+'" alt="'+title+'" style="width:64px;height:50px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;" loading="lazy" onerror="this.style.display=\'none\'">'
           : '<div style="width:64px;height:50px;border-radius:var(--r-sm);background:var(--c-teal-lt);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📝</div>';
-        return '<a href="/blog/'+a.slug+'" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:flex;gap:var(--s2);align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--c-border);">'
+        return '<a href="/blog/'+slug+'" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;display:flex;gap:var(--s2);align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--c-border);">'
           + cover
           + '<div style="min-width:0;">'
           + '<div style="font-size:11px;color:var(--c-muted);">'+date+'</div>'
-          + '<div style="font-weight:600;font-size:12px;color:var(--c-teal-dk);line-height:1.3;margin-top:2px;">'+a.title+'</div>'
+          + '<div style="font-weight:600;font-size:12px;color:var(--c-teal-dk);line-height:1.3;margin-top:2px;">'+title+'</div>'
           + '</div></a>';
       }).join('');
     })
@@ -838,6 +848,7 @@
 .lk-modal.is-open{display:flex;}
 .lk-modal__backdrop{position:absolute;inset:0;background:rgba(15,23,42,.42);backdrop-filter:blur(3px);}
 .lk-modal__dialog{position:relative;width:min(620px,100%);max-height:88vh;overflow:auto;background:var(--c-surface);border-radius:var(--r-lg);box-shadow:0 24px 70px rgba(15,23,42,.26);padding:var(--s4);}
+.time-range-btn{width:100%;margin:0 0 8px;border:1.5px solid rgba(1,107,130,.2);background:var(--c-teal-lt);color:var(--c-teal-dk);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;}
 </style>
 
 {% endblock %}

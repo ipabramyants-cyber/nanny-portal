@@ -191,9 +191,10 @@
         <h3>Ваше фактическое время</h3>
         <form id="actualForm" style="display:grid; gap:var(--s4);">
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--s3);">
-            <div><label>Начало</label><input name="actual_start" type="time" step="300" required /></div>
-            <div><label>Конец</label><input name="actual_end" type="time" step="300" required /></div>
+            <div><label>Начало</label><input id="client_actual_start_${s.id}" name="actual_start" type="time" step="300" required /></div>
+            <div><label>Конец</label><input id="client_actual_end_${s.id}" name="actual_end" type="time" step="300" required /></div>
           </div>
+          <button type="button" data-time-range-start="client_actual_start_${s.id}" data-time-range-end="client_actual_end_${s.id}" data-time-title="Фактическое время" style="width:100%;border:1.5px solid rgba(1,107,130,.2);background:var(--c-teal-lt);color:var(--c-teal-dk);border-radius:8px;padding:9px 12px;font-size:13px;font-weight:800;cursor:pointer;">Выбрать время как в календаре</button>
           <div>
             <label>Комментарий (опционально)</label>
             <textarea name="note" rows="2" placeholder="Например: ребёнок уснул в 21:15…"></textarea>

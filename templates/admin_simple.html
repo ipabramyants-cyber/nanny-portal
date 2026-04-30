@@ -298,8 +298,9 @@
                 {% if s.status == 'dispute' %}
                 <form method="POST" action="/admin/shift/resolve" style="display:grid; gap:4px; min-width:100px;">
                   <input type="hidden" name="shift_id" value="{{ s.id }}" />
-                  <input name="resolved_start" placeholder="ЧЧ:ММ" style="padding:4px 8px; border-radius:6px; border:1px solid var(--c-border-str); width:80px; font-size:12px;" />
-                  <input name="resolved_end" placeholder="ЧЧ:ММ" style="padding:4px 8px; border-radius:6px; border:1px solid var(--c-border-str); width:80px; font-size:12px;" />
+                  <input id="resolved_start_{{ s.id }}" name="resolved_start" type="time" step="300" placeholder="ЧЧ:ММ" style="padding:4px 8px; border-radius:6px; border:1px solid var(--c-border-str); width:92px; font-size:12px;" />
+                  <input id="resolved_end_{{ s.id }}" name="resolved_end" type="time" step="300" placeholder="ЧЧ:ММ" style="padding:4px 8px; border-radius:6px; border:1px solid var(--c-border-str); width:92px; font-size:12px;" />
+                  <button type="button" data-time-range-start="resolved_start_{{ s.id }}" data-time-range-end="resolved_end_{{ s.id }}" data-time-title="Итоговое время" style="padding:4px 8px; border-radius:6px; border:1px solid rgba(1,107,130,.25); background:var(--c-teal-lt); color:var(--c-teal-dk); font-size:11px; font-weight:800; cursor:pointer;">Выбрать</button>
                   <button type="submit" class="btn" style="padding:4px 10px; font-size:12px; margin-top:0; background:var(--c-teal); color:#fff;">Решить</button>
                 </form>
                 {% else %}
@@ -332,9 +333,10 @@
           </div>
           <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
             <div><label>Дата</label><input name="date" type="date" required /></div>
-            <div><label>Начало</label><input name="planned_start" type="time" step="300" required /></div>
-            <div><label>Конец</label><input name="planned_end" type="time" step="300" required /></div>
+            <div><label>Начало</label><input id="planned_start_new" name="planned_start" type="time" step="300" required /></div>
+            <div><label>Конец</label><input id="planned_end_new" name="planned_end" type="time" step="300" required /></div>
           </div>
+          <button type="button" data-time-range-start="planned_start_new" data-time-range-end="planned_end_new" data-time-title="Время смены" style="width:100%; margin-top:8px; border:1.5px solid rgba(1,107,130,.2); background:var(--c-teal-lt); color:var(--c-teal-dk); border-radius:8px; padding:8px 12px; font-size:12px; font-weight:800; cursor:pointer;">Выбрать время как в календаре</button>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
             <div><label>Ставка клиент (₫/ч)</label><input name="client_rate_per_hour" type="number" required placeholder="250000" /></div>
             <div><label>Ставка няня (₫/ч)</label><input name="nanny_rate_per_hour" type="number" required placeholder="180000" /></div>
@@ -647,6 +649,12 @@
 // ── Articles Admin ────────────────────────────────────────
 (function(){
   function fmtDate(s){ return s ? s.slice(0,10).split('-').reverse().join('.') : ''; }
+  function escapeHtml(value){
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[ch]));
+  }
+  window.escapeHtml = window.escapeHtml || escapeHtml;
 
   function loadArticles(){
     fetch('/api/admin/articles')
@@ -659,20 +667,23 @@
           return;
         }
         list.innerHTML = arts.map(function(a){
+          var title = escapeHtml(a.title || '');
+          var slug = encodeURIComponent(a.slug || '');
+          var coverUrl = String(a.cover_url || '').replace(/"/g, '&quot;');
           var status = a.published
             ? '<span style="color:var(--c-lime);font-size:11px;">● Опубликована</span>'
             : '<span style="color:var(--c-muted);font-size:11px;">○ Черновик</span>';
           var cover = a.cover_url
-            ? '<img src="'+a.cover_url+'" style="width:60px;height:48px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;" onerror="this.style.display=\'none\'">'
+            ? '<img src="'+coverUrl+'" style="width:60px;height:48px;object-fit:cover;border-radius:var(--r-sm);flex-shrink:0;" onerror="this.style.display=\'none\'">'
             : '<div style="width:60px;height:48px;border-radius:var(--r-sm);background:var(--c-teal-lt);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">📝</div>';
           return '<div style="display:flex;gap:var(--s3);align-items:center;padding:var(--s3);border:1px solid var(--c-border);border-radius:var(--r-md);">'
             + cover
             + '<div style="flex:1;min-width:0;">'
-            + '<div style="font-weight:700;font-size:13px;color:var(--c-teal-dk);">'+a.title+'</div>'
-            + '<div style="font-size:11px;color:var(--c-muted);margin-top:2px;">/blog/'+a.slug+' · '+fmtDate(a.created_at)+' · '+status+'</div>'
+            + '<div style="font-weight:700;font-size:13px;color:var(--c-teal-dk);">'+title+'</div>'
+            + '<div style="font-size:11px;color:var(--c-muted);margin-top:2px;">/blog/'+slug+' · '+fmtDate(a.created_at)+' · '+status+'</div>'
             + '</div>'
             + '<div style="display:flex;gap:8px;flex-shrink:0;">'
-            + '<a href="/blog/'+a.slug+'" target="_blank" class="btn secondary" style="width:auto;font-size:12px;padding:4px 10px;">👁</a>'
+            + '<a href="/blog/'+slug+'" target="_blank" class="btn secondary" style="width:auto;font-size:12px;padding:4px 10px;">👁</a>'
             + '<button onclick="editArticle(\''+a.id+'\')" class="btn secondary" style="width:auto;font-size:12px;padding:4px 10px;">✏️</button>'
             + '<button onclick="deleteArticle(\''+a.id+'\')" class="btn danger" style="width:auto;font-size:12px;padding:4px 10px;">🗑</button>'
             + '</div></div>';
@@ -991,13 +1002,14 @@
     const detail = document.getElementById('calDayDetail');
     const title  = document.getElementById('calDayTitle');
     const list   = document.getElementById('calDayList');
+    const esc = window.escapeHtml || (value => String(value ?? ''));
     title.textContent = fmtDate(dateStr)+' — '+(evts.length+offs.length)+' записей';
 
     let html = '';
 
     // Nanny select options (for assign dropdown)
     const nannyOpts = NANNIES_LIST.map(n=>
-      `<option value="${n.id}">${n.name}</option>`
+      `<option value="${n.id}">${esc(n.name)}</option>`
     ).join('');
 
     // Grouped by type
@@ -1006,19 +1018,19 @@
       const group = evts.filter(e=>e.type===t);
       group.forEach(e=>{
         const cfg = TYPE_CFG[t]||TYPE_CFG.assigned;
-        const timeStr = e.time ? `<span style="color:var(--c-text-2);margin-left:6px;font-size:12px;">${e.time}</span>` : '';
+        const timeStr = e.time ? `<span style="color:var(--c-text-2);margin-left:6px;font-size:12px;">${esc(e.time)}</span>` : '';
         const factNanny = e.fact_start&&e.fact_end
-          ? `<div style="font-size:11px;color:#3b82f6;margin-top:2px;">⏱ Факт (няня): ${e.fact_start}–${e.fact_end}</div>` : '';
+          ? `<div style="font-size:11px;color:#3b82f6;margin-top:2px;">⏱ Факт (няня): ${esc(e.fact_start)}–${esc(e.fact_end)}</div>` : '';
         const factClient = e.client_actual_start&&e.client_actual_end
-          ? `<div style="font-size:11px;color:#7c3aed;margin-top:2px;">⏱ Факт (клиент): ${e.client_actual_start}–${e.client_actual_end}</div>` : '';
+          ? `<div style="font-size:11px;color:#7c3aed;margin-top:2px;">⏱ Факт (клиент): ${esc(e.client_actual_start)}–${esc(e.client_actual_end)}</div>` : '';
         const receiptStr = e.has_receipt
           ? `<span style="font-size:11px;margin-left:6px;background:#f0fdf4;color:#16a34a;padding:1px 6px;border-radius:8px;">📎 чек</span>` : '';
         const nannyComment = e.nanny_comment
-          ? `<div style="font-size:11px;color:#0d9488;margin-top:3px;background:rgba(13,148,136,.06);padding:4px 8px;border-radius:6px;">💬 Няня: ${e.nanny_comment}</div>` : '';
+          ? `<div style="font-size:11px;color:#0d9488;margin-top:3px;background:rgba(13,148,136,.06);padding:4px 8px;border-radius:6px;">💬 Няня: ${esc(e.nanny_comment)}</div>` : '';
         const clientComment = e.client_comment
-          ? `<div style="font-size:11px;color:#3b82f6;margin-top:3px;background:rgba(59,130,246,.06);padding:4px 8px;border-radius:6px;">💬 Клиент: ${e.client_comment}</div>` : '';
+          ? `<div style="font-size:11px;color:#3b82f6;margin-top:3px;background:rgba(59,130,246,.06);padding:4px 8px;border-radius:6px;">💬 Клиент: ${esc(e.client_comment)}</div>` : '';
         const reviewStr = e.client_review
-          ? `<div style="font-size:11px;color:#b45309;margin-top:3px;background:rgba(245,158,11,.1);padding:4px 8px;border-radius:6px;">${'⭐'.repeat(e.client_review_stars||5)} ${e.client_review}</div>` : '';
+          ? `<div style="font-size:11px;color:#b45309;margin-top:3px;background:rgba(245,158,11,.1);padding:4px 8px;border-radius:6px;">${'⭐'.repeat(Math.max(1,Math.min(5,parseInt(e.client_review_stars||5,10)||5)))} ${esc(e.client_review)}</div>` : '';
 
         // Confirm/reject buttons for pending dates
         const pendingActions = (e.type==='pending') ? `
@@ -1053,13 +1065,13 @@
           <div style="padding:10px 14px;border:1.5px solid ${cfg.border};border-radius:var(--r-md);margin-bottom:8px;background:${cfg.bg};font-size:13px;">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:4px;">
               <div>
-                <strong>${e.child_name||'Ребёнок'}${e.child_age?', '+e.child_age:''}</strong>
-                <span style="color:var(--c-text-2);margin-left:6px;font-size:12px;">${e.parent_name||''}</span>
+                <strong>${esc(e.child_name||'Ребёнок')}${e.child_age?', '+esc(e.child_age):''}</strong>
+                <span style="color:var(--c-text-2);margin-left:6px;font-size:12px;">${esc(e.parent_name||'')}</span>
                 ${timeStr}${receiptStr}
               </div>
               <span style="font-size:11px;font-weight:700;color:${cfg.border};white-space:nowrap;">${cfg.label}</span>
             </div>
-            ${e.nanny_name?`<div style="font-size:12px;color:var(--c-text-2);margin-top:3px;">👩 ${e.nanny_name}</div>`:''}
+            ${e.nanny_name?`<div style="font-size:12px;color:var(--c-text-2);margin-top:3px;">👩 ${esc(e.nanny_name)}</div>`:''}
             ${factNanny}${factClient}
             ${nannyComment}${clientComment}${reviewStr}
             ${pendingActions}${resolveFactActions}${assignAction}
@@ -1077,10 +1089,10 @@
       html += `
         <div style="padding:10px 14px;border:1.5px solid ${cfg.border};border-radius:var(--r-md);margin-bottom:8px;background:${cfg.bg};font-size:13px;">
           <div style="display:flex;align-items:center;justify-content:space-between;">
-            <span>🚫 <strong>${b.nanny_name||'Няня #'+b.nanny_id}</strong>${timeStr}</span>
+            <span>🚫 <strong>${esc(b.nanny_name||'Няня #'+b.nanny_id)}</strong>${esc(timeStr)}</span>
             <span style="font-size:11px;font-weight:700;color:${cfg.border};">Выходной</span>
           </div>
-          ${b.note?`<div style="font-size:11px;color:#6b7280;margin-top:3px;">${b.note}</div>`:''}
+          ${b.note?`<div style="font-size:11px;color:#6b7280;margin-top:3px;">${esc(b.note)}</div>`:''}
         </div>`;
     });
 

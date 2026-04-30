@@ -5,9 +5,16 @@ import secrets
 import time
 import re
 import hashlib
+import base64
+import io
+from urllib.parse import urlparse
 
 from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, Response, jsonify
 from werkzeug.utils import secure_filename
+try:
+    import bleach
+except Exception:  # pragma: no cover - production requirements include bleach
+    bleach = None
 
 from auth_simple import require_admin, require_nanny
 from config import admin_ids
@@ -15,6 +22,50 @@ from telegram_notify import send_message
 from telegram_auth import validate_webapp_init_data, TelegramAuthError
 
 from models import db, Nanny, Lead, User, Shift, Client, NannyBlock, Review, Article
+
+_ARTICLE_COVER_CACHE: dict[str, str] = {}
+
+
+def _clean_user_text(value, limit: int | None = 500) -> str:
+    text = (value or '').strip()
+    if limit is not None:
+        text = text[:limit]
+    if not text:
+        return ''
+    if bleach:
+        return bleach.clean(text, tags=[], attributes={}, strip=True)
+    return re.sub(r'<[^>]*?>', '', text)
+
+
+def _safe_upload_name(file_storage, prefix: str) -> str:
+    safe_name = secure_filename(file_storage.filename or '')
+    if not safe_name:
+        return ''
+    return f"{prefix}_{secrets.token_urlsafe(8)}_{safe_name}"
+
+
+def _article_cover_preview(url: str) -> str:
+    if not url:
+        return ''
+    if not url.startswith('data:image/') or len(url) < 90000:
+        return url
+    key = hashlib.sha256(url.encode('utf-8', 'ignore')).hexdigest()
+    cached = _ARTICLE_COVER_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
+        header, payload = url.split(',', 1)
+        from PIL import Image as _PIL_Image
+        img = _PIL_Image.open(io.BytesIO(base64.b64decode(payload)))
+        img = img.convert('RGB')
+        img.thumbnail((180, 120), _PIL_Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, 'JPEG', quality=64, optimize=True)
+        preview = 'data:image/jpeg;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
+    except Exception:
+        preview = ''
+    _ARTICLE_COVER_CACHE[key] = preview
+    return preview
 
 def _save_image_webp(file_storage, upload_dir: str, prefix: str = 'img') -> str:
     """
@@ -147,6 +198,15 @@ def create_app() -> Flask:
                     _conn.execute(db.text(
                         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS nanny_rate_per_hour INTEGER"
                     ))
+                    _conn.execute(db.text(
+                        "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS post_reminder_sent_at TIMESTAMP"
+                    ))
+                    _conn.execute(db.text(
+                        "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS nanny_actual_note TEXT"
+                    ))
+                    _conn.execute(db.text(
+                        "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS client_actual_note TEXT"
+                    ))
                     _conn.commit()
             except Exception as _e:
                 import warnings
@@ -197,6 +257,24 @@ def create_app() -> Flask:
                 url = request.url.replace('http://', 'https://', 1)
                 return redirect(url, code=301)
 
+    @app.before_request
+    def _reject_cross_origin_mutations():
+        if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
+            return None
+        origin = request.headers.get('Origin')
+        if not origin:
+            return None
+        try:
+            origin_url = urlparse(origin)
+            host_url = urlparse(request.host_url)
+        except Exception:
+            return {'error': 'invalid origin'}, 403
+        expected_scheme = (request.headers.get('X-Forwarded-Proto') or host_url.scheme or '').split(',')[0].strip()
+        expected_host = (request.headers.get('X-Forwarded-Host') or host_url.netloc or '').split(',')[0].strip()
+        if (origin_url.scheme, origin_url.netloc) != (expected_scheme, expected_host):
+            return {'error': 'cross-origin request blocked'}, 403
+        return None
+
     @app.after_request
     def security_headers(resp):
         # Prevent MIME sniffing
@@ -204,7 +282,7 @@ def create_app() -> Flask:
         # Allow framing only from Telegram (Mini App support)
         resp.headers.setdefault(
             'Content-Security-Policy',
-            "frame-ancestors 'self' https://t.me https://*.telegram.org https://web.telegram.org"
+            "frame-ancestors 'self' https://t.me https://*.telegram.org https://web.telegram.org; base-uri 'self'; object-src 'none'; form-action 'self'"
         )
         # Referrer policy
         resp.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
@@ -706,13 +784,23 @@ def create_app() -> Flask:
     def nanny_login():
         return render_template('nanny_login.html')
 
+    _admin_login_rate: dict[str, list[float]] = {}
+
     @app.route('/admin/login', methods=['GET', 'POST'])
     def admin_login():
         error = None
         if request.method == 'POST':
+            ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
+            now = time.time()
+            hits = [t for t in _admin_login_rate.get(ip, []) if now - t < 900]
+            if len(hits) >= 10:
+                return render_template('admin_login.html', error='Слишком много попыток. Попробуйте через 15 минут.'), 429
             token = os.environ.get('ADMIN_TOKEN', '')
             entered = (request.form.get('password') or '').strip()
-            if token and entered == token:
+            hits.append(now)
+            _admin_login_rate[ip] = hits
+            if token and secrets.compare_digest(entered, token):
+                _admin_login_rate.pop(ip, None)
                 session.permanent = True
                 session['role'] = 'admin'
                 session['telegram_user_id'] = 0  # browser login marker
@@ -965,7 +1053,7 @@ def create_app() -> Flask:
         date = (data.get('date') or '').strip()
         start = (data.get('start') or '').strip() or None
         end = (data.get('end') or '').strip() or None
-        note = (data.get('note') or '').strip() or None
+        note = _clean_user_text(data.get('note'), 300) or None
 
         # Basic validation: date must be YYYY-MM-DD
         if not re.match(r'^\d{4}-\d{2}-\d{2}$', date):
@@ -976,6 +1064,13 @@ def create_app() -> Flask:
         b = NannyBlock(nanny_id=nanny.id, date=date, start=start, end=end, note=note, kind='dayoff')
         db.session.add(b)
         db.session.commit()
+        _notify_admins(
+            "🚫 Няня отметила выходной\n"
+            f"Няня: {nanny.name or '—'}\n"
+            f"Дата: {date}\n"
+            f"Время: {(start or 'весь день') + (('-' + end) if end else '')}\n"
+            f"Комментарий: {note or '—'}"
+        )
         return {'ok': True, 'id': b.id}
 
     @app.route('/api/nanny/blocks/<int:block_id>', methods=['DELETE'])
@@ -1021,10 +1116,16 @@ def create_app() -> Flask:
         data = request.get_json(force=True) or {}
         actual_start = (data.get('actual_start') or '').strip()
         actual_end = (data.get('actual_end') or '').strip()
-        note = (data.get('note') or '').strip() or None
+        note = _clean_user_text(data.get('note'), 500) or None
 
         if not actual_start or not actual_end:
             return {'error': 'Заполните начало и конец'}, 400
+        if not re.match(r'^[0-9]{2}:[0-9]{2}$', actual_start) or not re.match(r'^[0-9]{2}:[0-9]{2}$', actual_end):
+            return {'error': 'Неверный формат времени'}, 400
+        if actual_start == actual_end:
+            return {'error': 'Начало и конец не должны совпадать'}, 400
+        if (int(actual_end[:2]) * 60 + int(actual_end[3:5])) <= (int(actual_start[:2]) * 60 + int(actual_start[3:5])):
+            return {'error': 'Конец должен быть позже начала'}, 400
 
         s.nanny_actual_start = actual_start
         s.nanny_actual_end = actual_end
@@ -1042,6 +1143,15 @@ def create_app() -> Flask:
                 )
             except Exception:
                 pass
+
+        _notify_admins(
+            "⏱ Няня отправила фактическое время\n"
+            f"Смена: #{s.id}\n"
+            f"Няня: {nanny.name or '—'}\n"
+            f"Дата: {s.date}\n"
+            f"Факт: {actual_start}-{actual_end}\n"
+            f"Комментарий: {note or '—'}"
+        )
 
         return {'ok': True}
 
@@ -1122,12 +1232,19 @@ def create_app() -> Flask:
         data = request.get_json(force=True) or {}
         actual_start = (data.get('actual_start') or '').strip()
         actual_end = (data.get('actual_end') or '').strip()
-        note = (data.get('note') or '').strip() or None
+        note = _clean_user_text(data.get('note'), 500) or None
         if not actual_start or not actual_end:
             return {'error': 'Заполните начало и конец'}, 400
+        if not re.match(r'^[0-9]{2}:[0-9]{2}$', actual_start) or not re.match(r'^[0-9]{2}:[0-9]{2}$', actual_end):
+            return {'error': 'Неверный формат времени'}, 400
+        if actual_start == actual_end:
+            return {'error': 'Начало и конец не должны совпадать'}, 400
+        if (int(actual_end[:2]) * 60 + int(actual_end[3:5])) <= (int(actual_start[:2]) * 60 + int(actual_start[3:5])):
+            return {'error': 'Конец должен быть позже начала'}, 400
 
         s.client_actual_start = actual_start
         s.client_actual_end = actual_end
+        s.client_actual_note = note
 
         # If differs from nanny -> admin resolves; if matches -> confirm automatically.
         if s.nanny_actual_start and s.nanny_actual_end and (s.nanny_actual_start == actual_start) and (s.nanny_actual_end == actual_end):
@@ -1167,7 +1284,7 @@ def create_app() -> Flask:
 
     def _notify_on_new_dates(parent_name, child_name, added_dates, lead_token,
                               assigned_nanny_id, client_tg_id):
-        """Notify admin + nanny when client adds new work dates after nanny is assigned."""
+        """Notify admins when a client adds work dates that need confirmation."""
         site = os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')
         dates_text = ', '.join(added_dates[:10])
         admin_msg = (
@@ -1178,27 +1295,63 @@ def create_app() -> Flask:
             f"ЛК: {site}/client/{lead_token}"
         )
         _notify_admins(admin_msg)
-        # Notify nanny
+        # Nanny is notified after the admin confirms the pending date.
+
+    def _site_url() -> str:
+        return os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')
+
+    def _lead_value(lead_obj, key, default=None):
+        if lead_obj is None:
+            return default
+        if isinstance(lead_obj, dict):
+            return lead_obj.get(key, default)
+        return getattr(lead_obj, key, default)
+
+    def _lead_client_chat_id(lead_obj) -> int | None:
+        tg_id = _lead_value(lead_obj, 'telegram_user_id')
+        if tg_id:
+            try:
+                return int(tg_id)
+            except Exception:
+                pass
+        return _extract_chat_id(_lead_value(lead_obj, 'telegram'))
+
+    def _nanny_chat_id_by_id(nanny_id) -> int | None:
+        if not nanny_id:
+            return None
         try:
-            nannies = load_nannies()
             if use_sql:
-                nanny_obj = Nanny.query.get(int(assigned_nanny_id)) if assigned_nanny_id else None
-                nanny_tg = nanny_obj.telegram_user_id if nanny_obj else None
-                nanny_name = nanny_obj.name if nanny_obj else None
-                nanny_portal = f"{site}/nanny/app"
+                nanny_obj = Nanny.query.get(int(nanny_id))
+                tg_id = nanny_obj.telegram_user_id if nanny_obj else None
             else:
-                nanny_obj = next((n for n in nannies if str(n.get('id')) == str(assigned_nanny_id)), None)
-                nanny_tg = nanny_obj.get('telegram_user_id') if nanny_obj else None
-                nanny_name = nanny_obj.get('name') if nanny_obj else None
-                portal_token = nanny_obj.get('portal_token') if nanny_obj else None
-                nanny_portal = f"{site}/nanny/portal/{portal_token}" if portal_token else site
-            if nanny_tg:
-                _safe_send_message(int(nanny_tg),
-                    f"📅 Клиент {parent_name or '—'} добавил новые даты: {dates_text}\n"
-                    f"Ожидается подтверждение. Проверьте: {nanny_portal}"
-                )
-        except Exception as _e:
-            app.logger.warning("_notify_on_new_dates nanny notify failed: %s", _e)
+                nanny_obj = next((n for n in load_nannies() if str(n.get('id')) == str(nanny_id)), None)
+                tg_id = nanny_obj.get('telegram_user_id') if nanny_obj else None
+            return int(tg_id) if tg_id else None
+        except Exception:
+            return None
+
+    def _nanny_portal_url_by_id(nanny_id) -> str:
+        site = _site_url()
+        if not nanny_id:
+            return site
+        try:
+            if use_sql:
+                return f"{site}/nanny/app"
+            nanny_obj = next((n for n in load_nannies() if str(n.get('id')) == str(nanny_id)), None)
+            token = nanny_obj.get('portal_token') if nanny_obj else ''
+            return f"{site}/nanny/portal/{token}" if token else site
+        except Exception:
+            return site
+
+    def _send_to_client(lead_obj, text: str) -> bool:
+        return _safe_send_message(_lead_client_chat_id(lead_obj), text)
+
+    def _send_to_nanny(nanny_id, text: str) -> bool:
+        return _safe_send_message(_nanny_chat_id_by_id(nanny_id), text)
+
+    def _date_time_text(date_str: str, slot: dict | None = None) -> str:
+        slot = slot or {}
+        return f"{date_str} {slot.get('time') or ''}".strip()
 
     # Simple in-memory rate limiter for /api/lead (max 5 per IP per 10 minutes)
     _lead_rate: dict = {}
@@ -1241,13 +1394,13 @@ def create_app() -> Flask:
         _lead_rate[ip] = hits
 
         data = request.get_json(force=True) or {}
-        parent_name   = (data.get('parent_name') or '').strip()[:100]
-        telegram      = (data.get('telegram') or '').strip()[:100]
+        parent_name   = _clean_user_text(data.get('parent_name'), 100)
+        telegram      = _clean_user_text(data.get('telegram'), 100)
         tg_init_data  = (data.get('tg_init_data') or '').strip()
         tg_user_id_raw = (data.get('tg_user_id') or '').strip()
-        child_name    = (data.get('child_name') or '').strip()[:100]
-        child_age     = (data.get('child_age') or '').strip()[:20]
-        notes         = (data.get('notes') or '').strip()[:1000]
+        child_name    = _clean_user_text(data.get('child_name'), 100)
+        child_age     = _clean_user_text(data.get('child_age'), 20)
+        notes         = _clean_user_text(data.get('notes'), 1000)
         meeting_date_raw = data.get('meeting_date')
         work_dates_raw   = data.get('work_dates') or {}
 
@@ -1269,7 +1422,7 @@ def create_app() -> Flask:
                     verified_tg_name = ' '.join(filter(None, [fn, ln])) or None
                     # Use TG name as parent_name if not provided
                     if not parent_name and verified_tg_name:
-                        parent_name = verified_tg_name[:100]
+                        parent_name = _clean_user_text(verified_tg_name, 100)
                     # Set telegram field to @username or numeric id
                     if not telegram:
                         if verified_tg_username:
@@ -1569,15 +1722,18 @@ def create_app() -> Flask:
         file_mime = file.mimetype or ''
         if not any(file_mime.startswith(m) for m in ALLOWED_MIME_PREFIXES):
             return {'error': f'Недопустимый тип файла: {file_mime}. Разрешены: изображения и PDF.'}, 400
+        safe_name = secure_filename(file.filename)
+        allowed_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'}
+        if os.path.splitext(safe_name.lower())[1] not in allowed_exts:
+            return {'error': 'Недопустимое расширение файла. Разрешены изображения и PDF.'}, 400
 
         if use_sql:
             lead_row = Lead.query.filter_by(token=token).first()
             if not lead_row:
                 return {'error': 'ЛК не найден'}, 404
-            safe_name = secure_filename(file.filename)
-            if not safe_name:
+            filename = _safe_upload_name(file, 'receipt')
+            if not filename:
                 return {'error': 'Недопустимое имя файла'}, 400
-            filename = f"{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{safe_name}"
             file.save(os.path.join(app.config['UPLOAD_DIR'], filename))
             docs = dict(lead_row.documents or {})
             receipts = dict(docs.get('receipts') or {})
@@ -1587,19 +1743,27 @@ def create_app() -> Flask:
             docs['receipts'] = receipts
             lead_row.documents = docs
             db.session.commit()
+            lead_for_notify = lead_row
         else:
             leads = load_leads()
             lead = next((x for x in leads if x.get('token') == token), None)
             if not lead:
                 return {'error': 'ЛК не найден'}, 404
-            safe_name = secure_filename(file.filename)
-            if not safe_name:
+            filename = _safe_upload_name(file, 'receipt')
+            if not filename:
                 return {'error': 'Недопустимое имя файла'}, 400
-            filename = f"{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{safe_name}"
             file.save(os.path.join(app.config['UPLOAD_DIR'], filename))
             lead.setdefault('documents', {}).setdefault('receipts', {}).setdefault(date_str, []).append(filename)
             save_leads(leads)
+            lead_for_notify = lead
 
+        _notify_admins(
+            "📎 Клиент загрузил чек/документ\n"
+            f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
+            f"Дата: {date_str}\n"
+            f"Файл: {filename}\n"
+            f"ЛК: {_site_url()}/client/{token}"
+        )
         return {'ok': True, 'filename': filename}
 
     @app.route('/api/client/<token>/receipts')
@@ -1618,6 +1782,28 @@ def create_app() -> Flask:
             return {'error': 'ЛК не найден'}, 404
         items = (lead.get('documents') or {}).get('receipts', {}).get(date_str, [])
         return {'items': items}
+
+    @app.route('/api/client/<token>/receipt/<path:filename>')
+    def api_client_receipt_file(token: str, filename: str):
+        filename = (filename or '').replace('\\', '/').lstrip('/')
+        if not filename or '..' in filename.split('/'):
+            return {'error': 'invalid filename'}, 400
+        if use_sql:
+            lead_row = Lead.query.filter_by(token=token).first()
+            if not lead_row:
+                return {'error': 'ЛК не найден'}, 404
+            receipts = (lead_row.documents or {}).get('receipts', {})
+        else:
+            lead = next((x for x in load_leads() if x.get('token') == token), None)
+            if not lead:
+                return {'error': 'ЛК не найден'}, 404
+            receipts = (lead.get('documents') or {}).get('receipts', {})
+        allowed = {str(item).replace('\\', '/').lstrip('/') for items in receipts.values() for item in (items or [])}
+        if filename not in allowed:
+            return {'error': 'receipt not found'}, 404
+        resp = send_from_directory(app.config['UPLOAD_DIR'], filename)
+        resp.headers.setdefault('Cache-Control', 'private, max-age=300')
+        return resp
 
 
     @app.route('/api/client/<token>/cancel_date', methods=['POST'])
@@ -1691,13 +1877,29 @@ def create_app() -> Flask:
             return {'error': 'Неверный формат времени'}, 400
         if time_start and time_end and time_start == time_end:
             return {'error': 'Время начала и конца не должно совпадать'}, 400
+        if time_start and time_end:
+            start_mins = int(time_start[:2]) * 60 + int(time_start[3:5])
+            end_mins = int(time_end[:2]) * 60 + int(time_end[3:5])
+            if end_mins <= start_mins:
+                return {'error': 'Время конца должно быть позже начала'}, 400
         time_value = (data.get('time') or '').strip().replace('–', '-').replace('—', '-')[:20]
         if not time_value and time_start and time_end:
             time_value = f"{time_start}-{time_end}"
-        comment = (data.get('comment') or '').strip()[:500]
+        comment = _clean_user_text(data.get('comment'), 500)
         actual_start = (data.get('actual_start') or '').strip()[:5]
         actual_end = (data.get('actual_end') or '').strip()[:5]
-        review_text = (data.get('review') or '').strip()[:1000]
+        if bool(actual_start) != bool(actual_end):
+            return {'error': 'Выберите фактическое время начала и конца'}, 400
+        if (actual_start and not _valid_hhmm(actual_start)) or (actual_end and not _valid_hhmm(actual_end)):
+            return {'error': 'Неверный формат фактического времени'}, 400
+        if actual_start and actual_end and actual_start == actual_end:
+            return {'error': 'Фактическое начало и конец не должны совпадать'}, 400
+        if actual_start and actual_end:
+            actual_start_mins = int(actual_start[:2]) * 60 + int(actual_start[3:5])
+            actual_end_mins = int(actual_end[:2]) * 60 + int(actual_end[3:5])
+            if actual_end_mins <= actual_start_mins:
+                return {'error': 'Фактический конец должен быть позже начала'}, 400
+        review_text = _clean_user_text(data.get('review'), 1000)
         try:
             review_stars = int(data.get('review_stars') or 5)
         except Exception:
@@ -1737,6 +1939,8 @@ def create_app() -> Flask:
             wd[date_str] = slot
             lead_row.work_dates = wd
             db.session.commit()
+            lead_for_notify = lead_row
+            slot_for_notify = slot
             if is_new_date and lead_row.assigned_nanny_id:
                 _notify_on_new_dates(lead_row.parent_name, lead_row.child_name, [date_str],
                                      lead_row.token, lead_row.assigned_nanny_id, lead_row.telegram_user_id)
@@ -1778,10 +1982,52 @@ def create_app() -> Flask:
             wd[date_str] = slot
             lead['work_dates'] = wd
             save_leads(leads)
+            lead_for_notify = lead
+            slot_for_notify = slot
             if is_new_date and lead.get('assigned_nanny_id'):
                 _notify_on_new_dates(lead.get('parent_name'), lead.get('child_name'),
                                      [date_str], lead.get('token'),
                                      lead.get('assigned_nanny_id'), lead.get('telegram_user_id'))
+        assigned_nanny_id = _lead_value(lead_for_notify, 'assigned_nanny_id')
+        client_name = _lead_value(lead_for_notify, 'parent_name') or '—'
+        client_link = f"{_site_url()}/client/{token}"
+        if comment:
+            _notify_admins(
+                "💬 Новый комментарий клиента\n"
+                f"Клиент: {client_name}\n"
+                f"Дата: {date_str}\n"
+                f"Комментарий: {comment}\n"
+                f"ЛК: {client_link}"
+            )
+            _send_to_nanny(
+                assigned_nanny_id,
+                f"💬 Клиент оставил комментарий к дате {_date_time_text(date_str, slot_for_notify)}.\n{client_link}"
+            )
+        if actual_start and actual_end:
+            _notify_admins(
+                "⏱ Клиент указал фактическое время\n"
+                f"Клиент: {client_name}\n"
+                f"Дата: {date_str}\n"
+                f"Факт: {actual_start}-{actual_end}\n"
+                f"ЛК: {client_link}"
+            )
+            _send_to_nanny(
+                assigned_nanny_id,
+                f"⏱ Клиент указал фактическое время за {date_str}: {actual_start}-{actual_end}.\nПроверьте день: {_nanny_portal_url_by_id(assigned_nanny_id)}"
+            )
+        if review_text:
+            _notify_admins(
+                "⭐ Клиент оставил оценку\n"
+                f"Клиент: {client_name}\n"
+                f"Дата: {date_str}\n"
+                f"Оценка: {review_stars}/5\n"
+                f"Отзыв: {review_text}\n"
+                f"ЛК: {client_link}"
+            )
+            _send_to_nanny(
+                assigned_nanny_id,
+                f"⭐ Клиент оставил оценку за {date_str}: {review_stars}/5.\n{_nanny_portal_url_by_id(assigned_nanny_id)}"
+            )
         return {'ok': True}
 
     @app.route('/api/client/<token>/add_dates', methods=['POST'])
@@ -1858,6 +2104,8 @@ def create_app() -> Flask:
             wd[date_str] = slot
             lead_row.work_dates = wd
             db.session.commit()
+            lead_for_notify = lead_row
+            slot_for_notify = slot
         else:
             leads = load_leads()
             lead = next((x for x in leads if x.get('token') == token), None)
@@ -1878,6 +2126,33 @@ def create_app() -> Flask:
             wd[date_str] = slot
             lead['work_dates'] = wd
             save_leads(leads)
+            lead_for_notify = lead
+            slot_for_notify = slot
+        assigned_nanny_id = _lead_value(lead_for_notify, 'assigned_nanny_id')
+        if action == 'confirm':
+            _send_to_nanny(
+                assigned_nanny_id,
+                "✅ Администратор подтвердил рабочий день\n"
+                f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
+                f"Дата: {_date_time_text(date_str, slot_for_notify)}\n"
+                f"Кабинет: {_nanny_portal_url_by_id(assigned_nanny_id)}"
+            )
+            if slot_for_notify.get('status') == 'confirmed':
+                _send_to_client(
+                    lead_for_notify,
+                    "✅ Рабочий день подтверждён\n"
+                    f"Дата: {_date_time_text(date_str, slot_for_notify)}\n"
+                    f"Кабинет: {_site_url()}/client/{token}"
+                )
+        else:
+            _send_to_nanny(
+                assigned_nanny_id,
+                f"❌ Администратор отклонил рабочий день {date_str}.\n{_nanny_portal_url_by_id(assigned_nanny_id)}"
+            )
+            _send_to_client(
+                lead_for_notify,
+                f"❌ Дата {date_str} отклонена администратором. Проверьте личный кабинет: {_site_url()}/client/{token}"
+            )
         return {'ok': True}
 
     @app.route('/api/admin/lead/<token>/resolve_fact', methods=['POST'])
@@ -1991,6 +2266,9 @@ def create_app() -> Flask:
             wd[date_str] = slot
             lead_row.work_dates = wd
             db.session.commit()
+            lead_for_notify = lead_row
+            slot_for_notify = slot
+            nanny_name = nanny_row.name
         else:
             nanny_obj = next((n for n in load_nannies() if n.get('portal_token') == portal_token), None)
             if not nanny_obj:
@@ -2016,6 +2294,35 @@ def create_app() -> Flask:
             wd[date_str] = slot
             lead['work_dates'] = wd
             save_leads(leads)
+            lead_for_notify = lead
+            slot_for_notify = slot
+            nanny_name = nanny_obj.get('name') or 'Няня'
+        if action == 'confirm':
+            if slot_for_notify.get('status') == 'confirmed':
+                _send_to_client(
+                    lead_for_notify,
+                    "✅ Няня подтвердила рабочий день\n"
+                    f"Няня: {nanny_name or '—'}\n"
+                    f"Дата: {_date_time_text(date_str, slot_for_notify)}\n"
+                    f"Кабинет: {_site_url()}/client/{client_token}"
+                )
+            _notify_admins(
+                "✅ Няня подтвердила рабочий день\n"
+                f"Няня: {nanny_name or '—'}\n"
+                f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
+                f"Дата: {_date_time_text(date_str, slot_for_notify)}"
+            )
+        else:
+            _send_to_client(
+                lead_for_notify,
+                f"❌ Няня отклонила дату {date_str}. Проверьте личный кабинет: {_site_url()}/client/{client_token}"
+            )
+            _notify_admins(
+                "❌ Няня отклонила рабочий день\n"
+                f"Няня: {nanny_name or '—'}\n"
+                f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
+                f"Дата: {date_str}"
+            )
         return {'ok': True}
 
     @app.route('/api/nanny/<portal_token>/date_action', methods=['POST'])
@@ -2031,9 +2338,28 @@ def create_app() -> Flask:
         if not date_str or not re.match(_d_re, date_str):
             return {'error': 'Неверный формат даты'}, 400
 
-        comment = (data.get('comment') or '').strip()[:500]
+        comment = _clean_user_text(data.get('comment'), 500)
         fact_start = (data.get('fact_start') or data.get('actual_start') or '').strip()[:5]
         fact_end = (data.get('fact_end') or data.get('actual_end') or '').strip()[:5]
+        def _valid_hhmm(value):
+            if not value or not re.match(r'^[0-9]{2}:[0-9]{2}$', value):
+                return False
+            try:
+                hh, mm = [int(x) for x in value.split(':')]
+                return 0 <= hh <= 23 and 0 <= mm <= 59
+            except Exception:
+                return False
+        if bool(fact_start) != bool(fact_end):
+            return {'error': 'Выберите фактическое время начала и конца'}, 400
+        if (fact_start and not _valid_hhmm(fact_start)) or (fact_end and not _valid_hhmm(fact_end)):
+            return {'error': 'Неверный формат фактического времени'}, 400
+        if fact_start and fact_end and fact_start == fact_end:
+            return {'error': 'Фактическое начало и конец не должны совпадать'}, 400
+        if fact_start and fact_end:
+            fact_start_mins = int(fact_start[:2]) * 60 + int(fact_start[3:5])
+            fact_end_mins = int(fact_end[:2]) * 60 + int(fact_end[3:5])
+            if fact_end_mins <= fact_start_mins:
+                return {'error': 'Фактический конец должен быть позже начала'}, 400
         fact_submitted = bool(fact_start and fact_end)
 
         if use_sql:
@@ -2059,6 +2385,8 @@ def create_app() -> Flask:
             lead_row.work_dates = wd
             db.session.commit()
             parent_name = lead_row.parent_name
+            lead_for_notify = lead_row
+            nanny_name = nanny_row.name
         else:
             nanny_obj = next((n for n in load_nannies() if n.get('portal_token') == portal_token), None)
             if not nanny_obj:
@@ -2083,6 +2411,21 @@ def create_app() -> Flask:
             lead['work_dates'] = wd
             save_leads(leads)
             parent_name = lead.get('parent_name', '—')
+            lead_for_notify = lead
+            nanny_name = nanny_obj.get('name') or 'Няня'
+        if comment:
+            _notify_admins(
+                "💬 Новый комментарий няни\n"
+                f"Няня: {nanny_name or '—'}\n"
+                f"Клиент: {parent_name or '—'}\n"
+                f"Дата: {date_str}\n"
+                f"Комментарий: {comment}\n"
+                f"ЛК: {_site_url()}/client/{client_token}"
+            )
+            _send_to_client(
+                lead_for_notify,
+                f"💬 Няня оставила комментарий к дате {date_str}.\nПроверьте личный кабинет: {_site_url()}/client/{client_token}"
+            )
         if fact_submitted:
             _notify_admins(
                 f"⏱ Няня отправила фактическое время\n"
@@ -2090,6 +2433,13 @@ def create_app() -> Flask:
                 f"Дата: {date_str}\n"
                 f"Факт: {fact_start}–{fact_end}\n"
                 f"ЛК: {os.environ.get('SITE_URL','https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{client_token}"
+            )
+            _send_to_client(
+                lead_for_notify,
+                "⏱ Няня отправила фактическое время работы\n"
+                f"Дата: {date_str}\n"
+                f"Факт: {fact_start}-{fact_end}\n"
+                f"Проверьте и подтвердите в личном кабинете: {_site_url()}/client/{client_token}"
             )
         return {'ok': True}
 
@@ -2194,7 +2544,7 @@ def create_app() -> Flask:
 
         client_token = (request.form.get('client_token') or '').strip()
         date_str = (request.form.get('date') or '').strip()
-        comment = (request.form.get('comment') or '').strip()
+        comment = _clean_user_text(request.form.get('comment'), 500)
         file = request.files.get('file')
         if not client_token or not date_str or not file or not file.filename:
             return {'error': 'Заполните client_token, date и выберите файл'}, 400
@@ -2204,6 +2554,10 @@ def create_app() -> Flask:
         file_mime = file.mimetype or ''
         if not any(file_mime.startswith(m) for m in ALLOWED_MIME_PREFIXES):
             return {'error': f'Недопустимый тип файла: {file_mime}. Разрешены: изображения и PDF.'}, 400
+        safe_name = secure_filename(file.filename)
+        allowed_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf'}
+        if os.path.splitext(safe_name.lower())[1] not in allowed_exts:
+            return {'error': 'Недопустимое расширение файла. Разрешены изображения и PDF.'}, 400
 
         if use_sql:
             lead_row = Lead.query.filter_by(token=client_token).first()
@@ -2211,10 +2565,9 @@ def create_app() -> Flask:
                 return {'error': 'Клиент не найден (token неверный)'}, 404
             if str(lead_row.assigned_nanny_id or '') != str(nanny.get('id')):
                 return {'error': 'Клиент не назначен этой няне'}, 403
-            safe_name = secure_filename(file.filename)
-            if not safe_name:
+            filename = _safe_upload_name(file, 'receipt')
+            if not filename:
                 return {'error': 'Недопустимое имя файла'}, 400
-            filename = f"{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{safe_name}"
             file.save(os.path.join(app.config['UPLOAD_DIR'], filename))
             docs = dict(lead_row.documents or {})
             receipts = dict(docs.get('receipts') or {})
@@ -2233,6 +2586,7 @@ def create_app() -> Flask:
             docs['receipt_meta'] = receipt_meta
             lead_row.documents = docs
             db.session.commit()
+            lead_for_notify = lead_row
         else:
             leads = load_leads()
             lead = next((x for x in leads if x.get('token') == client_token), None)
@@ -2240,10 +2594,9 @@ def create_app() -> Flask:
                 return {'error': 'Клиент не найден (token неверный)'}, 404
             if str(lead.get('assigned_nanny_id') or '') != str(nanny.get('id')):
                 return {'error': 'Клиент не назначен этой няне'}, 403
-            safe_name = secure_filename(file.filename)
-            if not safe_name:
+            filename = _safe_upload_name(file, 'receipt')
+            if not filename:
                 return {'error': 'Недопустимое имя файла'}, 400
-            filename = f"{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{safe_name}"
             file.save(os.path.join(app.config['UPLOAD_DIR'], filename))
             lead.setdefault('documents', {}).setdefault('receipts', {}).setdefault(date_str, []).append(filename)
             # Optional metadata (comment) without breaking existing receipt list
@@ -2253,6 +2606,15 @@ def create_app() -> Flask:
                 'nanny_id': nanny.get('id'),
             }
             save_leads(leads)
+            lead_for_notify = lead
+        _notify_admins(
+            "📎 Няня загрузила чек/документ\n"
+            f"Няня: {nanny.get('name') or '—'}\n"
+            f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
+            f"Дата: {date_str}\n"
+            f"Файл: {filename}\n"
+            f"ЛК: {_site_url()}/client/{client_token}"
+        )
         return {'ok': True, 'filename': filename}
 
     @app.route('/api/nanny/<portal_token>/submit_fact', methods=['POST'])
@@ -2272,6 +2634,12 @@ def create_app() -> Flask:
 
         if not client_token or not date_str or not fact_start or not fact_end:
             return {'error': 'client_token, date, fact_start, fact_end required'}, 400
+        if not re.match(r'^[0-9]{2}:[0-9]{2}$', fact_start) or not re.match(r'^[0-9]{2}:[0-9]{2}$', fact_end):
+            return {'error': 'invalid time'}, 400
+        if fact_start == fact_end:
+            return {'error': 'start and end must differ'}, 400
+        if (int(fact_end[:2]) * 60 + int(fact_end[3:5])) <= (int(fact_start[:2]) * 60 + int(fact_start[3:5])):
+            return {'error': 'end must be after start'}, 400
 
         leads = load_leads()
         lead = next((x for x in leads if x.get('token') == client_token), None)
@@ -2302,6 +2670,13 @@ def create_app() -> Flask:
             f"Дата: {date_str}\n"
             f"Факт: {fact_start}–{fact_end}\n"
             f"ЛК: {os.environ.get('SITE_URL','https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{client_token}"
+        )
+        _send_to_client(
+            lead,
+            "⏱ Няня отправила фактическое время работы\n"
+            f"Дата: {date_str}\n"
+            f"Факт: {fact_start}-{fact_end}\n"
+            f"Проверьте и подтвердите в личном кабинете: {_site_url()}/client/{client_token}"
         )
         return {'ok': True}
 
@@ -2363,7 +2738,7 @@ def create_app() -> Flask:
         date = (data.get('date') or '').strip()
         start = (data.get('start') or '').strip() or None
         end = (data.get('end') or '').strip() or None
-        note = (data.get('note') or '').strip() or None
+        note = _clean_user_text(data.get('note'), 300) or None
 
         if not re.match(r'^\d{4}-\d{2}-\d{2}$', date):
             return {'error': 'invalid date'}, 400
@@ -2374,6 +2749,13 @@ def create_app() -> Flask:
             b = NannyBlock(nanny_id=nanny_id, date=date, start=start, end=end, note=note, kind='dayoff')
             db.session.add(b)
             db.session.commit()
+            _notify_admins(
+                "🚫 Няня отметила выходной\n"
+                f"Няня: {nanny.name if nanny else '—'}\n"
+                f"Дата: {date}\n"
+                f"Время: {(start or 'весь день') + (('-' + end) if end else '')}\n"
+                f"Комментарий: {note or '—'}"
+            )
             return {'ok': True, 'id': b.id}
 
         blocks = _read_json(NANNY_BLOCKS_FILE, [])
@@ -2389,6 +2771,13 @@ def create_app() -> Flask:
             'created_at': datetime.datetime.utcnow().isoformat(),
         })
         _write_json(NANNY_BLOCKS_FILE, blocks)
+        _notify_admins(
+            "🚫 Няня отметила выходной\n"
+            f"Няня: {nanny.get('name') if nanny else '—'}\n"
+            f"Дата: {date}\n"
+            f"Время: {(start or 'весь день') + (('-' + end) if end else '')}\n"
+            f"Комментарий: {note or '—'}"
+        )
         return {'ok': True, 'id': next_id}
 
     @app.route('/api/nanny/<portal_token>/blocks/<int:block_id>', methods=['DELETE'])
@@ -2608,9 +2997,9 @@ def create_app() -> Flask:
         """Create or update a nanny from the admin panel."""
         if use_sql:
             nanny_id_raw = (request.form.get('id') or '').strip() or None
-            name = (request.form.get('name') or '').strip()
-            exp_short = (request.form.get('exp_short') or '').strip() or None
-            bio = (request.form.get('bio') or '').strip() or None
+            name = _clean_user_text(request.form.get('name'), 120)
+            exp_short = _clean_user_text(request.form.get('exp_short'), 200) or None
+            bio = _clean_user_text(request.form.get('bio'), 2000) or None
             photo = (request.form.get('photo') or '').strip() or None
             photo_file = request.files.get('photo_file')
             if photo_file and getattr(photo_file, 'filename', ''):
@@ -2663,10 +3052,10 @@ def create_app() -> Flask:
 
         nannies = load_nannies()
         nanny_id = (request.form.get('id') or '').strip() or None
-        name = (request.form.get('name') or '').strip()
-        age = (request.form.get('age') or '').strip()
-        exp_short = (request.form.get('exp_short') or '').strip()
-        bio = (request.form.get('bio') or '').strip()
+        name = _clean_user_text(request.form.get('name'), 120)
+        age = _clean_user_text(request.form.get('age'), 40)
+        exp_short = _clean_user_text(request.form.get('exp_short'), 200)
+        bio = _clean_user_text(request.form.get('bio'), 2000)
         photo = (request.form.get('photo') or '').strip()
         tid_raw_json = (request.form.get('telegram_user_id') or '').strip() or None
         # Photo upload support in JSON mode — store as data URL (no filesystem dependency)
@@ -2737,9 +3126,9 @@ def create_app() -> Flask:
             flash('SQL mode required', 'error')
             return redirect(url_for('admin'))
 
-        parent_name = (request.form.get('parent_name') or '').strip()
-        child_name = (request.form.get('child_name') or '').strip() or None
-        child_age = (request.form.get('child_age') or '').strip() or None
+        parent_name = _clean_user_text(request.form.get('parent_name'), 120)
+        child_name = _clean_user_text(request.form.get('child_name'), 120) or None
+        child_age = _clean_user_text(request.form.get('child_age'), 40) or None
         tid_raw = (request.form.get('telegram_user_id') or '').strip() or None
 
         if not parent_name:
@@ -2997,9 +3386,9 @@ def create_app() -> Flask:
     @require_admin
     def admin_review_save():
         review_id  = (request.form.get('id') or '').strip()
-        author     = (request.form.get('author') or '').strip() or 'Родитель'
-        role       = (request.form.get('role') or '').strip()
-        text_value = (request.form.get('text') or '').strip()
+        author     = _clean_user_text(request.form.get('author'), 120) or 'Родитель'
+        role       = _clean_user_text(request.form.get('role'), 160)
+        text_value = _clean_user_text(request.form.get('text'), 2000)
         nanny_id   = (request.form.get('nanny_id') or '').strip() or None
         pinned     = bool(request.form.get('pinned'))
         try:
@@ -3102,80 +3491,109 @@ def create_app() -> Flask:
         tzname = os.environ.get('SHIFT_TZ') or 'Asia/Ho_Chi_Minh'
         tz = ZoneInfo(tzname)
         now_dt = datetime.datetime.now(tz)
+        sent_pre = 0
+        sent_post = 0
 
-        # Window: shifts starting between (2h) and (2h + 5m)
-        win_start = now_dt + datetime.timedelta(hours=2)
-        win_end = win_start + datetime.timedelta(minutes=5)
-
-        sent = 0
-
-        # IMPORTANT: avoid scanning the whole table every 5 minutes.
-        # Since date/time are stored as strings (YYYY-MM-DD, HH:MM), we can still
-        # filter efficiently by (date, planned_start) with proper indexes.
-        def _query_window(dt_from: datetime.datetime, dt_to: datetime.datetime):
+        def _query_time_window(field_name: str, sent_field, dt_from: datetime.datetime, dt_to: datetime.datetime):
             date_from = dt_from.date().isoformat()
             date_to = dt_to.date().isoformat()
             t_from = dt_from.strftime('%H:%M')
             t_to = dt_to.strftime('%H:%M')
+            time_col = getattr(Shift, field_name)
 
             base = Shift.query.filter(
-                Shift.reminder_sent_at.is_(None),
-                Shift.planned_start.isnot(None),
+                sent_field.is_(None),
+                time_col.isnot(None),
                 Shift.status != 'cancelled',
             )
 
             if date_from == date_to:
                 return base.filter(
                     Shift.date == date_from,
-                    Shift.planned_start >= t_from,
-                    Shift.planned_start < t_to,
+                    time_col >= t_from,
+                    time_col < t_to,
                 )
 
-            # Window crosses midnight (rare, but possible)
-            q1 = base.filter(
-                Shift.date == date_from,
-                Shift.planned_start >= t_from,
-            )
-            q2 = base.filter(
-                Shift.date == date_to,
-                Shift.planned_start < t_to,
-            )
+            q1 = base.filter(Shift.date == date_from, time_col >= t_from)
+            q2 = base.filter(Shift.date == date_to, time_col < t_to)
             return q1.union_all(q2)
 
-        rows = _query_window(win_start, win_end).all()
-        for s in rows:
+        # Nanny reminder 30 minutes before work.
+        pre_start = now_dt + datetime.timedelta(minutes=30)
+        pre_end = pre_start + datetime.timedelta(minutes=5)
+        for s in _query_time_window('planned_start', Shift.reminder_sent_at, pre_start, pre_end).all():
+            nanny = Nanny.query.get(s.nanny_id) if s.nanny_id else None
+            if nanny and nanny.telegram_user_id:
+                _safe_send_message(
+                    int(nanny.telegram_user_id),
+                    "⏰ Через 30 минут рабочий день\n"
+                    f"Дата: {s.date}\n"
+                    f"Время: {s.planned_start}-{s.planned_end or ''}\n"
+                    "Пожалуйста, подготовьтесь и приезжайте на место работы вовремя."
+                )
+                sent_pre += 1
+            s.reminder_sent_at = datetime.datetime.utcnow()
 
+        # Follow-up 30 minutes after planned end.
+        post_start = now_dt - datetime.timedelta(minutes=35)
+        post_end = now_dt - datetime.timedelta(minutes=30)
+        for s in _query_time_window('planned_end', Shift.post_reminder_sent_at, post_start, post_end).all():
             nanny = Nanny.query.get(s.nanny_id) if s.nanny_id else None
             client = Client.query.get(s.client_id) if s.client_id else None
-            msg = f"⏰ Напоминание: смена через 2 часа.\n{s.date} {s.planned_start}-{s.planned_end or ''}"
-
             if client and client.telegram_user_id:
-                try:
-                    send_message(int(client.telegram_user_id), msg)
-                except Exception:
-                    pass
+                _safe_send_message(
+                    int(client.telegram_user_id),
+                    "⏱ Смена завершилась около 30 минут назад\n"
+                    f"Дата: {s.date}\n"
+                    f"План: {s.planned_start or ''}-{s.planned_end or ''}\n"
+                    "Пожалуйста, отметьте фактическое время, поставьте оценку и оставьте комментарий."
+                )
+                sent_post += 1
             if nanny and nanny.telegram_user_id:
-                try:
-                    send_message(int(nanny.telegram_user_id), msg)
-                except Exception:
-                    pass
+                _safe_send_message(
+                    int(nanny.telegram_user_id),
+                    "⏱ Рабочий день завершился около 30 минут назад\n"
+                    f"Дата: {s.date}\n"
+                    f"План: {s.planned_start or ''}-{s.planned_end or ''}\n"
+                    "Пожалуйста, отметьте фактическое время работы и напишите комментарий к дню."
+                )
+                sent_post += 1
+            s.post_reminder_sent_at = datetime.datetime.utcnow()
 
-            s.reminder_sent_at = datetime.datetime.utcnow()
-            sent += 1
-
-        if sent:
+        if sent_pre or sent_post:
             db.session.commit()
 
-        return {'ok': True, 'sent': sent, 'tz': tzname}
+        return {'ok': True, 'sent_pre': sent_pre, 'sent_post': sent_post, 'tz': tzname}
 
     @app.route('/uploads/<path:filename>')
     def uploads(filename):
+        normalized = (filename or '').replace('\\', '/').lstrip('/')
+        if '..' in normalized.split('/'):
+            return jsonify({'error': 'forbidden'}), 403
         # Whitelist allowed extensions to prevent serving unexpected files
         allowed_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.mp4', '.mov', '.webm'}
-        _, ext = os.path.splitext(filename.lower())
+        _, ext = os.path.splitext(normalized.lower())
         if ext not in allowed_exts:
             return jsonify({'error': 'forbidden'}), 403
-        return send_from_directory(app.config['UPLOAD_DIR'], filename)
+        if not normalized.startswith('articles/'):
+            try:
+                docs_sources = []
+                if use_sql:
+                    docs_sources = [row.documents or {} for row in Lead.query.with_entities(Lead.documents).all()]
+                else:
+                    docs_sources = [(lead.get('documents') or {}) for lead in load_leads()]
+                known_receipts = {
+                    str(item).replace('\\', '/').lstrip('/')
+                    for docs in docs_sources
+                    for items in ((docs.get('receipts') or {}).values())
+                    for item in (items or [])
+                }
+                if normalized in known_receipts:
+                    return jsonify({'error': 'receipt access requires cabinet link'}), 403
+            except Exception:
+                app.logger.warning("receipt visibility check failed", exc_info=True)
+                return jsonify({'error': 'forbidden'}), 403
+        return send_from_directory(app.config['UPLOAD_DIR'], normalized)
 
 
     # ── ERROR HANDLERS ─────────────────────────────────────────────────────
@@ -3496,7 +3914,7 @@ def create_app() -> Flask:
     def api_articles_latest():
         arts = _articles_published()[:3]
         resp = jsonify([{'slug': a['slug'], 'title': a['title'],
-                         'excerpt': a.get('excerpt',''), 'cover_url': a.get('cover_url',''),
+                         'excerpt': a.get('excerpt',''), 'cover_url': _article_cover_preview(a.get('cover_url','')),
                          'created_at': a.get('created_at','')} for a in arts])
         resp.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
         return resp
