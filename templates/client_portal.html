@@ -260,6 +260,19 @@ function openTgLink(path) {
   // State for selected date
   let selectedDate = null;
 
+  function splitTimeRange(timeStr){
+    const normalized = String(timeStr || '').replace('–','-').replace('—','-');
+    const parts = normalized.split('-');
+    return {
+      start: (parts[0] || '').trim(),
+      end: (parts[1] || '').trim()
+    };
+  }
+
+  function joinTimeRange(start, end){
+    return `${start}-${end}`;
+  }
+
   // ---- Cost calculator ----
   (function buildCalc(){
     function parseHours(timeStr){
@@ -521,6 +534,7 @@ function openTgLink(path) {
     const hasWorkDate = WORK_DATES[dateStr] !== undefined;
     const hasDayoff = !!NANNY_DAYOFFS[dateStr];
     const ss = getSlotStyle(slot);
+    const workRange = splitTimeRange(slot.time || '');
 
     // Build HTML for panel
     let html = `
@@ -585,8 +599,8 @@ function openTgLink(path) {
           <details style="margin-top:var(--s3);">
             <summary style="cursor:pointer;font-size:13px;font-weight:600;color:var(--c-teal-dk);">⏱ Фактическое время</summary>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;">
-              <div><label style="font-size:12px;">С</label><input type="time" id="actStart_${dateStr}" value="${slot.client_actual_start||''}" style="width:100%;"></div>
-              <div><label style="font-size:12px;">До</label><input type="time" id="actEnd_${dateStr}" value="${slot.client_actual_end||''}" style="width:100%;"></div>
+              <div><label style="font-size:12px;">С</label><input type="time" step="300" id="actStart_${dateStr}" value="${slot.client_actual_start||''}" style="width:100%;"></div>
+              <div><label style="font-size:12px;">До</label><input type="time" step="300" id="actEnd_${dateStr}" value="${slot.client_actual_end||''}" style="width:100%;"></div>
             </div>
             <button onclick="saveActualTime('${dateStr}')" class="btn primary" style="width:auto;margin-top:8px;font-size:12px;padding:6px 14px;">Сохранить время</button>
           </details>
@@ -639,7 +653,10 @@ function openTgLink(path) {
           <div style="font-weight:700;font-size:13px;margin-bottom:var(--s2);">${hasWorkDate ? 'Изменить время работы' : 'Добавить рабочую дату'}</div>
           ${hasDayoff ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin-bottom:var(--s2);font-size:12px;color:#b91c1c;">У няни на эту дату отмечен выходной. Выберите другую дату или уточните у администратора.</div>` : `
             <label style="font-size:12px;">Время работы</label>
-            <input id="workTime_${dateStr}" value="${slot.time || ''}" placeholder="09:00-18:00" style="width:100%;margin-top:4px;font-size:13px;" />
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
+              <div><label style="font-size:11px;">С</label><input id="workStart_${dateStr}" type="time" step="300" value="${workRange.start}" style="width:100%;font-size:13px;" /></div>
+              <div><label style="font-size:11px;">До</label><input id="workEnd_${dateStr}" type="time" step="300" value="${workRange.end}" style="width:100%;font-size:13px;" /></div>
+            </div>
             <button onclick="saveWorkTime('${dateStr}')" class="btn primary" style="width:100%;margin-top:8px;font-size:13px;padding:8px 14px;">${hasWorkDate ? 'Сохранить время' : 'Добавить дату'}</button>
             <div style="font-size:11px;color:var(--c-text-muted);margin-top:6px;">Если няня уже назначена, новая дата уйдёт на подтверждение няне и администратору.</div>
           `}
@@ -662,20 +679,22 @@ function openTgLink(path) {
 
   // ─── Actions ──────────────────────────────────────────────────────────────
   window.saveWorkTime = async function(dateStr) {
-    const timeValue = (document.getElementById(`workTime_${dateStr}`)?.value || '').trim();
-    if(!/^\d{2}:\d{2}\s*[-–]\s*\d{2}:\d{2}$/.test(timeValue)) {
-      showToast('Укажите время в формате 09:00-18:00');
+    const start = (document.getElementById(`workStart_${dateStr}`)?.value || '').trim();
+    const end = (document.getElementById(`workEnd_${dateStr}`)?.value || '').trim();
+    if(!start || !end) {
+      showToast('Выберите время начала и конца');
       return;
     }
+    const timeValue = joinTimeRange(start, end);
     try {
       const r = await fetch(`/api/client/${TOKEN}/date_action`, {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({date: dateStr, time: timeValue.replace('–','-').replace(/\s+/g,'')})
+        body: JSON.stringify({date: dateStr, time: timeValue, time_start: start, time_end: end})
       });
       const d = await r.json();
       if(!r.ok) throw new Error(d.error || 'Ошибка');
       if(!WORK_DATES[dateStr]) WORK_DATES[dateStr] = {};
-      WORK_DATES[dateStr].time = timeValue.replace('–','-').replace(/\s+/g,'');
+      WORK_DATES[dateStr].time = timeValue;
       if(NANNY_ASSIGNED) {
         WORK_DATES[dateStr].pending_admin = true;
         WORK_DATES[dateStr].pending_nanny = true;
