@@ -43,6 +43,8 @@ class Lead(db.Model):
     meeting_date = db.Column(db.String(20), nullable=True)
     documents = db.Column(db.JSON, nullable=True, default=dict)
     assigned_nanny_id = db.Column(db.Integer, db.ForeignKey('nannies.id'), nullable=True)
+    client_rate_per_hour = db.Column(db.Integer, nullable=True)
+    nanny_rate_per_hour = db.Column(db.Integer, nullable=True)
     telegram_user_id = db.Column(db.BigInteger, nullable=True)
     submitted_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
 

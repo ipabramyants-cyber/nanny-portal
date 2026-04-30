@@ -31,6 +31,33 @@
   </div>
 </div>
 
+<section class="container cabinet-calendar-top" style="margin-top:var(--s5);">
+  <div class="panel">
+    <div class="calendar-head">
+      <button type="button" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
+      <div id="monthLabel"></div>
+      <button type="button" id="nextMonth" aria-label="Следующий месяц">›</button>
+    </div>
+    <div id="calendar" class="calendar"></div>
+    <p class="hint" style="margin-top:8px; line-height:1.7;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0fdf4;border:1.5px solid #16a34a;vertical-align:middle;margin-right:3px;"></span>✅ Подтверждено &nbsp;·&nbsp;
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#eff6ff;border:1.5px solid #3b82f6;vertical-align:middle;margin-right:3px;"></span>⏱ Факт отправлен &nbsp;·&nbsp;
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(20,184,166,.18);border:1.5px solid rgba(20,184,166,.5);vertical-align:middle;margin-right:3px;"></span>📅 Запланировано &nbsp;·&nbsp;
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fff7ed;border:1.5px solid #ea580c;vertical-align:middle;margin-right:3px;"></span>🔔 Ждёт подтвержд. &nbsp;·&nbsp;
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fef2f2;border:1.5px solid #dc2626;vertical-align:middle;margin-right:3px;"></span>🚫 Выходной<br>
+      Нажмите на дату, чтобы отметить выходной, отправить факт, комментарий или загрузить чек.
+    </p>
+    <div id="selectedBox" style="display:none;"></div>
+  </div>
+</section>
+
+<div id="nannyDateModal" class="lk-modal" aria-hidden="true">
+  <div class="lk-modal__backdrop" data-close-nanny-modal></div>
+  <div class="lk-modal__dialog" role="dialog" aria-modal="true">
+    <div id="nannyDateModalBody"></div>
+  </div>
+</div>
+
 <section class="container" style="padding-bottom:60px;position:relative;">
   <img src="/static/img/sticker2.png" class="page-sticker page-sticker--left" aria-hidden="true" alt="" width="110" height="110">
   <div class="hero-grid" style="margin-top:var(--s5);">
@@ -45,73 +72,6 @@
       <hr class="divider" />
       <h3 style="font-size:14px; color:var(--c-text-muted); margin-bottom:8px;">Назначенные клиенты</h3>
       <div id="clientList" style="display:flex; flex-direction:column; gap:8px;"></div>
-    </div>
-
-    <!-- Calendar panel -->
-    <div class="panel">
-      <div class="calendar-head">
-        <button type="button" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
-        <div id="monthLabel"></div>
-        <button type="button" id="nextMonth" aria-label="Следующий месяц">›</button>
-      </div>
-      <div id="calendar" class="calendar"></div>
-      <p class="hint" style="margin-top:8px; line-height:1.7;">
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0fdf4;border:1.5px solid #16a34a;vertical-align:middle;margin-right:3px;"></span>✅ Подтверждено &nbsp;·&nbsp;
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#eff6ff;border:1.5px solid #3b82f6;vertical-align:middle;margin-right:3px;"></span>⏱ Факт отправлен &nbsp;·&nbsp;
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:rgba(20,184,166,.18);border:1.5px solid rgba(20,184,166,.5);vertical-align:middle;margin-right:3px;"></span>📅 Запланировано &nbsp;·&nbsp;
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fff7ed;border:1.5px solid #ea580c;vertical-align:middle;margin-right:3px;"></span>🔔 Ждёт подтвержд. &nbsp;·&nbsp;
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fef2f2;border:1.5px solid #dc2626;vertical-align:middle;margin-right:3px;"></span>🚫 Выходной<br>
-        Нажмите на дату — статус, комментарий, чек, фактическое время.
-      </p>
-      <div id="selectedBox" style="margin-top:14px;"></div>
-    </div>
-
-    <!-- Actions panel -->
-    <div class="panel">
-      <h3>Чек за смену</h3>
-      <div style="display:grid; gap:10px;">
-        <div>
-          <label>Дата</label>
-          <input id="uploadDate" disabled placeholder="Сначала выберите дату в календаре" />
-        </div>
-        <div>
-          <label>Клиент</label>
-          <select id="uploadClient" disabled></select>
-        </div>
-        <div>
-          <label>Комментарий</label>
-          <textarea id="uploadComment" rows="2" placeholder="Например: чек за такси / игрушки"></textarea>
-        </div>
-        <div>
-          <label>Файл</label>
-          <input type="file" id="uploadFile" accept="image/*,application/pdf" />
-        </div>
-        <button type="button" id="uploadBtn" class="btn primary" style="margin-top:0;" disabled>Загрузить чек</button>
-        <div class="hint" id="uploadHint"></div>
-      </div>
-
-      <hr class="divider" />
-
-      <h3>Отметить выходной</h3>
-      <div style="display:grid; gap:10px;">
-        <div>
-          <label>Дата</label>
-          <input id="offDate" disabled placeholder="Выберите дату в календаре" />
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-          <div><label>С</label><input id="offStart" type="time" /></div>
-          <div><label>До</label><input id="offEnd" type="time" /></div>
-        </div>
-        <div>
-          <label>Комментарий</label>
-          <textarea id="offNote" rows="2" placeholder="Например: личная встреча / выходной"></textarea>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button type="button" id="saveOffBtn" class="btn secondary" disabled>Сохранить выходной</button>
-          <button type="button" id="deleteOffBtn" class="btn danger" style="width:auto; margin-top:0;" disabled>Удалить</button>
-        </div>
-        <div class="hint" id="offStatus">Выберите дату в календаре.</div>
-      </div>
     </div>
 
     <!-- Earnings calculator (nanny view) -->
@@ -423,6 +383,7 @@
   }
 
   function fillClientSelect(items){
+    if(!uploadClient) return;
     uploadClient.innerHTML='';
     items.forEach(e=>{
       const opt=document.createElement('option');
@@ -431,6 +392,21 @@
       uploadClient.appendChild(opt);
     });
   }
+
+  function closeNannyModal(){
+    const modal=document.getElementById('nannyDateModal');
+    if(modal) modal.classList.remove('is-open');
+  }
+  window.closeNannyModal = closeNannyModal;
+  function openNannyModal(html){
+    const modal=document.getElementById('nannyDateModal');
+    const body=document.getElementById('nannyDateModalBody');
+    if(!modal||!body) return false;
+    body.innerHTML=html;
+    modal.classList.add('is-open');
+    return true;
+  }
+  document.querySelectorAll('[data-close-nanny-modal]').forEach(el=>el.addEventListener('click', closeNannyModal));
 
   function selectDate(iso){
     selectedIso=iso;
@@ -510,6 +486,19 @@
               style="background:var(--c-teal);color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;margin-top:4px;">Сохранить</button>
           </div>
         </details>`;
+      const receiptInputId = `receiptFile_${iso}_${(e.client_token||'').slice(-6)}`;
+      const receiptCommentId = `receiptComment_${iso}_${(e.client_token||'').slice(-6)}`;
+      const receiptForm = `
+        <details style="margin-top:8px;">
+          <summary style="cursor:pointer;font-size:12px;font-weight:600;color:var(--c-teal-dk);">🧾 Загрузить чек</summary>
+          <div style="margin-top:6px;display:grid;gap:6px;">
+            <input type="file" id="${receiptInputId}" accept="image/*,application/pdf" style="font-size:12px;" />
+            <textarea id="${receiptCommentId}" rows="2" placeholder="Комментарий к чеку..."
+              style="width:100%;border:1.5px solid var(--c-border-str);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;"></textarea>
+            <button onclick="uploadReceiptForEvent('${iso}','${e.client_token}','${receiptInputId}','${receiptCommentId}',this)"
+              style="background:var(--c-teal);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">Загрузить чек</button>
+          </div>
+        </details>`;
 
       return `
       <div style="padding:10px 12px;border:1.5px solid ${col.border};border-radius:var(--r-md);background:${col.bg};margin-bottom:8px;">
@@ -519,7 +508,7 @@
         </div>
         <div style="font-size:12px;color:var(--c-text-muted);margin-top:2px;">⏰ ${e.time||'время уточняется'} · Клиент: ${parentName}</div>
         ${factDisplay}${nannyCommentDisplay}${clientCommentDisplay}${clientReviewDisplay}
-        ${pendingActions}${factForm}${commentForm}
+        ${pendingActions}${factForm}${commentForm}${receiptForm}
         <a class="action-link" href="/client/${e.client_token}" target="_blank" style="font-size:12px;display:inline-block;margin-top:6px;">ЛК клиента →</a>
       </div>`;
     }).join(''):'<div class="hint">Назначений на эту дату нет.</div>';
@@ -529,7 +518,30 @@
       <span style="font-size:12px;color:var(--c-text-muted);margin-left:6px;">${block.start||''}${block.end?'–'+block.end:''} ${block.note?'· '+block.note:''}</span>
     </div>`:'';
 
-    if(selectedBox) selectedBox.innerHTML=`<div style="font-weight:800;font-size:14px;margin-bottom:8px;color:var(--c-teal);">📅 ${formatRu(iso)}</div>${assignmentsHtml}${blockHtml}`;
+    const dayoffForm = `
+      <div style="margin-top:10px;padding:10px 12px;border:1px solid var(--c-border);border-radius:var(--r-md);background:var(--c-surface);">
+        <div style="font-size:13px;font-weight:800;color:var(--c-teal-dk);margin-bottom:8px;">🚫 Выходной / занятость</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div><label style="font-size:11px;">С</label><input id="modalOffStart_${iso}" type="time" value="${block?.start||''}" style="width:100%;font-size:13px;" /></div>
+          <div><label style="font-size:11px;">До</label><input id="modalOffEnd_${iso}" type="time" value="${block?.end||''}" style="width:100%;font-size:13px;" /></div>
+        </div>
+        <textarea id="modalOffNote_${iso}" rows="2" placeholder="Комментарий: выходной, личная встреча..."
+          style="width:100%;border:1.5px solid var(--c-border-str);border-radius:6px;padding:6px 8px;font-size:12px;resize:vertical;">${block?.note||''}</textarea>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+          <button onclick="saveOffFromModal('${iso}',this)" style="background:var(--c-teal);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">Сохранить выходной</button>
+          ${block ? `<button onclick="deleteOffFromModal('${iso}',this)" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;">Удалить</button>` : ''}
+        </div>
+      </div>`;
+
+    const modalHtml = `<div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+        <div style="font-weight:800;font-size:15px;color:var(--c-teal);">📅 ${formatRu(iso)}</div>
+        <button onclick="closeNannyModal()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--c-text-2);padding:4px;">✕</button>
+      </div>
+      ${assignmentsHtml}${blockHtml}${dayoffForm}
+    </div>`;
+    if(selectedBox) selectedBox.innerHTML=modalHtml;
+    openNannyModal(modalHtml);
     if(offStatus) offStatus.textContent=blocksEnabled
       ?(block?'Выходной найден. Можно удалить или изменить.':'Можно отметить как выходной.')
       :'Отметка выходного работает только в SQL-режиме.';
@@ -615,6 +627,7 @@
       renderCalendar();
     }catch(e){if(statusEl){statusEl.textContent='Ошибка: '+(e.message||e);statusEl.style.color='var(--c-danger)';}}
   }
+  window.submitFact = submitFact;
 
   async function loadBlocks(){
     blocksByDate={};blocksEnabled=false;
@@ -639,6 +652,83 @@
     if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка');
     await loadBlocks();
   }
+
+  window.saveOffFromModal = async function(iso, btn){
+    if(btn){btn.disabled=true;btn.textContent='…';}
+    const block=blocksByDate[iso]||null;
+    try{
+      if(block?.id){
+        const resDel=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks/${block.id}`,{method:'DELETE'});
+        const delData=await resDel.json().catch(()=>({}));
+        if(!resDel.ok||!delData.ok)throw new Error(delData?.error||'Ошибка удаления старого выходного');
+      }
+      const payload={
+        date:iso,
+        start:document.getElementById(`modalOffStart_${iso}`)?.value||null,
+        end:document.getElementById(`modalOffEnd_${iso}`)?.value||null,
+        note:document.getElementById(`modalOffNote_${iso}`)?.value||null
+      };
+      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка');
+      await loadBlocks();
+      renderCalendar();
+      showNannyToast('✅ Выходной сохранён');
+      selectDate(iso);
+    }catch(e){
+      showNannyToast('❌ ' + (e.message||e));
+    }finally{
+      if(btn){btn.disabled=false;btn.textContent='Сохранить выходной';}
+    }
+  };
+
+  window.deleteOffFromModal = async function(iso, btn){
+    const block=blocksByDate[iso]||null;
+    if(!block?.id){showNannyToast('Выходной не найден');return;}
+    if(btn){btn.disabled=true;btn.textContent='…';}
+    try{
+      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/blocks/${block.id}`,{method:'DELETE'});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка');
+      await loadBlocks();
+      renderCalendar();
+      showNannyToast('✅ Выходной удалён');
+      selectDate(iso);
+    }catch(e){
+      showNannyToast('❌ ' + (e.message||e));
+    }finally{
+      if(btn){btn.disabled=false;btn.textContent='Удалить';}
+    }
+  };
+
+  window.uploadReceiptForEvent = async function(iso, clientToken, fileId, commentId, btn){
+    const fileEl=document.getElementById(fileId);
+    if(!fileEl||!fileEl.files||!fileEl.files[0]){showNannyToast('Выберите файл');return;}
+    const fd=new FormData();
+    fd.append('client_token',clientToken);
+    fd.append('date',iso);
+    fd.append('comment',document.getElementById(commentId)?.value||'');
+    fd.append('file',fileEl.files[0]);
+    if(btn){btn.disabled=true;btn.textContent='Загрузка…';}
+    try{
+      const res=await fetch(`/api/nanny/${encodeURIComponent(nanny.portal_token)}/upload_receipt`,{method:'POST',body:fd});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok||!data.ok)throw new Error(data?.error||'Ошибка загрузки');
+      const items=byDate[iso]||[];
+      const ev=items.find(e=>e.client_token===clientToken);
+      if(ev) ev.has_receipt=true;
+      fileEl.value='';
+      const commentEl=document.getElementById(commentId);
+      if(commentEl) commentEl.value='';
+      renderCalendar();
+      showNannyToast('✅ Чек загружен');
+      selectDate(iso);
+    }catch(e){
+      showNannyToast('❌ ' + (e.message||e));
+    }finally{
+      if(btn){btn.disabled=false;btn.textContent='Загрузить чек';}
+    }
+  };
 
   if(saveOffBtn) saveOffBtn.addEventListener('click',async()=>{
     if(!blocksEnabled){alert('Отметка выходного доступна только в SQL-режиме.');return;}
@@ -712,8 +802,6 @@
       cur = d;
     }
     renderCalendar();
-    const initialDate=today||allKeys[0];
-    if(initialDate) selectDate(initialDate);
   })();
 })();
 
@@ -744,6 +832,13 @@
     .catch(function(){ });
 })();
 </script>
+
+<style>
+.lk-modal{position:fixed;inset:0;z-index:9998;display:none;align-items:center;justify-content:center;padding:16px;}
+.lk-modal.is-open{display:flex;}
+.lk-modal__backdrop{position:absolute;inset:0;background:rgba(15,23,42,.42);backdrop-filter:blur(3px);}
+.lk-modal__dialog{position:relative;width:min(620px,100%);max-height:88vh;overflow:auto;background:var(--c-surface);border-radius:var(--r-lg);box-shadow:0 24px 70px rgba(15,23,42,.26);padding:var(--s4);}
+</style>
 
 {% endblock %}
 
