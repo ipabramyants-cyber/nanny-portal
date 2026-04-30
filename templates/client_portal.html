@@ -64,6 +64,55 @@
   </div>
 </div>
 
+<!-- Calendar first under the profile header -->
+<div class="container cabinet-calendar-top" style="margin-top:var(--s5);">
+  <div class="panel">
+    <div class="calendar-head">
+      <button type="button" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
+      <div id="monthLabel"></div>
+      <button type="button" id="nextMonth" aria-label="Следующий месяц">›</button>
+    </div>
+    <div id="calendar" class="calendar" role="grid"></div>
+    <div id="calCounter" style="opacity:0;"></div>
+    <p class="hint" style="margin-top:var(--s3); font-size:12px; line-height:1.8;">
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0fdf4;border:1.5px solid #16a34a;vertical-align:middle;margin-right:3px;"></span>✅ Подтверждено &nbsp;·&nbsp;
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fffbeb;border:1.5px solid #f59e0b;vertical-align:middle;margin-right:3px;"></span>⏳ Ждёт подтверждения &nbsp;·&nbsp;
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0f9fc;border:1.5px solid #0d9488;vertical-align:middle;margin-right:3px;"></span>📅 Запланировано{% if nanny_dayoffs %} &nbsp;·&nbsp;
+      <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fef2f2;border:1.5px solid #dc2626;vertical-align:middle;margin-right:3px;"></span>🚫 Выходной няни{% endif %}<br>
+      Нажмите на дату, чтобы выбрать время работы, оставить комментарий, указать факт или посмотреть чеки.
+    </p>
+    <div id="datePanelBox" style="display:none;"></div>
+
+    <div id="calcBox" style="margin-top:var(--s4); padding:var(--s3); background:var(--c-teal-lt); border-radius:var(--r-md); border:1.5px solid rgba(17,138,138,.15); display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s3);">
+        <h3 style="margin:0; font-size:14px; color:var(--c-teal-dk);">💰 Расчёт стоимости</h3>
+        <input id="calcAnchorDate" type="date" style="width:auto;min-width:142px;padding:6px 8px;font-size:12px;" />
+      </div>
+      <div id="calcFilters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:var(--s3);">
+        <button type="button" class="calc-filter active" data-period="day">День</button>
+        <button type="button" class="calc-filter" data-period="week">Неделя</button>
+        <button type="button" class="calc-filter" data-period="month">Месяц</button>
+        <button type="button" class="calc-filter" data-period="year">Год</button>
+        <button type="button" class="calc-filter" data-period="all">Все</button>
+      </div>
+      <div id="calcRows" style="font-size:12px; display:flex; flex-direction:column; gap:5px; margin-bottom:var(--s3); max-height:150px; overflow:auto;"></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:var(--s2);border-top:1px solid rgba(17,138,138,.2);">
+        <div><div class="hint" style="font-size:10px;">Дат</div><strong id="calcDatesCount">0</strong></div>
+        <div><div class="hint" style="font-size:10px;">Часов</div><strong id="calcHours">0</strong></div>
+        <div style="text-align:right;"><div class="hint" style="font-size:10px;">Итого</div><strong id="calcTotal" style="font-size:16px; color:var(--c-teal-dk);"></strong></div>
+      </div>
+      <p class="hint" style="margin-top:var(--s2); font-size:11px;">Ставка: <span id="calcRate"></span> ₫/ч</p>
+    </div>
+  </div>
+</div>
+
+<div id="dateActionModal" class="lk-modal" aria-hidden="true">
+  <div class="lk-modal__backdrop" data-close-date-modal></div>
+  <div class="lk-modal__dialog" role="dialog" aria-modal="true">
+    <div id="dateActionModalBody"></div>
+  </div>
+</div>
+
 <!-- Status timeline -->
 <div class="container" style="margin-top:var(--s6);">
   <div class="timeline">
@@ -102,7 +151,7 @@
 <!-- Main grid -->
 <div class="container" style="margin-top:var(--s5); padding-bottom:var(--s16);position:relative;">
   <img src="/static/img/sticker1.png" class="page-sticker" aria-hidden="true" alt="" width="110" height="110">
-  <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:var(--s5); align-items:start;">
+  <div style="display:grid; grid-template-columns:1fr; gap:var(--s5); align-items:start;">
 
     <!-- Left: Nanny + docs + Instagram -->
     <div style="display:flex; flex-direction:column; gap:var(--s4);">
@@ -181,37 +230,6 @@
       </div>
     </div>
 
-    <!-- Right: Calendar — read-only, auto-highlights work dates & meeting -->
-    <div class="panel">
-      <div class="calendar-head">
-        <button type="button" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
-        <div id="monthLabel"></div>
-        <button type="button" id="nextMonth" aria-label="Следующий месяц">›</button>
-      </div>
-      <div id="calendar" class="calendar" role="grid"></div>
-      <div id="calCounter" style="opacity:0;"></div>
-      <p class="hint" style="margin-top:var(--s3); font-size:12px; line-height:1.8;">
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0fdf4;border:1.5px solid #16a34a;vertical-align:middle;margin-right:3px;"></span>✅ Подтверждено &nbsp;·&nbsp;
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fffbeb;border:1.5px solid #f59e0b;vertical-align:middle;margin-right:3px;"></span>⏳ Ждёт подтверждения &nbsp;·&nbsp;
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#f0f9fc;border:1.5px solid #0d9488;vertical-align:middle;margin-right:3px;"></span>📅 Запланировано{% if nanny_dayoffs %} &nbsp;·&nbsp;
-        <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#fef2f2;border:1.5px solid #dc2626;vertical-align:middle;margin-right:3px;"></span>🚫 Выходной няни{% endif %}<br>
-        Нажмите на дату для просмотра и действий (комментарий, чек, отзыв, фактическое время).
-      </p>
-      <!-- Selected date detail panel -->
-      <div id="datePanelBox" style="margin-top:var(--s3);"></div>
-
-      <!-- Cost calculator (client view) -->
-      <div id="calcBox" style="margin-top:var(--s4); padding:var(--s4); background:var(--c-teal-lt); border-radius:var(--r-md); border:1.5px solid rgba(17,138,138,.15); display:none;">
-        <h3 style="margin:0 0 var(--s3); font-size:14px; color:var(--c-teal-dk);">💰 Расчёт стоимости</h3>
-        <div id="calcRows" style="font-size:13px; display:flex; flex-direction:column; gap:6px; margin-bottom:var(--s3);"></div>
-        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:var(--s2); border-top:1px solid rgba(17,138,138,.2);">
-          <strong style="font-size:14px;">Итого:</strong>
-          <strong id="calcTotal" style="font-size:18px; color:var(--c-teal-dk);"></strong>
-        </div>
-        <p class="hint" style="margin-top:var(--s2); font-size:11px;">Ставка: <span id="calcRate"></span> ₫/ч · Предварительный расчёт</p>
-      </div>
-    </div>
-
   </div>
 </div>
 
@@ -246,36 +264,92 @@ function openTgLink(path) {
   (function buildCalc(){
     function parseHours(timeStr){
       if(!timeStr || typeof timeStr !== 'string') return 0;
-      const parts = timeStr.split('-');
+      const parts = timeStr.replace('–','-').split('-');
       if(parts.length < 2) return 0;
       function toMins(t){ const [h,m]=(t||'').split(':'); return (parseInt(h)||0)*60+(parseInt(m)||0); }
       const diff = toMins(parts[1].trim()) - toMins(parts[0].trim());
-      return diff > 0 ? diff/60 : 0;
+      return diff > 0 ? diff/60 : (diff < 0 ? (diff + 24*60)/60 : 0);
+    }
+    function rangeFor(period, anchorISO){
+      if(period === 'all') return null;
+      const anchor = new Date((anchorISO || new Date().toISOString().slice(0,10)) + 'T00:00:00');
+      const start = new Date(anchor);
+      const end = new Date(anchor);
+      if(period === 'week'){
+        const dow = (anchor.getDay()+6)%7;
+        start.setDate(anchor.getDate()-dow);
+        end.setDate(start.getDate()+6);
+      } else if(period === 'month'){
+        start.setDate(1);
+        end.setMonth(start.getMonth()+1, 0);
+      } else if(period === 'year'){
+        start.setMonth(0,1);
+        end.setMonth(11,31);
+      }
+      return [start.toISOString().slice(0,10), end.toISOString().slice(0,10)];
+    }
+    function slotTime(slot){
+      if(slot.client_actual_start && slot.client_actual_end) return `${slot.client_actual_start}-${slot.client_actual_end}`;
+      if(slot.fact_start && slot.fact_end) return `${slot.fact_start}-${slot.fact_end}`;
+      return slot.time || '';
     }
     const box = document.getElementById('calcBox');
     const rowsEl = document.getElementById('calcRows');
     const totalEl = document.getElementById('calcTotal');
     const rateEl = document.getElementById('calcRate');
-    const dates = Object.keys(WORK_DATES).sort();
-    if(!dates.length){ return; }
-    box.style.display = 'block';
-    rateEl.textContent = CLIENT_RATE.toLocaleString('ru-RU');
-    let totalHours = 0;
-    const rows = [];
-    dates.forEach(function(d){
-      const slot = WORK_DATES[d] || {};
-      if(slot.status === 'cancelled') return;
-      const timeStr = slot.time || '';
-      const h = parseHours(timeStr);
-      if(h > 0){
-        totalHours += h;
-        rows.push(`<div style="display:flex;justify-content:space-between;"><span>${d.split('-').reverse().join('.')}${timeStr?' ('+timeStr+')':''}</span><span>${h}ч × ${CLIENT_RATE.toLocaleString('ru-RU')} = <strong>${(h*CLIENT_RATE).toLocaleString('ru-RU')} ₫</strong></span></div>`);
-      } else {
-        rows.push(`<div style="color:var(--c-text-muted);">${d.split('-').reverse().join('.')} — время не указано</div>`);
+    const countEl = document.getElementById('calcDatesCount');
+    const hoursEl = document.getElementById('calcHours');
+    const anchorEl = document.getElementById('calcAnchorDate');
+    const filtersEl = document.getElementById('calcFilters');
+    if(!box || !rowsEl || !totalEl) return;
+    if(rateEl) rateEl.textContent = CLIENT_RATE.toLocaleString('ru-RU');
+    let period = 'week';
+    const activeBtn = filtersEl?.querySelector('[data-period="week"]');
+    filtersEl?.querySelectorAll('.calc-filter').forEach(b=>b.classList.remove('active'));
+    activeBtn?.classList.add('active');
+
+    function render(){
+      const dates = Object.keys(WORK_DATES).sort();
+      if(!dates.length){
+        box.style.display = 'none';
+        return;
       }
+      box.style.display = 'block';
+      if(anchorEl && !anchorEl.value) anchorEl.value = (dates.find(d => d >= new Date().toISOString().slice(0,10)) || dates[0]);
+      const bounds = rangeFor(period, anchorEl?.value);
+      let totalHours = 0;
+      let shown = 0;
+      const rows = [];
+      dates.forEach(function(d){
+        if(bounds && (d < bounds[0] || d > bounds[1])) return;
+        const slot = WORK_DATES[d] || {};
+        if(slot.status === 'cancelled') return;
+        shown += 1;
+        const timeStr = slotTime(slot);
+        const h = parseHours(timeStr);
+        if(h > 0){
+          totalHours += h;
+          rows.push(`<div style="display:flex;justify-content:space-between;gap:8px;"><span>${d.split('-').reverse().join('.')}${timeStr?' ('+timeStr+')':''}</span><strong>${(h*CLIENT_RATE).toLocaleString('ru-RU')} ₫</strong></div>`);
+        } else {
+          rows.push(`<div style="color:var(--c-text-muted);">${d.split('-').reverse().join('.')} — время не указано</div>`);
+        }
+      });
+      rowsEl.innerHTML = rows.length ? rows.join('') : '<div style="color:var(--c-text-muted);">В выбранном периоде дат нет</div>';
+      if(countEl) countEl.textContent = shown;
+      if(hoursEl) hoursEl.textContent = totalHours.toFixed(totalHours % 1 ? 1 : 0);
+      totalEl.textContent = (totalHours * CLIENT_RATE).toLocaleString('ru-RU') + ' ₫';
+    }
+    window.renderCalcSummary = render;
+    filtersEl?.addEventListener('click', function(e){
+      const btn = e.target.closest('.calc-filter');
+      if(!btn) return;
+      filtersEl.querySelectorAll('.calc-filter').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      period = btn.dataset.period || 'week';
+      render();
     });
-    rowsEl.innerHTML = rows.join('');
-    totalEl.textContent = (totalHours * CLIENT_RATE).toLocaleString('ru-RU') + ' ₫';
+    anchorEl?.addEventListener('change', render);
+    render();
   })();
 
   const receiptsBox = document.getElementById('receiptsBox');
@@ -349,8 +423,11 @@ function openTgLink(path) {
         // Nanny dayoff (show first, may be overridden by work date)
         const hasDayoff = !!NANNY_DAYOFFS[iso];
 
-        if(WORK_DATES[iso] !== undefined){
+        let slotForClick = {};
+        const hasWorkDate = WORK_DATES[iso] !== undefined;
+        if(hasWorkDate){
           const slot = typeof WORK_DATES[iso] === 'object' ? (WORK_DATES[iso] || {}) : {};
+          slotForClick = slot;
           const ss = getSlotStyle(slot);
           cell.style.background = ss.bg;
           cell.style.borderTop = `2.5px solid ${ss.border}`;
@@ -380,13 +457,6 @@ function openTgLink(path) {
           sb.style.cssText = `font-size:9px;font-weight:700;margin-top:1px;color:${ss.color};line-height:1.2;`;
           sb.textContent = ss.label;
           cell.appendChild(sb);
-
-          if(slot.status !== 'cancelled'){
-            cell.style.cursor = 'pointer';
-            const capturedIso = iso;
-            const capturedSlot = slot;
-            cell.addEventListener('click', () => { selectedDate = capturedIso; openDatePanel(capturedIso, capturedSlot); });
-          }
         }
 
         // Meeting date
@@ -414,6 +484,11 @@ function openTgLink(path) {
           cell.style.outlineOffset = '-2px';
         }
 
+        cell.style.cursor = 'pointer';
+        const capturedIso = iso;
+        const capturedSlot = slotForClick;
+        cell.addEventListener('click', () => { selectedDate = capturedIso; openDatePanel(capturedIso, capturedSlot); });
+
         row.appendChild(cell); day++;
       }
       calEl.appendChild(row);
@@ -421,11 +496,30 @@ function openTgLink(path) {
   }
 
   // ─── Date Detail Panel ────────────────────────────────────────────────────
+  function closeDateModal(){
+    const modal = document.getElementById('dateActionModal');
+    if(modal) modal.classList.remove('is-open');
+    selectedDate = null;
+    renderCalendar();
+  }
+  window.closeDateModal = closeDateModal;
+  function openDateModal(html){
+    const modal = document.getElementById('dateActionModal');
+    const body = document.getElementById('dateActionModalBody');
+    if(!modal || !body) return false;
+    body.innerHTML = html;
+    modal.classList.add('is-open');
+    return true;
+  }
+  document.querySelectorAll('[data-close-date-modal]').forEach(el=>el.addEventListener('click', closeDateModal));
+
   function openDatePanel(dateStr, slot) {
     const panel = document.getElementById('datePanelBox');
-    if(!panel) return;
+    slot = slot || {};
     const today_str = new Date().toISOString().slice(0,10);
     const isPast = dateStr < today_str;
+    const hasWorkDate = WORK_DATES[dateStr] !== undefined;
+    const hasDayoff = !!NANNY_DAYOFFS[dateStr];
     const ss = getSlotStyle(slot);
 
     // Build HTML for panel
@@ -434,9 +528,9 @@ function openTgLink(path) {
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:var(--s3);">
           <div>
             <div style="font-weight:800;font-size:15px;color:${ss.color};">${fmtRu(dateStr)}</div>
-            <div style="font-size:12px;margin-top:2px;color:${ss.color};">${ss.label}</div>
+            <div style="font-size:12px;margin-top:2px;color:${ss.color};">${hasWorkDate ? ss.label : (hasDayoff ? '🚫 Выходной няни' : 'Свободная дата')}</div>
           </div>
-          <button onclick="document.getElementById('datePanelBox').innerHTML='';selectedDate=null;renderCalendar();"
+          <button onclick="closeDateModal()"
             style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--c-text-2);padding:4px;">✕</button>
         </div>`;
 
@@ -471,7 +565,7 @@ function openTgLink(path) {
     html += `</div>`;
 
     // Actions section
-    if(isPast && slot.status !== 'cancelled') {
+    if(isPast && hasWorkDate && slot.status !== 'cancelled') {
       // Past date — show action forms
       html += `
         <div style="margin-top:var(--s3);padding:var(--s3);background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);">
@@ -539,16 +633,27 @@ function openTgLink(path) {
           }
         </div>`;
     } else if(!isPast && slot.status !== 'cancelled') {
-      // Future date — can cancel
+      // Future date — add/edit work time and optionally cancel existing date
       html += `
-        <div style="margin-top:var(--s3);">
-          <button onclick="cancelDate('${dateStr}')" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:8px 16px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;width:100%;">❌ Отменить эту дату</button>
-          <div style="font-size:11px;color:var(--c-text-muted);margin-top:4px;text-align:center;">Администратор будет уведомлён</div>
+        <div style="margin-top:var(--s3);padding:var(--s3);background:var(--c-surface);border:1px solid var(--c-border);border-radius:var(--r-md);">
+          <div style="font-weight:700;font-size:13px;margin-bottom:var(--s2);">${hasWorkDate ? 'Изменить время работы' : 'Добавить рабочую дату'}</div>
+          ${hasDayoff ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin-bottom:var(--s2);font-size:12px;color:#b91c1c;">У няни на эту дату отмечен выходной. Выберите другую дату или уточните у администратора.</div>` : `
+            <label style="font-size:12px;">Время работы</label>
+            <input id="workTime_${dateStr}" value="${slot.time || ''}" placeholder="09:00-18:00" style="width:100%;margin-top:4px;font-size:13px;" />
+            <button onclick="saveWorkTime('${dateStr}')" class="btn primary" style="width:100%;margin-top:8px;font-size:13px;padding:8px 14px;">${hasWorkDate ? 'Сохранить время' : 'Добавить дату'}</button>
+            <div style="font-size:11px;color:var(--c-text-muted);margin-top:6px;">Если няня уже назначена, новая дата уйдёт на подтверждение няне и администратору.</div>
+          `}
+          ${hasWorkDate ? `<button onclick="cancelDate('${dateStr}')" style="margin-top:10px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:8px 16px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;width:100%;">❌ Отменить эту дату</button>` : ''}
         </div>`;
+    } else if(!hasWorkDate) {
+      html += `<div style="margin-top:var(--s3);padding:var(--s3);background:var(--c-surface-2);border-radius:var(--r-md);font-size:13px;color:var(--c-text-muted);">На эту дату смены нет.</div>`;
     }
 
-    panel.innerHTML = html;
-    panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+    if(!openDateModal(html) && panel) {
+      panel.innerHTML = html;
+      panel.style.display = 'block';
+      panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
 
     // Load receipts for this date
     loadReceipts(dateStr, document.getElementById(`receiptList_${dateStr}`));
@@ -556,6 +661,32 @@ function openTgLink(path) {
   }
 
   // ─── Actions ──────────────────────────────────────────────────────────────
+  window.saveWorkTime = async function(dateStr) {
+    const timeValue = (document.getElementById(`workTime_${dateStr}`)?.value || '').trim();
+    if(!/^\d{2}:\d{2}\s*[-–]\s*\d{2}:\d{2}$/.test(timeValue)) {
+      showToast('Укажите время в формате 09:00-18:00');
+      return;
+    }
+    try {
+      const r = await fetch(`/api/client/${TOKEN}/date_action`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({date: dateStr, time: timeValue.replace('–','-').replace(/\s+/g,'')})
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error || 'Ошибка');
+      if(!WORK_DATES[dateStr]) WORK_DATES[dateStr] = {};
+      WORK_DATES[dateStr].time = timeValue.replace('–','-').replace(/\s+/g,'');
+      if(NANNY_ASSIGNED) {
+        WORK_DATES[dateStr].pending_admin = true;
+        WORK_DATES[dateStr].pending_nanny = true;
+      }
+      showToast('✅ Дата сохранена');
+      closeDateModal();
+      renderCalendar();
+      window.renderCalcSummary?.();
+    } catch(e) { showToast('❌ ' + e.message); }
+  };
+
   window.saveComment = async function(dateStr) {
     const comment = (document.getElementById(`clientComment_${dateStr}`)?.value || '').trim();
     try {
@@ -587,6 +718,7 @@ function openTgLink(path) {
       WORK_DATES[dateStr].client_actual_start = start;
       WORK_DATES[dateStr].client_actual_end = end;
       showToast('✅ Время сохранено');
+      window.renderCalcSummary?.();
     } catch(e) { showToast('❌ ' + e.message); }
   };
 
@@ -655,7 +787,9 @@ function openTgLink(path) {
       delete WORK_DATES[dateStr];
       selectedDate = null;
       document.getElementById('datePanelBox').innerHTML = '';
+      closeDateModal();
       renderCalendar();
+      window.renderCalcSummary?.();
       showToast('✅ Дата отменена');
     } catch(e) { showToast('❌ ' + e.message); }
   };
@@ -714,6 +848,12 @@ function openTgLink(path) {
   background: rgba(124,58,237,.12) !important;
   border: 2px solid rgba(124,58,237,.5) !important;
 }
+.lk-modal{position:fixed;inset:0;z-index:9998;display:none;align-items:center;justify-content:center;padding:16px;}
+.lk-modal.is-open{display:flex;}
+.lk-modal__backdrop{position:absolute;inset:0;background:rgba(15,23,42,.42);backdrop-filter:blur(3px);}
+.lk-modal__dialog{position:relative;width:min(560px,100%);max-height:88vh;overflow:auto;background:var(--c-surface);border-radius:var(--r-lg);box-shadow:0 24px 70px rgba(15,23,42,.26);padding:var(--s4);}
+.calc-filter{border:1px solid var(--c-border);background:var(--c-surface);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;color:var(--c-text-2);cursor:pointer;}
+.calc-filter.active{background:var(--c-teal);border-color:var(--c-teal);color:#fff;}
 @media (max-width: 860px) {
   .container > div[style*="grid-template-columns:1fr 1.5fr"] {
     grid-template-columns: 1fr !important;
