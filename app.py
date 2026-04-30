@@ -1674,20 +1674,34 @@ def create_app() -> Flask:
         if not date_str or not re.match(_d_re, date_str):
             return {'error': 'Неверный формат даты'}, 400
 
+        def _valid_hhmm(value):
+            if not value or not re.match(r'^[0-9]{2}:[0-9]{2}$', value):
+                return False
+            try:
+                hh, mm = [int(x) for x in value.split(':')]
+                return 0 <= hh <= 23 and 0 <= mm <= 59
+            except Exception:
+                return False
+
         time_start = (data.get('time_start') or '').strip()[:5]
         time_end = (data.get('time_end') or '').strip()[:5]
-        if (time_start and not re.match(r'^[0-9]{2}:[0-9]{2}$', time_start)) or (
-            time_end and not re.match(r'^[0-9]{2}:[0-9]{2}$', time_end)
-        ):
+        if bool(time_start) != bool(time_end):
+            return {'error': 'Выберите время начала и конца'}, 400
+        if (time_start and not _valid_hhmm(time_start)) or (time_end and not _valid_hhmm(time_end)):
             return {'error': 'Неверный формат времени'}, 400
-        time_value = (data.get('time') or '').strip()[:20]
+        if time_start and time_end and time_start == time_end:
+            return {'error': 'Время начала и конца не должно совпадать'}, 400
+        time_value = (data.get('time') or '').strip().replace('–', '-').replace('—', '-')[:20]
         if not time_value and time_start and time_end:
             time_value = f"{time_start}-{time_end}"
         comment = (data.get('comment') or '').strip()[:500]
         actual_start = (data.get('actual_start') or '').strip()[:5]
         actual_end = (data.get('actual_end') or '').strip()[:5]
         review_text = (data.get('review') or '').strip()[:1000]
-        review_stars = int(data.get('review_stars') or 5)
+        try:
+            review_stars = int(data.get('review_stars') or 5)
+        except Exception:
+            review_stars = 5
         review_stars = max(1, min(5, review_stars))
         today_str = datetime.datetime.utcnow().date().isoformat()
 

@@ -273,6 +273,20 @@ function openTgLink(path) {
     return `${start}-${end}`;
   }
 
+  function setInlineStatus(id, message, tone){
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.textContent = message || '';
+    el.className = 'inline-status ' + (tone || '');
+  }
+
+  async function parseJsonResponse(response){
+    const text = await response.text();
+    if(!text) return {};
+    try { return JSON.parse(text); }
+    catch(e) { return {error: text.slice(0, 240)}; }
+  }
+
   // ---- Cost calculator ----
   (function buildCalc(){
     function parseHours(timeStr){
@@ -653,11 +667,12 @@ function openTgLink(path) {
           <div style="font-weight:700;font-size:13px;margin-bottom:var(--s2);">${hasWorkDate ? 'Изменить время работы' : 'Добавить рабочую дату'}</div>
           ${hasDayoff ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;margin-bottom:var(--s2);font-size:12px;color:#b91c1c;">У няни на эту дату отмечен выходной. Выберите другую дату или уточните у администратора.</div>` : `
             <label style="font-size:12px;">Время работы</label>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
+            <div class="time-picker-grid" style="margin-top:4px;">
               <div><label style="font-size:11px;">С</label><input id="workStart_${dateStr}" type="time" step="300" value="${workRange.start}" style="width:100%;font-size:13px;" /></div>
               <div><label style="font-size:11px;">До</label><input id="workEnd_${dateStr}" type="time" step="300" value="${workRange.end}" style="width:100%;font-size:13px;" /></div>
             </div>
-            <button onclick="saveWorkTime('${dateStr}')" class="btn primary" style="width:100%;margin-top:8px;font-size:13px;padding:8px 14px;">${hasWorkDate ? 'Сохранить время' : 'Добавить дату'}</button>
+            <button type="button" onclick="saveWorkTime('${dateStr}', this)" class="btn primary" style="width:100%;margin-top:8px;font-size:13px;padding:8px 14px;">${hasWorkDate ? 'Сохранить время' : 'Добавить дату'}</button>
+            <div id="workStatus_${dateStr}" class="inline-status"></div>
             <div style="font-size:11px;color:var(--c-text-muted);margin-top:6px;">Если няня уже назначена, новая дата уйдёт на подтверждение няне и администратору.</div>
           `}
           ${hasWorkDate ? `<button onclick="cancelDate('${dateStr}')" style="margin-top:10px;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:8px 16px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;width:100%;">❌ Отменить эту дату</button>` : ''}
@@ -678,20 +693,33 @@ function openTgLink(path) {
   }
 
   // ─── Actions ──────────────────────────────────────────────────────────────
-  window.saveWorkTime = async function(dateStr) {
+  window.saveWorkTime = async function(dateStr, btn) {
     const start = (document.getElementById(`workStart_${dateStr}`)?.value || '').trim();
     const end = (document.getElementById(`workEnd_${dateStr}`)?.value || '').trim();
+    const statusId = `workStatus_${dateStr}`;
     if(!start || !end) {
+      setInlineStatus(statusId, 'Выберите время начала и конца.', 'error');
       showToast('Выберите время начала и конца');
       return;
     }
+    if(start === end) {
+      setInlineStatus(statusId, 'Начало и конец не должны совпадать.', 'error');
+      showToast('Выберите разные начало и конец');
+      return;
+    }
     const timeValue = joinTimeRange(start, end);
+    const oldText = btn ? btn.textContent : '';
+    if(btn) {
+      btn.disabled = true;
+      btn.textContent = 'Сохраняю...';
+    }
+    setInlineStatus(statusId, 'Сохраняю дату...', 'pending');
     try {
       const r = await fetch(`/api/client/${TOKEN}/date_action`, {
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({date: dateStr, time: timeValue, time_start: start, time_end: end})
       });
-      const d = await r.json();
+      const d = await parseJsonResponse(r);
       if(!r.ok) throw new Error(d.error || 'Ошибка');
       if(!WORK_DATES[dateStr]) WORK_DATES[dateStr] = {};
       WORK_DATES[dateStr].time = timeValue;
@@ -699,11 +727,19 @@ function openTgLink(path) {
         WORK_DATES[dateStr].pending_admin = true;
         WORK_DATES[dateStr].pending_nanny = true;
       }
+      setInlineStatus(statusId, 'Дата сохранена.', 'success');
       showToast('✅ Дата сохранена');
-      closeDateModal();
       renderCalendar();
       window.renderCalcSummary?.();
-    } catch(e) { showToast('❌ ' + e.message); }
+      setTimeout(closeDateModal, 450);
+    } catch(e) {
+      setInlineStatus(statusId, e.message || 'Ошибка сохранения.', 'error');
+      showToast('❌ ' + (e.message || 'Ошибка сохранения'));
+      if(btn) {
+        btn.disabled = false;
+        btn.textContent = oldText || 'Сохранить';
+      }
+    }
   };
 
   window.saveComment = async function(dateStr) {
@@ -873,6 +909,12 @@ function openTgLink(path) {
 .lk-modal__dialog{position:relative;width:min(560px,100%);max-height:88vh;overflow:auto;background:var(--c-surface);border-radius:var(--r-lg);box-shadow:0 24px 70px rgba(15,23,42,.26);padding:var(--s4);}
 .calc-filter{border:1px solid var(--c-border);background:var(--c-surface);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;color:var(--c-text-2);cursor:pointer;}
 .calc-filter.active{background:var(--c-teal);border-color:var(--c-teal);color:#fff;}
+.time-picker-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.time-picker-grid input[type="time"]{min-height:42px;border:1.5px solid var(--c-border-str);border-radius:8px;padding:8px 10px;background:var(--c-surface);font-weight:700;color:var(--c-text);}
+.inline-status{min-height:18px;margin-top:6px;font-size:12px;font-weight:700;color:var(--c-text-muted);}
+.inline-status.pending{color:#0d9488;}
+.inline-status.success{color:#15803d;}
+.inline-status.error{color:#dc2626;}
 @media (max-width: 860px) {
   .container > div[style*="grid-template-columns:1fr 1.5fr"] {
     grid-template-columns: 1fr !important;
