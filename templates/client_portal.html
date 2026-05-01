@@ -168,8 +168,7 @@
               <span class="badge badge--success" style="margin-top:6px;">✓ Назначена</span>
             </div>
           </div>
-          <a class="btn secondary" href="#"
-             onclick="openTgLink('/nanny/{{ nanny.portal_token }}'); return false;"
+          <a class="btn secondary" href="/nanny/{{ nanny.portal_token }}"
              style="margin-top:var(--s3); display:flex; align-items:center; justify-content:center; gap:6px; font-size:13px;">
             Профиль няни →
           </a>
@@ -234,14 +233,19 @@
 </div>
 
 <script>
-// Open link properly in Telegram WebView
+// Internal pages stay in the current WebView/browser; files still open through Telegram/browser.
 function openTgLink(path) {
   var base = window.location.origin;
-  var url = path.startsWith('http') ? path : base + path;
+  var url = new URL(path, base);
+  var isInternalPage = url.origin === window.location.origin && !/\.(pdf|png|jpe?g|webp)(\?|$)/i.test(url.pathname);
+  if (isInternalPage) {
+    window.location.href = url.pathname + url.search + url.hash;
+    return;
+  }
   if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
-    window.Telegram.WebApp.openLink(url);
+    window.Telegram.WebApp.openLink(url.href);
   } else {
-    window.open(url, '_blank');
+    window.open(url.href, '_blank', 'noopener');
   }
 }
 

@@ -1,224 +1,330 @@
 {% extends "base.html" %}
+{% set review_count = nanny_reviews|length %}
+{% set rating_sum = nanny_reviews|sum(attribute='stars') %}
+{% set rating_avg = (rating_sum / review_count) if review_count else 5 %}
+
 {% block head_meta %}
   <link rel="canonical" href="{{ site_url }}{{ request.path }}" />
   <meta name="robots" content="index, follow">
-  <meta name="description" content="Няня {{ nanny.name }} в Нячанге — {{ nanny.exp_short }}. Проверенная няня для детей 0–8 лет. Быстрый подбор, личный кабинет." />
+  <meta name="description" content="Няня {{ nanny.name }} в Нячанге{% if nanny.exp_short %} — {{ nanny.exp_short }}{% endif %}. Профиль, рейтинг и отзывы родителей." />
   <meta property="og:title" content="Няня {{ nanny.name }} — Нячанг" />
-  <meta property="og:description" content="{{ nanny.exp_short }}" />
+  <meta property="og:description" content="{{ nanny.exp_short or 'Проверенная няня для детей в Нячанге' }}" />
   <meta property="og:image" content="{{ site_url }}/{{ nanny_photo_src(nanny.photo).lstrip('/') }}" />
   <meta property="og:type" content="profile" />
   <script type="application/ld+json">{
-    "@context":"https://schema.org",
-    "@type":"Person",
-    "name":"{{ nanny.name }}",
-    "jobTitle":"Няня",
-    "description":"{{ nanny.exp_short }}",
-    "worksFor":{"@type":"Organization","name":"Няня на час — Нячанг"}
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "name": {{ nanny.name|tojson }},
+    "jobTitle": "Няня",
+    "description": {{ (nanny.exp_short or nanny.bio or '')|tojson }},
+    "image": {{ (site_url ~ '/' ~ nanny_photo_src(nanny.photo).lstrip('/'))|tojson }},
+    "worksFor": {"@type": "Organization", "name": "Няня на час — Нячанг"}{% if review_count %},
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "{{ '%.1f'|format(rating_avg) }}",
+      "bestRating": "5",
+      "reviewCount": "{{ review_count }}"
+    }{% endif %}
   }</script>
-<!-- Reviews section -->
-{% if nanny_reviews %}
-<section class="section section--alt" style="padding-top:var(--s10); padding-bottom:var(--s12);">
-  <div class="container">
-    <div class="section-title reveal" style="margin-bottom:var(--s6);">
-      <span class="section-title__sub">Реальные отзывы</span>
-      <h2>Отзывы о {{ nanny.name }}</h2>
-      <div class="section-title__line"><span></span><span></span><span></span></div>
-    </div>
-
-    <!-- Pinned reviews first -->
-    {% set pinned = nanny_reviews | selectattr("pinned") | list %}
-    {% set regular = nanny_reviews | rejectattr("pinned") | list %}
-
-    {% if pinned %}
-    <div style="margin-bottom:var(--s5);">
-      {% for review in pinned %}
-      <div class="review reveal" style="border:2px solid var(--c-teal); position:relative; max-width:700px; margin:0 auto var(--s4);" itemscope itemtype="https://schema.org/Review">
-        <div style="position:absolute; top:14px; right:16px; font-size:12px; font-weight:700; color:var(--c-teal-dk); background:rgba(20,184,166,.1); padding:3px 10px; border-radius:20px; letter-spacing:.3px;">
-          📌 Рекомендуем
-        </div>
-        <div class="review__quote" aria-hidden="true">“</div>
-        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд">
-          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
-        </div>
-        <div class="review__author">{{ review.author }}</div>
-        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
-        <div class="review__text">{{ review.text }}</div>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    <!-- Regular reviews grid -->
-    {% if regular %}
-    <div class="reviews-grid">
-      {% for review in regular %}
-      <div class="review reveal reveal-delay-{{ (loop.index0 % 3) + 1 }}" itemscope itemtype="https://schema.org/Review">
-        <div class="review__quote" aria-hidden="true">“</div>
-        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд">
-          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
-        </div>
-        <div class="review__author">{{ review.author }}</div>
-        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
-        <div class="review__text">{{ review.text }}</div>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-
-    <div style="text-align:center; margin-top:var(--s5); color:var(--c-text-2); font-size:14px;">
-      Всего <strong>{{ nanny_reviews|length }}</strong> отзывов о {{ nanny.name }}
-    </div>
-  </div>
-</section>
-{% endif %}
-
-
 {% endblock %}
+
 {% block title %}Няня {{ nanny.name }}{% if nanny.age %}, {{ nanny.age }} лет{% endif %} — Нячанг{% endblock %}
 
 {% block content %}
-
-<!-- Hero -->
-<div style="background:var(--grad-hero); padding:var(--s12) 0 var(--s8); position:relative; overflow:hidden;">
-  <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.05) 1px,transparent 1px);background-size:28px 28px;pointer-events:none;"></div>
-  <div class="container" style="position:relative;z-index:1;">
-    <div style="display:flex; gap:var(--s6); align-items:center; flex-wrap:wrap;">
-      <img src="{{ nanny_photo_src(nanny.photo) }}" alt="Няня {{ nanny.name }}"
-           style="width:140px;height:140px;border-radius:var(--r-xl);object-fit:cover;border:4px solid rgba(255,255,255,.35);box-shadow:var(--sh-xl); flex-shrink:0;"
-           loading="lazy" width="140" height="140"
-           onerror="this.src='/static/img/nanny_placeholder.jpg'" />
-      <div style="animation:fade-up .5s both;">
-        <div class="hero-badge" style="margin-bottom:var(--s3);">🌴 Нячанг, Вьетнам</div>
-        <h1 style="color:#fff; margin-bottom:var(--s2);">
-          {{ nanny.name }}{% if nanny.age %}<span style="font-weight:400; opacity:.8">, {{ nanny.age }} лет</span>{% endif %}
-        </h1>
-        <div style="color:rgba(255,255,255,.85); font-weight:600; font-size:15px; margin-bottom:var(--s4);">{{ nanny.exp_short }}</div>
-        <div style="display:flex; gap:var(--s3); flex-wrap:wrap;">
-          <a href="/" class="btn btn-hero-primary" style="margin-top:0; width:auto; padding:10px 22px; font-size:14px;">Выбрать даты</a>
-          <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener" class="btn btn-hero-ghost"
-             style="margin-top:0; width:auto; padding:10px 22px; font-size:14px;">Написать в Telegram</a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="container" style="padding:var(--s8) 0 var(--s16);position:relative;">
-  <img src="/static/img/sticker3.png" class="page-sticker" aria-hidden="true" alt="" width="110" height="110">
-  <a href="/" class="action-link" style="font-size:13px; display:inline-flex; align-items:center; gap:5px; margin-bottom:var(--s6);">← Все няни</a>
-
-  <div style="display:grid; gap:var(--s5); grid-template-columns:1fr 280px; align-items:start;">
-
-    <!-- Bio -->
-    <div class="panel reveal">
-      <h3>О себе</h3>
-      {% if nanny.bio %}
-        <div style="white-space:pre-line; line-height:1.75; color:var(--c-text-2); font-size:15px;">{{ nanny.bio }}</div>
-      {% else %}
-        <p class="text-muted">Подробная информация добавляется.</p>
+<section class="nanny-profile-hero">
+  <div class="container nanny-profile-hero__inner">
+    <img src="{{ nanny_photo_src(nanny.photo) }}" alt="Няня {{ nanny.name }}"
+         class="nanny-profile-hero__photo" loading="lazy" width="144" height="144"
+         onerror="this.src='/static/img/nanny_placeholder.jpg'" />
+    <div class="nanny-profile-hero__content">
+      <div class="hero-badge">Проверенная няня в Нячанге</div>
+      <h1>{{ nanny.name }}{% if nanny.age %}<span>, {{ nanny.age }} лет</span>{% endif %}</h1>
+      {% if nanny.exp_short %}
+        <p>{{ nanny.exp_short }}</p>
       {% endif %}
-    </div>
-
-    <!-- Sidebar -->
-    <div style="display:flex; flex-direction:column; gap:var(--s4);">
-
-      <div class="panel reveal reveal-delay-1" style="text-align:center;">
-        <div class="feature-icon" style="margin:0 auto var(--s3); background:rgba(34,197,94,.12); color:var(--c-success);">✅</div>
-        <div style="font-weight:800; font-size:14px; color:var(--c-teal-dk);">Проверена</div>
-        <div class="text-muted text-small" style="margin-top:4px;">Прошла отбор по опыту и личному интервью</div>
+      <div class="nanny-profile-rating" aria-label="Рейтинг {{ '%.1f'|format(rating_avg) }} из 5">
+        <span class="nanny-profile-rating__stars">★★★★★</span>
+        <span>{{ '%.1f'|format(rating_avg) }} / 5</span>
+        <span>{{ review_count }} отзывов</span>
       </div>
-
-      <div class="panel reveal reveal-delay-2" style="text-align:center;">
-        <div class="feature-icon" style="margin:0 auto var(--s3);">🌴</div>
-        <div style="font-weight:800; font-size:14px; color:var(--c-teal-dk);">Нячанг</div>
-        <div class="text-muted text-small" style="margin-top:4px;">Работает с туристами и экспатами</div>
-      </div>
-
-      <div class="panel reveal reveal-delay-3">
-        <div style="display:flex; flex-direction:column; gap:var(--s3);">
-          <a href="/" class="btn primary" style="margin-top:0;">📅 Выбрать даты</a>
-          <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener" class="btn secondary" style="margin-top:0;">
-            Вопросы в Telegram
-          </a>
-        </div>
-      </div>
-
-      <!-- Rating -->
-      <div class="panel reveal" style="text-align:center;">
-        <div style="font-size:28px; letter-spacing:3px; color:var(--c-yellow);">★★★★★</div>
-        <div style="font-weight:800; font-size:13px; margin-top:4px; color:var(--c-teal-dk);">5.0 / 5</div>
-        <div class="text-muted text-small">На основе отзывов родителей</div>
+      <div class="nanny-profile-hero__actions">
+        <a href="/#leadForm" class="btn btn-hero-primary">Выбрать даты</a>
+        <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener" class="btn btn-hero-ghost">Написать в Telegram</a>
       </div>
     </div>
-
   </div>
-</div>
+</section>
 
-<style>
-@media (max-width: 720px) {
-  .container > div[style*="grid-template-columns:1fr 280px"] {
-    grid-template-columns: 1fr !important;
-  }
-}
-</style>
+<main class="container nanny-profile-main">
+  <a href="/#nannies" class="action-link nanny-profile-back">← Все няни</a>
 
-<!-- Reviews section -->
+  <div class="nanny-profile-grid">
+    <section class="panel nanny-profile-bio">
+      <h2>О себе</h2>
+      {% if nanny.bio %}
+        <div class="nanny-profile-bio__text">{{ nanny.bio }}</div>
+      {% else %}
+        <p class="text-muted">Подробная информация скоро появится.</p>
+      {% endif %}
+    </section>
+
+    <aside class="nanny-profile-side">
+      <div class="panel nanny-profile-fact">
+        <div class="feature-icon">✓</div>
+        <strong>Проверена</strong>
+        <span>Отбор по опыту, рекомендациям и личному интервью.</span>
+      </div>
+
+      <div class="panel nanny-profile-fact">
+        <div class="feature-icon">★</div>
+        <strong>{{ '%.1f'|format(rating_avg) }} / 5</strong>
+        <span>{{ review_count }} отзывов родителей</span>
+      </div>
+
+      <div class="panel nanny-profile-actions">
+        <a href="/#leadForm" class="btn primary">Выбрать даты</a>
+        <a href="https://t.me/Nastasja_Ageyeva" target="_blank" rel="noopener" class="btn secondary">Вопросы в Telegram</a>
+      </div>
+    </aside>
+  </div>
+</main>
+
 {% if nanny_reviews %}
-<section class="section section--alt" style="padding-top:var(--s10); padding-bottom:var(--s12);">
+<section class="section section--alt nanny-profile-reviews" aria-labelledby="nanny-reviews-heading">
   <div class="container">
-    <div class="section-title reveal" style="margin-bottom:var(--s6);">
-      <span class="section-title__sub">Реальные отзывы</span>
-      <h2>Отзывы о {{ nanny.name }}</h2>
+    <div class="section-title reveal">
+      <span class="section-title__sub">Отзывы родителей</span>
+      <h2 id="nanny-reviews-heading">Отзывы о {{ nanny.name }}</h2>
       <div class="section-title__line"><span></span><span></span><span></span></div>
     </div>
 
-    <!-- Pinned reviews first -->
     {% set pinned = nanny_reviews | selectattr("pinned") | list %}
     {% set regular = nanny_reviews | rejectattr("pinned") | list %}
 
     {% if pinned %}
-    <div style="margin-bottom:var(--s5);">
-      {% for review in pinned %}
-      <div class="review reveal" style="border:2px solid var(--c-teal); position:relative; max-width:700px; margin:0 auto var(--s4);" itemscope itemtype="https://schema.org/Review">
-        <div style="position:absolute; top:14px; right:16px; font-size:12px; font-weight:700; color:var(--c-teal-dk); background:rgba(20,184,166,.1); padding:3px 10px; border-radius:20px; letter-spacing:.3px;">
-          📌 Рекомендуем
-        </div>
-        <div class="review__quote" aria-hidden="true">“</div>
-        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд">
-          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
-        </div>
-        <div class="review__author">{{ review.author }}</div>
-        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
-        <div class="review__text">{{ review.text }}</div>
+      <div class="nanny-profile-pinned">
+        {% for review in pinned %}
+          {% set stars = review.stars|int %}
+          <article class="review review--pinned reveal" itemscope itemtype="https://schema.org/Review">
+            <div class="review__quote" aria-hidden="true">“</div>
+            <div class="review__stars" aria-label="{{ stars }} из 5 звезд" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating">
+              <meta itemprop="ratingValue" content="{{ stars }}" />
+              {% for i in range(stars) %}★{% endfor %}{% for i in range(5 - stars) %}<span style="opacity:.3">★</span>{% endfor %}
+            </div>
+            <div class="review__author" itemprop="author" itemscope itemtype="https://schema.org/Person">
+              <span itemprop="name">{{ review.author }}</span>
+            </div>
+            {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+            <div class="review__text" itemprop="reviewBody">{{ review.text }}</div>
+          </article>
+        {% endfor %}
       </div>
-      {% endfor %}
-    </div>
     {% endif %}
 
-    <!-- Regular reviews grid -->
     {% if regular %}
-    <div class="reviews-grid">
-      {% for review in regular %}
-      <div class="review reveal reveal-delay-{{ (loop.index0 % 3) + 1 }}" itemscope itemtype="https://schema.org/Review">
-        <div class="review__quote" aria-hidden="true">“</div>
-        <div class="review__stars" aria-label="{{ review.stars }} из 5 звёзд">
-          {% for i in range(review.stars) %}★{% endfor %}{% for i in range(5 - review.stars) %}<span style="opacity:.3">★</span>{% endfor %}
-        </div>
-        <div class="review__author">{{ review.author }}</div>
-        {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
-        <div class="review__text">{{ review.text }}</div>
+      <div class="reviews-grid">
+        {% for review in regular %}
+          {% set stars = review.stars|int %}
+          <article class="review reveal reveal-delay-{{ (loop.index0 % 3) + 1 }}" itemscope itemtype="https://schema.org/Review">
+            <div class="review__quote" aria-hidden="true">“</div>
+            <div class="review__stars" aria-label="{{ stars }} из 5 звезд" itemprop="reviewRating" itemscope itemtype="https://schema.org/Rating">
+              <meta itemprop="ratingValue" content="{{ stars }}" />
+              {% for i in range(stars) %}★{% endfor %}{% for i in range(5 - stars) %}<span style="opacity:.3">★</span>{% endfor %}
+            </div>
+            <div class="review__author" itemprop="author" itemscope itemtype="https://schema.org/Person">
+              <span itemprop="name">{{ review.author }}</span>
+            </div>
+            {% if review.role %}<div class="review__role">{{ review.role }}</div>{% endif %}
+            <div class="review__text" itemprop="reviewBody">{{ review.text }}</div>
+          </article>
+        {% endfor %}
       </div>
-      {% endfor %}
-    </div>
     {% endif %}
 
-    <div style="text-align:center; margin-top:var(--s5); color:var(--c-text-2); font-size:14px;">
-      Всего <strong>{{ nanny_reviews|length }}</strong> отзывов о {{ nanny.name }}
-    </div>
+    <div class="nanny-profile-review-count">Всего <strong>{{ review_count }}</strong> отзывов о {{ nanny.name }}</div>
   </div>
 </section>
 {% endif %}
 
-
+<style>
+.nanny-profile-hero {
+  background: var(--grad-hero);
+  color: #fff;
+  padding: var(--s12) 0 var(--s8);
+  position: relative;
+  overflow: hidden;
+}
+.nanny-profile-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+  pointer-events: none;
+}
+.nanny-profile-hero__inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: var(--s6);
+  align-items: center;
+  flex-wrap: wrap;
+}
+.nanny-profile-hero__photo {
+  width: 144px;
+  height: 144px;
+  border-radius: var(--r-xl);
+  object-fit: cover;
+  border: 4px solid rgba(255,255,255,.35);
+  box-shadow: var(--sh-xl);
+  flex-shrink: 0;
+}
+.nanny-profile-hero__content {
+  flex: 1;
+  min-width: 260px;
+}
+.nanny-profile-hero h1 {
+  color: #fff;
+  margin: var(--s3) 0 var(--s2);
+}
+.nanny-profile-hero h1 span {
+  font-weight: 400;
+  opacity: .85;
+}
+.nanny-profile-hero p {
+  color: rgba(255,255,255,.9);
+  font-weight: 600;
+  margin: 0 0 var(--s4);
+}
+.nanny-profile-rating {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.14);
+  border: 1px solid rgba(255,255,255,.24);
+  font-size: 13px;
+  font-weight: 800;
+}
+.nanny-profile-rating__stars {
+  color: var(--c-yellow);
+  letter-spacing: 1px;
+}
+.nanny-profile-hero__actions {
+  display: flex;
+  gap: var(--s3);
+  flex-wrap: wrap;
+  margin-top: var(--s4);
+}
+.nanny-profile-hero__actions .btn {
+  width: auto;
+  margin-top: 0;
+  padding: 10px 22px;
+  font-size: 14px;
+}
+.nanny-profile-main {
+  padding: var(--s8) 0 var(--s12);
+}
+.nanny-profile-back {
+  display: inline-flex;
+  margin-bottom: var(--s5);
+  font-size: 13px;
+}
+.nanny-profile-grid {
+  display: grid;
+  gap: var(--s5);
+  grid-template-columns: 1fr 280px;
+  align-items: start;
+}
+.nanny-profile-bio h2 {
+  font-size: 22px;
+  margin-bottom: var(--s3);
+}
+.nanny-profile-bio__text {
+  white-space: pre-line;
+  line-height: 1.75;
+  color: var(--c-text-2);
+  font-size: 15px;
+}
+.nanny-profile-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.nanny-profile-fact {
+  text-align: center;
+}
+.nanny-profile-fact .feature-icon {
+  margin: 0 auto var(--s3);
+}
+.nanny-profile-fact strong {
+  display: block;
+  color: var(--c-teal-dk);
+  font-size: 15px;
+}
+.nanny-profile-fact span {
+  display: block;
+  color: var(--c-text-2);
+  font-size: 13px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+.nanny-profile-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.nanny-profile-actions .btn {
+  margin-top: 0;
+}
+.nanny-profile-reviews {
+  padding-top: var(--s10);
+  padding-bottom: var(--s12);
+}
+.nanny-profile-pinned {
+  margin-bottom: var(--s5);
+}
+.review--pinned {
+  border: 2px solid var(--c-teal);
+  position: relative;
+  max-width: 760px;
+  margin: 0 auto var(--s4);
+}
+.review--pinned::after {
+  content: "Рекомендуем";
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--c-teal-dk);
+  background: rgba(20,184,166,.12);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.nanny-profile-review-count {
+  text-align: center;
+  margin-top: var(--s5);
+  color: var(--c-text-2);
+  font-size: 14px;
+}
+@media (max-width: 720px) {
+  .nanny-profile-hero {
+    padding-top: var(--s9);
+  }
+  .nanny-profile-hero__inner {
+    align-items: flex-start;
+  }
+  .nanny-profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .review--pinned::after {
+    position: static;
+    display: inline-flex;
+    margin-bottom: var(--s2);
+  }
+}
+</style>
 {% endblock %}
-

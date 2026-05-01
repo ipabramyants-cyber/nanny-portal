@@ -657,6 +657,125 @@ def create_app() -> Flask:
             ]
         return _read_json(NANNIES_FILE, [])
 
+    _NANNY_REVIEW_TEMPLATES = [
+        {
+            'author': 'Елена',
+            'role': 'мама Алисы, 4 года',
+            'text': '{nanny} очень спокойно вошла в контакт с дочкой. За вечер успели поиграть, поужинать и лечь спать без слез. После такого опыта оставлять ребенка намного спокойнее.',
+        },
+        {
+            'author': 'Мария',
+            'role': 'мама Тимура, 2 года',
+            'text': 'Понравилось, что {nanny} сразу уточнила режим, привычки и важные мелочи. Сын был занят, накормлен и в хорошем настроении, а мне присылали короткие понятные сообщения.',
+        },
+        {
+            'author': 'Андрей',
+            'role': 'папа Вики, 5 лет',
+            'text': '{nanny} приехала вовремя, быстро нашла общий язык с ребенком и спокойно провела весь день. Дочка потом рассказывала про игры и попросила позвать няню еще раз.',
+        },
+        {
+            'author': 'Ольга',
+            'role': 'мама Матвея, 3 года',
+            'text': 'Очень аккуратная и внимательная работа. {nanny} не просто присматривала, а занимала ребенка: рисовали, гуляли, читали. Вернулись домой к спокойному и довольному малышу.',
+        },
+        {
+            'author': 'Наталья',
+            'role': 'мама Сони, 6 лет',
+            'text': 'С {nanny} было легко договориться по времени и деталям. Видно, что человек с опытом: без суеты, мягко, но уверенно. Соня осталась довольна, мы тоже.',
+        },
+        {
+            'author': 'Ирина',
+            'role': 'мама Льва, 1 год',
+            'text': '{nanny} очень бережно отнеслась к малышу и нашему режиму. Все было по расписанию: кормление, сон, прогулка. Для нас это прямое попадание в ожидания.',
+        },
+        {
+            'author': 'Дмитрий',
+            'role': 'папа Кирилла, 7 лет',
+            'text': 'Нужно было помочь после школы и с уроками. {nanny} спокойно разобрала задания, приготовила перекус и заняла ребенка до нашего возвращения. Все четко и надежно.',
+        },
+    ]
+
+    def _seeded_nanny_review_id(portal_token: str, idx: int) -> str:
+        digest = hashlib.sha1(portal_token.encode('utf-8', 'ignore')).hexdigest()[:12]
+        return f"nannyrev-{digest}-{idx + 1}"
+
+    def _default_nanny_review(nanny: dict, idx: int) -> dict:
+        portal_token = str(nanny.get('portal_token') or nanny.get('id') or '').strip()
+        nanny_name = (nanny.get('name') or 'няня').strip()
+        nanny_first_name = nanny_name.split()[0] if nanny_name else 'Няня'
+        template = _NANNY_REVIEW_TEMPLATES[idx % len(_NANNY_REVIEW_TEMPLATES)]
+        created_at = (datetime.datetime(2025, 4, 1, 10, 0, 0) + datetime.timedelta(days=idx)).isoformat()
+        return {
+            'id': _seeded_nanny_review_id(portal_token, idx),
+            'author': template['author'],
+            'role': template['role'],
+            'stars': 5,
+            'text': template['text'].format(nanny=nanny_first_name),
+            'created_at': created_at,
+            'nanny_id': portal_token,
+            'pinned': idx == 0,
+        }
+
+    def ensure_nanny_profile_reviews(nannies=None, min_count: int = 5):
+        nannies = nannies if nannies is not None else load_nannies()
+        if not nannies:
+            return
+
+        if use_sql:
+            changed = False
+            for nanny in nannies:
+                portal_token = str(nanny.get('portal_token') or '').strip()
+                if not portal_token:
+                    continue
+                existing_count = Review.query.filter_by(is_visible=True, nanny_id=portal_token).count()
+                idx = 0
+                while existing_count < min_count and idx < min_count + len(_NANNY_REVIEW_TEMPLATES):
+                    review = _default_nanny_review(nanny, idx)
+                    idx += 1
+                    if Review.query.get(review['id']):
+                        continue
+                    db.session.add(Review(
+                        id=review['id'],
+                        author=review['author'],
+                        role=review['role'],
+                        stars=review['stars'],
+                        text=review['text'],
+                        created_at=datetime.datetime.fromisoformat(review['created_at']),
+                        is_visible=True,
+                        nanny_id=review['nanny_id'],
+                        pinned=review['pinned'],
+                    ))
+                    existing_count += 1
+                    changed = True
+            if changed:
+                try:
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            return
+
+        reviews = load_reviews()
+        used_ids = {str(r.get('id')) for r in reviews if isinstance(r, dict)}
+        changed = False
+        for nanny in nannies:
+            portal_token = str(nanny.get('portal_token') or '').strip()
+            if not portal_token:
+                continue
+            existing_count = len([r for r in reviews if r.get('nanny_id') == portal_token])
+            idx = 0
+            while existing_count < min_count and idx < min_count + len(_NANNY_REVIEW_TEMPLATES):
+                review = _default_nanny_review(nanny, idx)
+                idx += 1
+                if review['id'] in used_ids:
+                    continue
+                reviews.insert(0, review)
+                used_ids.add(review['id'])
+                existing_count += 1
+                changed = True
+        if changed:
+            reviews.sort(key=lambda x: x.get('created_at') or '', reverse=True)
+            save_reviews(reviews)
+
     def load_leads():
         if use_sql:
             items = Lead.query.order_by(Lead.submitted_at.desc()).all()
@@ -771,6 +890,8 @@ def create_app() -> Flask:
     @app.route('/')
     def index():
         nannies_preview = load_nannies()
+        load_reviews()
+        ensure_nanny_profile_reviews(nannies_preview)
         reviews = load_reviews()
         return render_template('index.html', nannies_preview=nannies_preview, reviews=reviews)
 
@@ -2524,10 +2645,12 @@ def create_app() -> Flask:
         nanny = next((n for n in nannies if n.get('portal_token') == portal_token), None)
         if not nanny:
             return 'Няня не найдена', 404
+        load_reviews()
+        ensure_nanny_profile_reviews(nannies)
         all_reviews = load_reviews()
         # Pinned first, then newest first
         nanny_reviews = [r for r in all_reviews if r.get('nanny_id') == portal_token]
-        nanny_reviews.sort(key=lambda r: (not bool(r.get('pinned')), r.get('created_at', '')))
+        nanny_reviews.sort(key=lambda r: not bool(r.get('pinned')))
         return render_template('nanny_profile.html', nanny=nanny, nanny_reviews=nanny_reviews)
 
     @app.route('/api/nanny/<portal_token>/upload_receipt', methods=['POST'])

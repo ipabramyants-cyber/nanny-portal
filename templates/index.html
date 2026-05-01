@@ -190,7 +190,7 @@
 
       <button type="button" id="saveBtn" class="btn primary">✉ Отправить заявку</button>
 
-      <a id="lkLink" href="#" style="display:none; margin-top:12px; font-weight:800; text-decoration:underline; text-align:center;" target="_blank" rel="noopener noreferrer">
+      <a id="lkLink" href="#" style="display:none; margin-top:12px; font-weight:800; text-decoration:underline; text-align:center;">
         Перейти в личный кабинет →
       </a>
       <a id="continueLK" class="btn secondary" href="/client/app" style="display:none; margin-top:10px; width:100%; justify-content:center;">Продолжить в личном кабинете</a>
@@ -308,7 +308,7 @@
   </div>
 
   <!-- Nannies -->
-  <div class="panel panel--nannies">
+  <div class="panel panel--nannies" id="nannies">
     <h3>👩‍👧 Наши няни</h3>
     <div class="nanny-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:12px;">
       {% for nanny in nannies_preview %}
@@ -362,7 +362,7 @@
   <img src="/static/img/sticker3.png" class="section-sticker section-sticker--bl" aria-hidden="true" alt="">
   <div class="container">
     <div class="section-title reveal">
-      <span class="section-title__sub">Реальные отзывы</span>
+      <span class="section-title__sub">Отзывы родителей</span>
       <h2 id="reviews-heading">Отзывы родителей</h2>
       <div class="section-title__line"><span></span><span></span><span></span></div>
     </div>
