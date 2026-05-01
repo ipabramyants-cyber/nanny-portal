@@ -1093,49 +1093,6 @@ textarea { resize: vertical; }
   transform: translateY(-1px);
 }
 
-/* ── FLOATING CHAT BUTTON ─────────────────────────────────── */
-.chat-button {
-  position: fixed;
-  right: 20px;
-  bottom: 24px;
-  background: var(--grad-primary);
-  color: #fff;
-  padding: 13px 20px;
-  border-radius: var(--r-pill);
-  font-family: var(--f-display);
-  font-weight: 800;
-  font-size: 14px;
-  box-shadow: 0 8px 28px rgba(1,107,130,.45);
-  z-index: 200;
-  transition: all var(--tr-bounce);
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  text-decoration: none;
-}
-
-.chat-button::before {
-  content: '';
-  width: 9px; height: 9px;
-  border-radius: 50%;
-  background: var(--c-lime);
-  flex-shrink: 0;
-  animation: pulse-dot 2.2s ease-in-out infinite;
-  box-shadow: 0 0 0 0 rgba(163,207,16,.5);
-}
-
-@keyframes pulse-dot {
-  0%   { box-shadow: 0 0 0 0 rgba(163,207,16,.6); }
-  70%  { box-shadow: 0 0 0 8px rgba(163,207,16,0); }
-  100% { box-shadow: 0 0 0 0 rgba(163,207,16,0); }
-}
-
-.chat-button:hover {
-  transform: translateY(-3px) scale(1.03);
-  box-shadow: 0 14px 40px rgba(1,107,130,.52);
-  color: #fff;
-}
-
 /* ── SPLASH LOADER ────────────────────────────────────────── */
 .splash {
   position: fixed;
@@ -1555,9 +1512,6 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
   .hero-stat__label { font-size: 10px; }
   .hero-cta { flex-direction: column; align-items: center; }
   .hero-cta .btn { width: 100%; max-width: 280px; }
-  .chat-button .chat-label { display: none; }
-  .chat-button { padding: 14px; border-radius: 50%; width: 52px; height: 52px; justify-content: center; bottom: 20px; right: 16px; }
-  .chat-button::before { margin: 0; }
   .hero-banner { padding: 28px 0 24px; }
   .features, .reviews-grid { grid-template-columns: 1fr; }
   .data-table { font-size: 11px; }
@@ -1566,7 +1520,6 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
 
 /* ── TELEGRAM MINI-APP OVERRIDES ──────────────────────────── */
 .tg-app .header { position: relative; }
-.tg-app .chat-button { display: none; }
 .tg-app .footer { display: none; }
 .tg-app .hero-banner { padding: var(--s6) 0; }
 .tg-app .hero-stats { display: none; }
@@ -1778,17 +1731,6 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
   z-index: 0;
   opacity: .4;
 }
-
-/* ── CHAT button — wiggle on load ────────────────────────── */
-.chat-button {
-  animation: chat-wiggle 1s 2s ease-in-out 2;
-}
-@keyframes chat-wiggle {
-  0%,100% { transform: rotate(0deg); }
-  20%      { transform: rotate(-8deg) scale(1.05); }
-  60%      { transform: rotate(6deg) scale(1.05); }
-}
-.chat-button:hover { animation: none; }
 
 /* ── FOOTER links — slide underline ──────────────────────── */
 .social-icon {
