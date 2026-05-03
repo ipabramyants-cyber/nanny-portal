@@ -202,6 +202,15 @@ def create_app() -> Flask:
                         "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS post_reminder_sent_at TIMESTAMP"
                     ))
                     _conn.execute(db.text(
+                        "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS pre2h_reminder_sent_at TIMESTAMP"
+                    ))
+                    _conn.execute(db.text(
+                        "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS nanny_missing_fact_sent_at TIMESTAMP"
+                    ))
+                    _conn.execute(db.text(
+                        "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS review_reminder_sent_at TIMESTAMP"
+                    ))
+                    _conn.execute(db.text(
                         "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS nanny_actual_note TEXT"
                     ))
                     _conn.execute(db.text(
@@ -345,6 +354,7 @@ def create_app() -> Flask:
     ASSIGNMENTS_FILE = os.path.join(app.config['DATA_DIR'], 'assignments.json')
     RECEIPTS_FILE = os.path.join(app.config['DATA_DIR'], 'receipts.json')
     NANNY_BLOCKS_FILE = os.path.join(app.config['DATA_DIR'], 'nanny_blocks.json')
+    NOTIFICATION_STATE_FILE = os.path.join(app.config['DATA_DIR'], 'notification_state.json')
 
     def _legacy_token(prefix: str, raw: str) -> str:
         digest = hashlib.sha1((raw or '').encode('utf-8')).hexdigest()[:12]
@@ -363,11 +373,44 @@ def create_app() -> Flask:
                 return None
         return None
 
-    def _safe_send_message(chat_id: int | str | None, text: str) -> bool:
+    def _tg_keyboard(rows: list[list[dict]] | None = None) -> dict | None:
+        rows = rows or []
+        clean_rows = []
+        for row in rows:
+            clean_row = []
+            for btn in row:
+                text = str(btn.get('text') or '').strip()
+                url = str(btn.get('url') or '').strip()
+                if text and url:
+                    clean_row.append({'text': text[:64], 'url': url})
+            if clean_row:
+                clean_rows.append(clean_row)
+        return {'inline_keyboard': clean_rows} if clean_rows else None
+
+    def _url_button(text: str, url: str) -> dict:
+        return {'text': text, 'url': url}
+
+    def _notification_state() -> dict:
+        state = _read_json(NOTIFICATION_STATE_FILE, {})
+        return state if isinstance(state, dict) else {}
+
+    def _notification_was_sent(key: str) -> bool:
+        return key in _notification_state()
+
+    def _mark_notification_sent(key: str):
+        state = _notification_state()
+        state[key] = datetime.datetime.utcnow().isoformat()
+        # Keep the file bounded.
+        if len(state) > 2000:
+            items = sorted(state.items(), key=lambda kv: kv[1])[-1000:]
+            state = dict(items)
+        _write_json(NOTIFICATION_STATE_FILE, state)
+
+    def _safe_send_message(chat_id: int | str | None, text: str, buttons: list[list[dict]] | None = None) -> bool:
         if not chat_id:
             return False
         try:
-            send_message(chat_id, text)
+            send_message(chat_id, text, reply_markup=_tg_keyboard(buttons))
             return True
         except Exception as e:
             try:
@@ -792,6 +835,7 @@ def create_app() -> Flask:
                     'assigned_nanny_id': str(l.assigned_nanny_id) if l.assigned_nanny_id else None,
                     'client_rate_per_hour': l.client_rate_per_hour or DEFAULT_CLIENT_RATE_VND,
                     'nanny_rate_per_hour': l.nanny_rate_per_hour or DEFAULT_NANNY_RATE_VND,
+                    'telegram_user_id': l.telegram_user_id,
                     'submitted_at': l.submitted_at.isoformat(),
                     'documents': l.documents or {},
                 }
@@ -872,6 +916,8 @@ def create_app() -> Flask:
                 'assigned_nanny_id': assigned_nanny_id,
                 'client_rate_per_hour': item.get('client_rate_per_hour') or DEFAULT_CLIENT_RATE_VND,
                 'nanny_rate_per_hour': item.get('nanny_rate_per_hour') or DEFAULT_NANNY_RATE_VND,
+                'telegram_user_id': item.get('telegram_user_id'),
+                'telegram_username': item.get('telegram_username'),
                 'submitted_at': item.get('submitted_at') or datetime.datetime.utcnow().isoformat(),
                 'documents': docs,
             }
@@ -1396,12 +1442,12 @@ def create_app() -> Flask:
 
         return {'ok': True}
 
-    def _notify_admins(text: str):
+    def _notify_admins(text: str, buttons: list[list[dict]] | None = None):
         ids = admin_ids()
         if not ids:
             return
         for tid in ids:
-            _safe_send_message(tid, text)
+            _safe_send_message(tid, text, buttons)
 
     def _notify_on_new_dates(parent_name, child_name, added_dates, lead_token,
                               assigned_nanny_id, client_tg_id):
@@ -1416,7 +1462,24 @@ def create_app() -> Flask:
             f"ЛК: {site}/client/{lead_token}"
         )
         _notify_admins(admin_msg)
-        # Nanny is notified after the admin confirms the pending date.
+        if assigned_nanny_id:
+            _send_to_nanny(
+                assigned_nanny_id,
+                "📅 Клиент добавил новую возможную дату\n"
+                f"Клиент: {parent_name or '—'}\n"
+                f"Ребёнок: {child_name or '—'}\n"
+                f"Даты: {dates_text}\n"
+                "Дата ожидает подтверждения администратора.",
+                _nanny_buttons(assigned_nanny_id),
+            )
+        if client_tg_id:
+            _safe_send_message(
+                client_tg_id,
+                "📅 Новые даты добавлены\n"
+                f"Даты: {dates_text}\n"
+                "Администратор проверит расписание и подтвердит их.",
+                [[_url_button('Открыть кабинет', f"{site}/client/{lead_token}")]],
+            )
 
     def _site_url() -> str:
         return os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')
@@ -1464,15 +1527,230 @@ def create_app() -> Flask:
         except Exception:
             return site
 
-    def _send_to_client(lead_obj, text: str) -> bool:
-        return _safe_send_message(_lead_client_chat_id(lead_obj), text)
+    def _nanny_profile_url_by_id(nanny_id) -> str:
+        site = _site_url()
+        if not nanny_id:
+            return site
+        try:
+            if use_sql:
+                nanny_obj = Nanny.query.get(int(nanny_id))
+                token = nanny_obj.portal_token if nanny_obj else ''
+            else:
+                nanny_obj = next((n for n in load_nannies() if str(n.get('id')) == str(nanny_id)), None)
+                token = nanny_obj.get('portal_token') if nanny_obj else ''
+            return f"{site}/nanny/{token}" if token else site
+        except Exception:
+            return site
 
-    def _send_to_nanny(nanny_id, text: str) -> bool:
-        return _safe_send_message(_nanny_chat_id_by_id(nanny_id), text)
+    def _lead_cabinet_url(lead_obj) -> str:
+        token = _lead_value(lead_obj, 'token') or ''
+        return f"{_site_url()}/client/{token}" if token else _site_url()
+
+    def _client_buttons(lead_obj, extra: list[dict] | None = None) -> list[list[dict]]:
+        row = [_url_button('Открыть кабинет', _lead_cabinet_url(lead_obj))]
+        assigned_nanny_id = _lead_value(lead_obj, 'assigned_nanny_id')
+        if assigned_nanny_id:
+            row.append(_url_button('Профиль няни', _nanny_profile_url_by_id(assigned_nanny_id)))
+        rows = [row]
+        if extra:
+            rows.append(extra)
+        return rows
+
+    def _nanny_buttons(nanny_id) -> list[list[dict]]:
+        return [[_url_button('Открыть кабинет няни', _nanny_portal_url_by_id(nanny_id))]]
+
+    def _admin_lead_buttons(lead_obj) -> list[list[dict]]:
+        return [[_url_button('Открыть ЛК клиента', _lead_cabinet_url(lead_obj))]]
+
+    def _send_to_client(lead_obj, text: str, buttons: list[list[dict]] | None = None) -> bool:
+        return _safe_send_message(_lead_client_chat_id(lead_obj), text, buttons)
+
+    def _send_to_nanny(nanny_id, text: str, buttons: list[list[dict]] | None = None) -> bool:
+        return _safe_send_message(_nanny_chat_id_by_id(nanny_id), text, buttons)
 
     def _date_time_text(date_str: str, slot: dict | None = None) -> str:
         slot = slot or {}
         return f"{date_str} {slot.get('time') or ''}".strip()
+
+    def _fmt_vnd(amount) -> str:
+        try:
+            return f"{int(round(float(amount))):,}".replace(',', ' ') + " ₫"
+        except Exception:
+            return "0 ₫"
+
+    def _comment_needs_admin_attention(text: str) -> bool:
+        if not text:
+            return False
+        low = text.lower()
+        words = (
+            'опозд', 'не приш', 'не приех', 'проблем', 'жалоб', 'возврат',
+            'плохо', 'страш', 'опас', 'грубо', 'конфликт', 'ребенок плакал',
+            'не отвечает', 'не связ'
+        )
+        return any(w in low for w in words)
+
+    def _notify_sensitive_admin_comment(source: str, lead_obj, date_str: str, text: str):
+        if not _comment_needs_admin_attention(text):
+            return
+        key = f"sensitive:{source}:{_lead_value(lead_obj, 'token') or ''}:{date_str}:{hashlib.sha1(text.encode('utf-8', 'ignore')).hexdigest()[:10]}"
+        if _notification_was_sent(key):
+            return
+        _mark_notification_sent(key)
+        _notify_admins(
+            "⚠️ Комментарий требует внимания\n"
+            f"Источник: {source}\n"
+            f"Клиент: {_lead_value(lead_obj, 'parent_name') or '—'}\n"
+            f"Дата: {date_str}\n"
+            f"Комментарий: {text}",
+            _admin_lead_buttons(lead_obj),
+        )
+
+    def _lead_day_amounts(lead_obj, date_str: str, start: str, end: str) -> tuple[int | None, int | None]:
+        try:
+            from time_utils import compute_amount_vnd
+            client_rate = _lead_value(lead_obj, 'client_rate_per_hour') or DEFAULT_CLIENT_RATE_VND
+            nanny_rate = _lead_value(lead_obj, 'nanny_rate_per_hour') or DEFAULT_NANNY_RATE_VND
+            return (
+                int(compute_amount_vnd(date_str, start, end, int(client_rate))),
+                int(compute_amount_vnd(date_str, start, end, int(nanny_rate))),
+            )
+        except Exception:
+            return None, None
+
+    def _minutes_between(start: str | None, end: str | None) -> float | None:
+        try:
+            if not start or not end:
+                return None
+            sh, sm = [int(x) for x in start.split(':')[:2]]
+            eh, em = [int(x) for x in end.split(':')[:2]]
+            diff = (eh * 60 + em) - (sh * 60 + sm)
+            if diff <= 0:
+                diff += 24 * 60
+            return round(diff / 60, 2)
+        except Exception:
+            return None
+
+    def _slot_time_bounds(slot: dict | None) -> tuple[str | None, str | None, str]:
+        slot = slot or {}
+        start = slot.get('resolved_start') or slot.get('client_actual_start') or slot.get('fact_start')
+        end = slot.get('resolved_end') or slot.get('client_actual_end') or slot.get('fact_end')
+        if start and end:
+            return start, end, 'actual'
+        raw = str(slot.get('time') or '').replace('–', '-').replace('—', '-')
+        if '-' in raw:
+            left, right = raw.split('-', 1)
+            start = left.strip()[:5]
+            end = right.strip()[:5]
+            if start and end:
+                return start, end, 'planned'
+        return None, None, 'missing'
+
+    def _lead_slot_finance(lead_obj, date_str: str, slot: dict | None) -> dict:
+        start, end, source = _slot_time_bounds(slot)
+        client_total, nanny_total = (None, None)
+        if start and end:
+            client_total, nanny_total = _lead_day_amounts(lead_obj, date_str, start, end)
+        margin = None
+        if client_total is not None and nanny_total is not None:
+            margin = client_total - nanny_total
+        return {
+            'start': start,
+            'end': end,
+            'source': source,
+            'hours': _minutes_between(start, end),
+            'client_total_vnd': client_total,
+            'nanny_total_vnd': nanny_total,
+            'margin_vnd': margin,
+            'client_rate_per_hour': _lead_value(lead_obj, 'client_rate_per_hour') or DEFAULT_CLIENT_RATE_VND,
+            'nanny_rate_per_hour': _lead_value(lead_obj, 'nanny_rate_per_hour') or DEFAULT_NANNY_RATE_VND,
+        }
+
+    def _notify_lead_day_closed(lead_obj, date_str: str, slot: dict):
+        start = slot.get('client_actual_start') or slot.get('fact_start') or ''
+        end = slot.get('client_actual_end') or slot.get('fact_end') or ''
+        if not (start and end):
+            return
+        token = _lead_value(lead_obj, 'token') or ''
+        key = f"lead-closed:{token}:{date_str}:{start}-{end}"
+        if _notification_was_sent(key):
+            return
+        _mark_notification_sent(key)
+        client_amount, nanny_amount = _lead_day_amounts(lead_obj, date_str, start, end)
+        amount_line = f"\nИтоговая сумма: {_fmt_vnd(client_amount)}" if client_amount is not None else ''
+        _send_to_client(
+            lead_obj,
+            "✅ Рабочий день закрыт\n"
+            f"Дата: {date_str}\n"
+            f"Факт: {start}-{end}"
+            f"{amount_line}",
+            _client_buttons(lead_obj),
+        )
+        assigned_nanny_id = _lead_value(lead_obj, 'assigned_nanny_id')
+        nanny_amount_line = f"\nНачисление няне: {_fmt_vnd(nanny_amount)}" if nanny_amount is not None else ''
+        _send_to_nanny(
+            assigned_nanny_id,
+            "✅ Клиент подтвердил рабочий день\n"
+            f"Клиент: {_lead_value(lead_obj, 'parent_name') or '—'}\n"
+            f"Дата: {date_str}\n"
+            f"Факт: {start}-{end}"
+            f"{nanny_amount_line}",
+            _nanny_buttons(assigned_nanny_id),
+        )
+        _notify_admins(
+            "✅ День закрыт\n"
+            f"Клиент: {_lead_value(lead_obj, 'parent_name') or '—'}\n"
+            f"Дата: {date_str}\n"
+            f"Факт: {start}-{end}\n"
+            f"Клиент: {_fmt_vnd(client_amount or 0)}\n"
+            f"Няня: {_fmt_vnd(nanny_amount or 0)}",
+            _admin_lead_buttons(lead_obj),
+        )
+
+    def _lead_has_active_date(lead_obj, date_str: str) -> bool:
+        slot = (_lead_value(lead_obj, 'work_dates') or {}).get(date_str)
+        if not isinstance(slot, dict):
+            return bool(slot is not None)
+        return slot.get('status') != 'cancelled'
+
+    def _notify_dayoff_conflicts(nanny_id, nanny_name: str, date_str: str, start: str | None, end: str | None, note: str | None):
+        if not nanny_id:
+            return
+        if use_sql:
+            leads_for_date = [
+                row for row in Lead.query.filter_by(assigned_nanny_id=int(nanny_id)).all()
+                if _lead_has_active_date(row, date_str)
+            ]
+        else:
+            leads_for_date = [
+                lead for lead in load_leads()
+                if str(lead.get('assigned_nanny_id') or '') == str(nanny_id)
+                and _lead_has_active_date(lead, date_str)
+            ]
+        if not leads_for_date:
+            return
+        time_text = (start or 'весь день') + (('-' + end) if end else '')
+        clients_text = ', '.join([_lead_value(l, 'parent_name') or '—' for l in leads_for_date[:8]])
+        _notify_admins(
+            "⚠️ Выходной няни конфликтует с клиентами\n"
+            f"Няня: {nanny_name or '—'}\n"
+            f"Дата: {date_str}\n"
+            f"Время: {time_text}\n"
+            f"Клиенты: {clients_text}\n"
+            f"Комментарий: {note or '—'}"
+        )
+        for lead_obj in leads_for_date:
+            key = f"dayoff-conflict:{_lead_value(lead_obj, 'token') or ''}:{nanny_id}:{date_str}"
+            if _notification_was_sent(key):
+                continue
+            _mark_notification_sent(key)
+            _send_to_client(
+                lead_obj,
+                "⚠️ По вашей дате нужна проверка расписания\n"
+                f"Дата: {date_str}\n"
+                f"Няня отметила недоступность: {time_text}\n"
+                "Администратор проверит ситуацию и при необходимости предложит замену.",
+                _client_buttons(lead_obj),
+            )
 
     # Simple in-memory rate limiter for /api/lead (max 5 per IP per 10 minutes)
     _lead_rate: dict = {}
@@ -1644,10 +1922,13 @@ def create_app() -> Flask:
             f"Telegram: {tg_display}\n"
             f"Ребёнок: {child_name}, {child_age}\n"
             f"ЛК: {lk_url}"
+            ,
+            [[_url_button('Открыть заявку', lk_url)]]
         )
 
         # ── Send LK link directly to client in Telegram ───────
-        if verified_tg_user_id:
+        client_chat_id = verified_tg_user_id or _extract_chat_id(telegram)
+        if client_chat_id:
             client_msg = (
                 f"👋 {parent_name}, заявка принята!\n\n"
                 f"Мы подбираем няню для {child_name}.\n"
@@ -1655,7 +1936,14 @@ def create_app() -> Flask:
                 f"📋 Ваш личный кабинет:\n{lk_url}\n\n"
                 f"Сохраните ссылку — в ней ваше расписание, смены и чеки."
             )
-            _safe_send_message(verified_tg_user_id, client_msg)
+            _safe_send_message(
+                client_chat_id,
+                client_msg,
+                [
+                    [_url_button('Открыть кабинет', lk_url)],
+                    [_url_button('Написать администратору', 'https://t.me/Nastasja_Ageyeva')],
+                ],
+            )
 
         return {'ok': True, 'lk_url': lk_url}
 
@@ -1782,9 +2070,14 @@ def create_app() -> Flask:
             lead = Lead.query.filter_by(token=token).first()
             if not lead:
                 return {'error': 'ЛК не найден'}, 404
-            old_dates = set((lead.work_dates or {}).keys())
+            old_work_dates = dict(lead.work_dates or {})
+            old_dates = set(old_work_dates.keys())
             new_dates = set(work_dates.keys())
             added = new_dates - old_dates
+            changed_times = [
+                d for d in sorted(new_dates & old_dates)
+                if (old_work_dates.get(d) or {}).get('time') != (work_dates.get(d) or {}).get('time')
+            ]
             lead.meeting_date = meeting_date
             lead.work_dates = work_dates
             db.session.commit()
@@ -1801,15 +2094,36 @@ def create_app() -> Flask:
                 db.session.commit()
                 _notify_on_new_dates(lead.parent_name, lead.child_name, sorted(added),
                                      lead.token, lead.assigned_nanny_id, lead.telegram_user_id)
+            if changed_times and lead.assigned_nanny_id:
+                dates_text = ', '.join(changed_times[:10])
+                _notify_admins(
+                    "🕒 Клиент изменил время работы\n"
+                    f"Клиент: {lead.parent_name or '—'}\n"
+                    f"Даты: {dates_text}",
+                    _admin_lead_buttons(lead),
+                )
+                _send_to_nanny(
+                    lead.assigned_nanny_id,
+                    "🕒 Клиент изменил время по рабочему дню\n"
+                    f"Клиент: {lead.parent_name or '—'}\n"
+                    f"Даты: {dates_text}\n"
+                    "Проверьте расписание в кабинете.",
+                    _nanny_buttons(lead.assigned_nanny_id),
+                )
             return {'ok': True}
 
         leads = load_leads()
         lead = next((x for x in leads if x.get('token') == token), None)
         if not lead:
             return {'error': 'ЛК не найден'}, 404
-        old_dates = set((lead.get('work_dates') or {}).keys())
+        old_work_dates = dict(lead.get('work_dates') or {})
+        old_dates = set(old_work_dates.keys())
         new_dates = set(work_dates.keys())
         added = new_dates - old_dates
+        changed_times = [
+            d for d in sorted(new_dates & old_dates)
+            if (old_work_dates.get(d) or {}).get('time') != (work_dates.get(d) or {}).get('time')
+        ]
         lead['meeting_date'] = meeting_date
         lead['work_dates'] = work_dates
         if added and lead.get('assigned_nanny_id'):
@@ -1827,6 +2141,22 @@ def create_app() -> Flask:
             _notify_on_new_dates(lead.get('parent_name'), lead.get('child_name'),
                                  sorted(added), lead.get('token'),
                                  lead.get('assigned_nanny_id'), lead.get('telegram_user_id'))
+        if changed_times and lead.get('assigned_nanny_id'):
+            dates_text = ', '.join(changed_times[:10])
+            _notify_admins(
+                "🕒 Клиент изменил время работы\n"
+                f"Клиент: {lead.get('parent_name') or '—'}\n"
+                f"Даты: {dates_text}",
+                _admin_lead_buttons(lead),
+            )
+            _send_to_nanny(
+                lead.get('assigned_nanny_id'),
+                "🕒 Клиент изменил время по рабочему дню\n"
+                f"Клиент: {lead.get('parent_name') or '—'}\n"
+                f"Даты: {dates_text}\n"
+                "Проверьте расписание в кабинете.",
+                _nanny_buttons(lead.get('assigned_nanny_id')),
+            )
         return {'ok': True}
 
     @app.route('/api/client/<token>/upload_receipt', methods=['POST'])
@@ -1883,7 +2213,8 @@ def create_app() -> Flask:
             f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
             f"Дата: {date_str}\n"
             f"Файл: {filename}\n"
-            f"ЛК: {_site_url()}/client/{token}"
+            f"ЛК: {_site_url()}/client/{token}",
+            _admin_lead_buttons(lead_for_notify),
         )
         return {'ok': True, 'filename': filename}
 
@@ -1949,6 +2280,8 @@ def create_app() -> Flask:
             db.session.commit()
             parent_name = lead_row.parent_name
             tg = lead_row.telegram
+            lead_for_notify = lead_row
+            assigned_nanny_id = lead_row.assigned_nanny_id
         else:
             leads = load_leads()
             lead = next((x for x in leads if x.get('token') == token), None)
@@ -1962,6 +2295,8 @@ def create_app() -> Flask:
             save_leads(leads)
             parent_name = lead.get('parent_name', '')
             tg = lead.get('telegram', '')
+            lead_for_notify = lead
+            assigned_nanny_id = lead.get('assigned_nanny_id')
 
         # Notify admins
         _notify_admins(
@@ -1969,6 +2304,20 @@ def create_app() -> Flask:
             f"Клиент: {parent_name} ({tg})\n"
             f"Дата: {date_str}\n"
             f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{token}"
+            ,
+            _admin_lead_buttons(lead_for_notify),
+        )
+        _send_to_nanny(
+            assigned_nanny_id,
+            "❌ Клиент отменил рабочий день\n"
+            f"Клиент: {parent_name or '—'}\n"
+            f"Дата: {date_str}",
+            _nanny_buttons(assigned_nanny_id),
+        )
+        _send_to_client(
+            lead_for_notify,
+            f"❌ Дата {date_str} отменена. Мы видим изменение в кабинете.",
+            _client_buttons(lead_for_notify),
         )
         return {'ok': True}
 
@@ -2054,6 +2403,10 @@ def create_app() -> Flask:
             if actual_start and actual_end:
                 slot['client_actual_start'] = actual_start
                 slot['client_actual_end'] = actual_end
+                if slot.get('fact_start') and slot.get('fact_end'):
+                    slot['status'] = 'confirmed' if (
+                        slot.get('fact_start') == actual_start and slot.get('fact_end') == actual_end
+                    ) else 'dispute'
             if review_text:
                 slot['client_review'] = review_text
                 slot['client_review_stars'] = review_stars
@@ -2097,6 +2450,10 @@ def create_app() -> Flask:
             if actual_start and actual_end:
                 slot['client_actual_start'] = actual_start
                 slot['client_actual_end'] = actual_end
+                if slot.get('fact_start') and slot.get('fact_end'):
+                    slot['status'] = 'confirmed' if (
+                        slot.get('fact_start') == actual_start and slot.get('fact_end') == actual_end
+                    ) else 'dispute'
             if review_text:
                 slot['client_review'] = review_text
                 slot['client_review_stars'] = review_stars
@@ -2113,6 +2470,7 @@ def create_app() -> Flask:
         client_name = _lead_value(lead_for_notify, 'parent_name') or '—'
         client_link = f"{_site_url()}/client/{token}"
         if comment:
+            _notify_sensitive_admin_comment('Клиент', lead_for_notify, date_str, comment)
             _notify_admins(
                 "💬 Новый комментарий клиента\n"
                 f"Клиент: {client_name}\n"
@@ -2136,7 +2494,19 @@ def create_app() -> Flask:
                 assigned_nanny_id,
                 f"⏱ Клиент указал фактическое время за {date_str}: {actual_start}-{actual_end}.\nПроверьте день: {_nanny_portal_url_by_id(assigned_nanny_id)}"
             )
+            if slot_for_notify.get('status') == 'confirmed':
+                _notify_lead_day_closed(lead_for_notify, date_str, slot_for_notify)
+            elif slot_for_notify.get('status') == 'dispute':
+                _notify_admins(
+                    "⚠️ Разница фактического времени\n"
+                    f"Клиент: {client_name}\n"
+                    f"Дата: {date_str}\n"
+                    f"Няня: {slot_for_notify.get('fact_start')}-{slot_for_notify.get('fact_end')}\n"
+                    f"Клиент: {actual_start}-{actual_end}",
+                    _admin_lead_buttons(lead_for_notify),
+                )
         if review_text:
+            _notify_sensitive_admin_comment('Отзыв клиента', lead_for_notify, date_str, review_text)
             _notify_admins(
                 "⭐ Клиент оставил оценку\n"
                 f"Клиент: {client_name}\n"
@@ -2149,6 +2519,15 @@ def create_app() -> Flask:
                 assigned_nanny_id,
                 f"⭐ Клиент оставил оценку за {date_str}: {review_stars}/5.\n{_nanny_portal_url_by_id(assigned_nanny_id)}"
             )
+            if review_stars <= 3:
+                _notify_admins(
+                    "🚨 Низкая оценка клиента\n"
+                    f"Клиент: {client_name}\n"
+                    f"Дата: {date_str}\n"
+                    f"Оценка: {review_stars}/5\n"
+                    f"Отзыв: {review_text}",
+                    _admin_lead_buttons(lead_for_notify),
+                )
         return {'ok': True}
 
     @app.route('/api/client/<token>/add_dates', methods=['POST'])
@@ -2256,23 +2635,27 @@ def create_app() -> Flask:
                 "✅ Администратор подтвердил рабочий день\n"
                 f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
                 f"Дата: {_date_time_text(date_str, slot_for_notify)}\n"
-                f"Кабинет: {_nanny_portal_url_by_id(assigned_nanny_id)}"
+                f"Кабинет: {_nanny_portal_url_by_id(assigned_nanny_id)}",
+                _nanny_buttons(assigned_nanny_id),
             )
             if slot_for_notify.get('status') == 'confirmed':
                 _send_to_client(
                     lead_for_notify,
                     "✅ Рабочий день подтверждён\n"
                     f"Дата: {_date_time_text(date_str, slot_for_notify)}\n"
-                    f"Кабинет: {_site_url()}/client/{token}"
+                    f"Кабинет: {_site_url()}/client/{token}",
+                    _client_buttons(lead_for_notify),
                 )
         else:
             _send_to_nanny(
                 assigned_nanny_id,
-                f"❌ Администратор отклонил рабочий день {date_str}.\n{_nanny_portal_url_by_id(assigned_nanny_id)}"
+                f"❌ Администратор отклонил рабочий день {date_str}.\n{_nanny_portal_url_by_id(assigned_nanny_id)}",
+                _nanny_buttons(assigned_nanny_id),
             )
             _send_to_client(
                 lead_for_notify,
-                f"❌ Дата {date_str} отклонена администратором. Проверьте личный кабинет: {_site_url()}/client/{token}"
+                f"❌ Дата {date_str} отклонена администратором. Проверьте личный кабинет: {_site_url()}/client/{token}",
+                _client_buttons(lead_for_notify),
             )
         return {'ok': True}
 
@@ -2302,6 +2685,8 @@ def create_app() -> Flask:
             wd[date_str] = slot
             lead_row.work_dates = wd
             db.session.commit()
+            lead_for_notify = lead_row
+            slot_for_notify = slot
         else:
             leads = load_leads()
             lead = next((x for x in leads if x.get('token') == token), None)
@@ -2320,6 +2705,24 @@ def create_app() -> Flask:
             wd[date_str] = slot
             lead['work_dates'] = wd
             save_leads(leads)
+            lead_for_notify = lead
+            slot_for_notify = slot
+        assigned_nanny_id = _lead_value(lead_for_notify, 'assigned_nanny_id')
+        if action == 'confirm':
+            _notify_lead_day_closed(lead_for_notify, date_str, slot_for_notify)
+        else:
+            _send_to_nanny(
+                assigned_nanny_id,
+                "⚠️ Администратор вернул фактическое время на исправление\n"
+                f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
+                f"Дата: {date_str}",
+                _nanny_buttons(assigned_nanny_id),
+            )
+            _send_to_client(
+                lead_for_notify,
+                f"⚠️ Фактическое время за {date_str} отправлено на уточнение. Администратор проверит детали.",
+                _client_buttons(lead_for_notify),
+            )
         return {'ok': True}
 
     @app.route('/api/admin/lead/<token>/rates', methods=['POST'])
@@ -2342,6 +2745,7 @@ def create_app() -> Flask:
             lead_row.client_rate_per_hour = client_rate
             lead_row.nanny_rate_per_hour = nanny_rate
             db.session.commit()
+            lead_for_notify = lead_row
         else:
             leads = load_leads()
             lead = next((x for x in leads if x.get('token') == token), None)
@@ -2350,6 +2754,28 @@ def create_app() -> Flask:
             lead['client_rate_per_hour'] = client_rate
             lead['nanny_rate_per_hour'] = nanny_rate
             save_leads(leads)
+            lead_for_notify = lead
+        _send_to_client(
+            lead_for_notify,
+            "💰 Условия оплаты обновлены\n"
+            f"Ставка клиента: {_fmt_vnd(client_rate)} / час\n"
+            "Проверьте расчёт в личном кабинете.",
+            _client_buttons(lead_for_notify),
+        )
+        assigned_nanny_id = _lead_value(lead_for_notify, 'assigned_nanny_id')
+        _send_to_nanny(
+            assigned_nanny_id,
+            "💰 Ставка няни обновлена\n"
+            f"Ставка: {_fmt_vnd(nanny_rate)} / час",
+            _nanny_buttons(assigned_nanny_id),
+        )
+        _notify_admins(
+            "💰 Ставки обновлены\n"
+            f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
+            f"Клиентская ставка: {_fmt_vnd(client_rate)} / час\n"
+            f"Ставка няни: {_fmt_vnd(nanny_rate)} / час",
+            _admin_lead_buttons(lead_for_notify),
+        )
         return {'ok': True}
 
     @app.route('/api/nanny/<portal_token>/confirm_date', methods=['POST'])
@@ -2425,24 +2851,28 @@ def create_app() -> Flask:
                     "✅ Няня подтвердила рабочий день\n"
                     f"Няня: {nanny_name or '—'}\n"
                     f"Дата: {_date_time_text(date_str, slot_for_notify)}\n"
-                    f"Кабинет: {_site_url()}/client/{client_token}"
+                    f"Кабинет: {_site_url()}/client/{client_token}",
+                    _client_buttons(lead_for_notify),
                 )
             _notify_admins(
                 "✅ Няня подтвердила рабочий день\n"
                 f"Няня: {nanny_name or '—'}\n"
                 f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
-                f"Дата: {_date_time_text(date_str, slot_for_notify)}"
+                f"Дата: {_date_time_text(date_str, slot_for_notify)}",
+                _admin_lead_buttons(lead_for_notify),
             )
         else:
             _send_to_client(
                 lead_for_notify,
-                f"❌ Няня отклонила дату {date_str}. Проверьте личный кабинет: {_site_url()}/client/{client_token}"
+                f"❌ Няня отклонила дату {date_str}. Проверьте личный кабинет: {_site_url()}/client/{client_token}",
+                _client_buttons(lead_for_notify),
             )
             _notify_admins(
                 "❌ Няня отклонила рабочий день\n"
                 f"Няня: {nanny_name or '—'}\n"
                 f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
-                f"Дата: {date_str}"
+                f"Дата: {date_str}",
+                _admin_lead_buttons(lead_for_notify),
             )
         return {'ok': True}
 
@@ -2535,17 +2965,20 @@ def create_app() -> Flask:
             lead_for_notify = lead
             nanny_name = nanny_obj.get('name') or 'Няня'
         if comment:
+            _notify_sensitive_admin_comment('Няня', lead_for_notify, date_str, comment)
             _notify_admins(
                 "💬 Новый комментарий няни\n"
                 f"Няня: {nanny_name or '—'}\n"
                 f"Клиент: {parent_name or '—'}\n"
                 f"Дата: {date_str}\n"
                 f"Комментарий: {comment}\n"
-                f"ЛК: {_site_url()}/client/{client_token}"
+                f"ЛК: {_site_url()}/client/{client_token}",
+                _admin_lead_buttons(lead_for_notify),
             )
             _send_to_client(
                 lead_for_notify,
-                f"💬 Няня оставила комментарий к дате {date_str}.\nПроверьте личный кабинет: {_site_url()}/client/{client_token}"
+                f"💬 Няня оставила комментарий к дате {date_str}.\nПроверьте личный кабинет: {_site_url()}/client/{client_token}",
+                _client_buttons(lead_for_notify),
             )
         if fact_submitted:
             _notify_admins(
@@ -2553,14 +2986,16 @@ def create_app() -> Flask:
                 f"Клиент: {parent_name or '—'}\n"
                 f"Дата: {date_str}\n"
                 f"Факт: {fact_start}–{fact_end}\n"
-                f"ЛК: {os.environ.get('SITE_URL','https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{client_token}"
+                f"ЛК: {os.environ.get('SITE_URL','https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{client_token}",
+                _admin_lead_buttons(lead_for_notify),
             )
             _send_to_client(
                 lead_for_notify,
                 "⏱ Няня отправила фактическое время работы\n"
                 f"Дата: {date_str}\n"
                 f"Факт: {fact_start}-{fact_end}\n"
-                f"Проверьте и подтвердите в личном кабинете: {_site_url()}/client/{client_token}"
+                f"Проверьте и подтвердите в личном кабинете: {_site_url()}/client/{client_token}",
+                _client_buttons(lead_for_notify),
             )
         return {'ok': True}
 
@@ -2736,7 +3171,16 @@ def create_app() -> Flask:
             f"Клиент: {_lead_value(lead_for_notify, 'parent_name') or '—'}\n"
             f"Дата: {date_str}\n"
             f"Файл: {filename}\n"
-            f"ЛК: {_site_url()}/client/{client_token}"
+            f"ЛК: {_site_url()}/client/{client_token}",
+            _admin_lead_buttons(lead_for_notify),
+        )
+        _send_to_client(
+            lead_for_notify,
+            "📎 Няня загрузила чек/документ\n"
+            f"Дата: {date_str}\n"
+            f"Файл: {filename}\n"
+            "Документ доступен в вашем личном кабинете.",
+            _client_buttons(lead_for_notify),
         )
         return {'ok': True, 'filename': filename}
 
@@ -2792,14 +3236,16 @@ def create_app() -> Flask:
             f"Клиент: {lead.get('parent_name','—')}\n"
             f"Дата: {date_str}\n"
             f"Факт: {fact_start}–{fact_end}\n"
-            f"ЛК: {os.environ.get('SITE_URL','https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{client_token}"
+            f"ЛК: {os.environ.get('SITE_URL','https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{client_token}",
+            _admin_lead_buttons(lead),
         )
         _send_to_client(
             lead,
             "⏱ Няня отправила фактическое время работы\n"
             f"Дата: {date_str}\n"
             f"Факт: {fact_start}-{fact_end}\n"
-            f"Проверьте и подтвердите в личном кабинете: {_site_url()}/client/{client_token}"
+            f"Проверьте и подтвердите в личном кабинете: {_site_url()}/client/{client_token}",
+            _client_buttons(lead),
         )
         return {'ok': True}
 
@@ -2879,6 +3325,7 @@ def create_app() -> Flask:
                 f"Время: {(start or 'весь день') + (('-' + end) if end else '')}\n"
                 f"Комментарий: {note or '—'}"
             )
+            _notify_dayoff_conflicts(nanny_id, nanny.name if nanny else '—', date, start, end, note)
             return {'ok': True, 'id': b.id}
 
         blocks = _read_json(NANNY_BLOCKS_FILE, [])
@@ -2901,6 +3348,7 @@ def create_app() -> Flask:
             f"Время: {(start or 'весь день') + (('-' + end) if end else '')}\n"
             f"Комментарий: {note or '—'}"
         )
+        _notify_dayoff_conflicts(nanny_id, nanny.get('name') if nanny else '—', date, start, end, note)
         return {'ok': True, 'id': next_id}
 
     @app.route('/api/nanny/<portal_token>/blocks/<int:block_id>', methods=['DELETE'])
@@ -2946,15 +3394,16 @@ def create_app() -> Flask:
         nannies = load_nannies()
         # Build enriched calendar events for admin
         # type: 'open' | 'assigned' | 'confirmed' | 'waiting_fact' | 'cancelled'
-        nanny_map = {n['id']: n for n in nannies} if isinstance(nannies, list) else {}
+        nanny_map = {str(n['id']): n for n in nannies} if isinstance(nannies, list) else {}
         events = []
         for l in leads:
             nanny_id = l.get('assigned_nanny_id')
-            nanny_obj = nanny_map.get(nanny_id) if nanny_id else None
+            nanny_obj = nanny_map.get(str(nanny_id)) if nanny_id else None
             nanny_name = nanny_obj.get('name') if nanny_obj else None
             receipts = (l.get('documents') or {}).get('receipts') or {}
             for d, info in (l.get('work_dates') or {}).items():
                 slot = info if isinstance(info, dict) else {}
+                finance = _lead_slot_finance(l, d, slot)
                 date_status = slot.get('status')  # confirmed / cancelled / waiting_fact / None
                 # Derive display type
                 pending_a = bool(slot.get('pending_admin'))
@@ -2994,12 +3443,21 @@ def create_app() -> Flask:
                     'client_actual_end': slot.get('client_actual_end', ''),
                     'client_review': slot.get('client_review', ''),
                     'client_review_stars': slot.get('client_review_stars', 0),
+                    'finance_start': finance.get('start'),
+                    'finance_end': finance.get('end'),
+                    'finance_source': finance.get('source'),
+                    'hours': finance.get('hours'),
+                    'client_rate_per_hour': finance.get('client_rate_per_hour'),
+                    'nanny_rate_per_hour': finance.get('nanny_rate_per_hour'),
+                    'client_total_vnd': finance.get('client_total_vnd'),
+                    'nanny_total_vnd': finance.get('nanny_total_vnd'),
+                    'margin_vnd': finance.get('margin_vnd'),
                 })
         events.sort(key=lambda x: x.get('date') or '')
 
         # Collect nanny days-off for admin calendar
         nanny_dayoffs = []
-        nanny_names_by_id = {n['id']: n['name'] for n in nannies} if isinstance(nannies, list) and nannies and isinstance(nannies[0], dict) else {}
+        nanny_names_by_id = {str(n['id']): n['name'] for n in nannies} if isinstance(nannies, list) and nannies and isinstance(nannies[0], dict) else {}
         if use_sql:
             all_blocks = NannyBlock.query.filter_by(kind='dayoff').order_by(NannyBlock.date.asc()).all()
             nanny_names_by_id = {n.id: n.name for n in Nanny.query.all()}
@@ -3021,7 +3479,7 @@ def create_app() -> Flask:
                 nanny_dayoffs.append({
                     'date': b.get('date'),
                     'nanny_id': nanny_id,
-                    'nanny_name': nanny_names_by_id.get(nanny_id, f"Няня {nanny_id or ''}".strip()),
+                    'nanny_name': nanny_names_by_id.get(str(nanny_id), f"Няня {nanny_id or ''}".strip()),
                     'start': b.get('start'),
                     'end': b.get('end'),
                     'note': b.get('note'),
@@ -3317,10 +3775,21 @@ def create_app() -> Flask:
 
         # Notify nanny immediately about new shift (if linked)
         nanny = Nanny.query.get(nanny_id)
+        client = Client.query.get(client_id)
         if nanny and nanny.telegram_user_id:
             _safe_send_message(
                 int(nanny.telegram_user_id),
-                f"🆕 Новая смена: {date} {planned_start}-{planned_end}.\nОткройте /nanny/app чтобы отправить факт после смены."
+                f"🆕 Новая смена: {date} {planned_start}-{planned_end}.\nОткройте кабинет няни, чтобы отправить факт после смены.",
+                _nanny_buttons(nanny_id),
+            )
+        if client and client.telegram_user_id:
+            _safe_send_message(
+                int(client.telegram_user_id),
+                "✅ Администратор назначил рабочий день\n"
+                f"Дата: {date}\n"
+                f"Время: {planned_start}-{planned_end}\n"
+                f"Няня: {nanny.name if nanny else '—'}",
+                [[_url_button('Открыть приложение', f"{_site_url()}/app")]],
             )
 
         # Reminder rule:
@@ -3335,20 +3804,13 @@ def create_app() -> Flask:
             now_dt = datetime.datetime.now(tz)
             seconds = (start_dt - now_dt).total_seconds()
 
-            client = Client.query.get(client_id)
-            if seconds > 0 and seconds < 2 * 3600 and s.reminder_sent_at is None:
+            if seconds > 0 and seconds < 2 * 3600 and s.pre2h_reminder_sent_at is None:
                 msg = f"⏰ Напоминание: смена через менее чем 2 часа.\n{date} {planned_start}-{planned_end}"
                 if client and client.telegram_user_id:
-                    try:
-                        send_message(int(client.telegram_user_id), msg)
-                    except Exception:
-                        pass
+                    _safe_send_message(int(client.telegram_user_id), msg, [[_url_button('Открыть приложение', f"{_site_url()}/app")]])
                 if nanny and nanny.telegram_user_id:
-                    try:
-                        send_message(int(nanny.telegram_user_id), msg)
-                    except Exception:
-                        pass
-                s.reminder_sent_at = datetime.datetime.utcnow()
+                    _safe_send_message(int(nanny.telegram_user_id), msg, _nanny_buttons(nanny_id))
+                s.pre2h_reminder_sent_at = datetime.datetime.utcnow()
                 db.session.commit()
         except Exception:
             pass
@@ -3390,15 +3852,9 @@ def create_app() -> Flask:
         client = Client.query.get(s.client_id) if s.client_id else None
         text = f"🧾 Решение по смене {s.date} {s.planned_start or ''}-{s.planned_end or ''}: {resolved_start}-{resolved_end}."
         if nanny and nanny.telegram_user_id:
-            try:
-                send_message(int(nanny.telegram_user_id), text)
-            except Exception:
-                pass
+            _safe_send_message(int(nanny.telegram_user_id), text, _nanny_buttons(s.nanny_id))
         if client and client.telegram_user_id:
-            try:
-                send_message(int(client.telegram_user_id), text)
-            except Exception:
-                pass
+            _safe_send_message(int(client.telegram_user_id), text, [[_url_button('Открыть приложение', f"{_site_url()}/app")]])
 
         flash('Смена решена', 'success')
         return redirect(url_for('admin'))
@@ -3439,16 +3895,18 @@ def create_app() -> Flask:
                         f"Клиент: {lead_row.parent_name}\n"
                         f"Ребёнок: {lead_row.child_name}, {lead_row.child_age}\n"
                         f"Даты: {dates_text}\n"
-                        f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/nanny/app"
+                        f"ЛК: {_nanny_portal_url_by_id(nanny_id)}",
+                        _nanny_buttons(nanny_id),
                     )
-                client_chat_id = _extract_chat_id(lead_row.telegram)
-                if client_chat_id:
-                    _safe_send_message(
-                        client_chat_id,
-                        "✅ По вашей заявке назначена няня.\n"
-                        f"Даты: {dates_text}\n"
-                        f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{lead_row.token}"
-                    )
+                _send_to_client(
+                    lead_row,
+                    "✅ По вашей заявке назначена няня.\n"
+                    f"Няня: {selected_nanny.name if selected_nanny else '—'}\n"
+                    f"Даты: {dates_text}\n"
+                    f"Профиль няни: {_nanny_profile_url_by_id(nanny_id)}\n"
+                    f"ЛК: {_lead_cabinet_url(lead_row)}",
+                    _client_buttons(lead_row),
+                )
 
             flash('Няня назначена', 'success')
             return redirect(url_for('admin'))
@@ -3491,16 +3949,18 @@ def create_app() -> Flask:
                     f"Клиент: {lead.get('parent_name') or '-'}\n"
                     f"Ребёнок: {lead.get('child_name') or '-'}, {lead.get('child_age') or '-'}\n"
                     f"Даты: {dates_text}\n"
-                    f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/nanny/portal/{selected_nanny.get('portal_token')}"
+                    f"ЛК: {_nanny_portal_url_by_id(nanny_id)}",
+                    _nanny_buttons(nanny_id),
                 )
-            client_chat_id = _extract_chat_id(lead.get('telegram'))
-            if client_chat_id:
-                _safe_send_message(
-                    client_chat_id,
-                    "✅ По вашей заявке назначена няня.\n"
-                    f"Даты: {dates_text}\n"
-                    f"ЛК: {os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')}/client/{lead.get('token')}"
-                )
+            _send_to_client(
+                lead,
+                "✅ По вашей заявке назначена няня.\n"
+                f"Няня: {selected_nanny.get('name') if selected_nanny else '—'}\n"
+                f"Даты: {dates_text}\n"
+                f"Профиль няни: {_nanny_profile_url_by_id(nanny_id)}\n"
+                f"ЛК: {_lead_cabinet_url(lead)}",
+                _client_buttons(lead),
+            )
 
         flash('Няня назначена', 'success')
         return redirect(url_for('admin'))
@@ -3614,8 +4074,12 @@ def create_app() -> Flask:
         tzname = os.environ.get('SHIFT_TZ') or 'Asia/Ho_Chi_Minh'
         tz = ZoneInfo(tzname)
         now_dt = datetime.datetime.now(tz)
+        sent_2h = 0
         sent_pre = 0
         sent_post = 0
+        sent_missing_fact = 0
+        sent_review = 0
+        sent_admin = 0
 
         def _query_time_window(field_name: str, sent_field, dt_from: datetime.datetime, dt_to: datetime.datetime):
             date_from = dt_from.date().isoformat()
@@ -3641,6 +4105,25 @@ def create_app() -> Flask:
             q2 = base.filter(Shift.date == date_to, time_col < t_to)
             return q1.union_all(q2)
 
+        # Client + nanny reminder 2 hours before work.
+        two_start = now_dt + datetime.timedelta(hours=2)
+        two_end = two_start + datetime.timedelta(minutes=5)
+        for s in _query_time_window('planned_start', Shift.pre2h_reminder_sent_at, two_start, two_end).all():
+            nanny = Nanny.query.get(s.nanny_id) if s.nanny_id else None
+            client = Client.query.get(s.client_id) if s.client_id else None
+            msg = (
+                "⏰ Напоминание: рабочий день через 2 часа\n"
+                f"Дата: {s.date}\n"
+                f"Время: {s.planned_start or ''}-{s.planned_end or ''}"
+            )
+            if client and client.telegram_user_id:
+                _safe_send_message(int(client.telegram_user_id), msg, [[_url_button('Открыть приложение', f"{_site_url()}/app")]])
+                sent_2h += 1
+            if nanny and nanny.telegram_user_id:
+                _safe_send_message(int(nanny.telegram_user_id), msg + "\nПодготовьтесь и приезжайте вовремя.", _nanny_buttons(s.nanny_id))
+                sent_2h += 1
+            s.pre2h_reminder_sent_at = datetime.datetime.utcnow()
+
         # Nanny reminder 30 minutes before work.
         pre_start = now_dt + datetime.timedelta(minutes=30)
         pre_end = pre_start + datetime.timedelta(minutes=5)
@@ -3652,7 +4135,8 @@ def create_app() -> Flask:
                     "⏰ Через 30 минут рабочий день\n"
                     f"Дата: {s.date}\n"
                     f"Время: {s.planned_start}-{s.planned_end or ''}\n"
-                    "Пожалуйста, подготовьтесь и приезжайте на место работы вовремя."
+                    "Пожалуйста, подготовьтесь и приезжайте на место работы вовремя.",
+                    _nanny_buttons(s.nanny_id),
                 )
                 sent_pre += 1
             s.reminder_sent_at = datetime.datetime.utcnow()
@@ -3669,7 +4153,8 @@ def create_app() -> Flask:
                     "⏱ Смена завершилась около 30 минут назад\n"
                     f"Дата: {s.date}\n"
                     f"План: {s.planned_start or ''}-{s.planned_end or ''}\n"
-                    "Пожалуйста, отметьте фактическое время, поставьте оценку и оставьте комментарий."
+                    "Пожалуйста, отметьте фактическое время, поставьте оценку и оставьте комментарий.",
+                    [[_url_button('Открыть приложение', f"{_site_url()}/app")]],
                 )
                 sent_post += 1
             if nanny and nanny.telegram_user_id:
@@ -3678,15 +4163,86 @@ def create_app() -> Flask:
                     "⏱ Рабочий день завершился около 30 минут назад\n"
                     f"Дата: {s.date}\n"
                     f"План: {s.planned_start or ''}-{s.planned_end or ''}\n"
-                    "Пожалуйста, отметьте фактическое время работы и напишите комментарий к дню."
+                    "Пожалуйста, отметьте фактическое время работы и напишите комментарий к дню.",
+                    _nanny_buttons(s.nanny_id),
                 )
                 sent_post += 1
             s.post_reminder_sent_at = datetime.datetime.utcnow()
 
-        if sent_pre or sent_post:
-            db.session.commit()
+        # Repeat nanny fact reminder 2 hours after planned end if fact was not submitted.
+        missing_start = now_dt - datetime.timedelta(hours=2, minutes=5)
+        missing_end = now_dt - datetime.timedelta(hours=2)
+        for s in _query_time_window('planned_end', Shift.nanny_missing_fact_sent_at, missing_start, missing_end).all():
+            nanny = Nanny.query.get(s.nanny_id) if s.nanny_id else None
+            client = Client.query.get(s.client_id) if s.client_id else None
+            if not (s.nanny_actual_start and s.nanny_actual_end):
+                if nanny and nanny.telegram_user_id:
+                    _safe_send_message(
+                        int(nanny.telegram_user_id),
+                        "⚠️ Фактическое время ещё не отмечено\n"
+                        f"Дата: {s.date}\n"
+                        f"План: {s.planned_start or ''}-{s.planned_end or ''}\n"
+                        "Пожалуйста, внесите факт и комментарий.",
+                        _nanny_buttons(s.nanny_id),
+                    )
+                    sent_missing_fact += 1
+                _notify_admins(
+                    "⚠️ Няня не отметила факт после смены\n"
+                    f"Клиент: {client.parent_name if client else '—'}\n"
+                    f"Няня: {nanny.name if nanny else '—'}\n"
+                    f"Дата: {s.date}\n"
+                    f"План: {s.planned_start or ''}-{s.planned_end or ''}"
+                )
+                sent_admin += 1
+            s.nanny_missing_fact_sent_at = datetime.datetime.utcnow()
 
-        return {'ok': True, 'sent_pre': sent_pre, 'sent_post': sent_post, 'tz': tzname}
+        # Client review/fact reminder 24 hours after planned end if no client note was left.
+        review_start = now_dt - datetime.timedelta(hours=24, minutes=5)
+        review_end = now_dt - datetime.timedelta(hours=24)
+        for s in _query_time_window('planned_end', Shift.review_reminder_sent_at, review_start, review_end).all():
+            client = Client.query.get(s.client_id) if s.client_id else None
+            if client and client.telegram_user_id and not s.client_actual_note:
+                _safe_send_message(
+                    int(client.telegram_user_id),
+                    "⭐ Помогите оценить работу няни\n"
+                    f"Дата: {s.date}\n"
+                    "Пожалуйста, отметьте фактическое время, оценку и комментарий.",
+                    [[_url_button('Открыть приложение', f"{_site_url()}/app")]],
+                )
+                sent_review += 1
+            s.review_reminder_sent_at = datetime.datetime.utcnow()
+
+        # Admin reminder about unassigned new SQL leads.
+        try:
+            stale = datetime.datetime.utcnow() - datetime.timedelta(minutes=15)
+            for lead in Lead.query.filter(Lead.assigned_nanny_id.is_(None), Lead.submitted_at <= stale).limit(20).all():
+                key = f"unassigned-lead:{lead.id}"
+                if _notification_was_sent(key):
+                    continue
+                _mark_notification_sent(key)
+                _notify_admins(
+                    "⏳ Заявка ждёт назначения няни\n"
+                    f"Клиент: {lead.parent_name or '—'}\n"
+                    f"Ребёнок: {lead.child_name or '—'}\n"
+                    f"Создана: {lead.submitted_at.isoformat()}",
+                    _admin_lead_buttons(lead),
+                )
+                sent_admin += 1
+        except Exception:
+            pass
+
+        db.session.commit()
+
+        return {
+            'ok': True,
+            'sent_2h': sent_2h,
+            'sent_pre': sent_pre,
+            'sent_post': sent_post,
+            'sent_missing_fact': sent_missing_fact,
+            'sent_review': sent_review,
+            'sent_admin': sent_admin,
+            'tz': tzname,
+        }
 
     @app.route('/uploads/<path:filename>')
     def uploads(filename):
@@ -4048,29 +4604,37 @@ def create_app() -> Flask:
     @require_admin
     def api_admin_profit():
         """Return aggregated profit stats for admin dashboard.
-        Query params: period = day | week | month | all (default: month)
+        Query params: period = day | week | month | year | all (default: month)
         """
-        if not use_sql:
-            return jsonify({'error': 'SQL mode required'}), 400
         from time_utils import compute_amount_vnd
         import datetime as _dt
 
         period = request.args.get('period', 'month')
         today = _dt.date.today()
+        date_arg = request.args.get('date') or ''
+        try:
+            anchor = _dt.date.fromisoformat(date_arg) if date_arg else today
+        except Exception:
+            anchor = today
+
         if period == 'day':
-            from_date = today
+            from_date = anchor
+            to_date = anchor
         elif period == 'week':
-            from_date = today - _dt.timedelta(days=today.weekday())  # Monday
+            from_date = anchor - _dt.timedelta(days=anchor.weekday())  # Monday
+            to_date = from_date + _dt.timedelta(days=6)
         elif period == 'month':
-            from_date = today.replace(day=1)
+            from_date = anchor.replace(day=1)
+            if from_date.month == 12:
+                to_date = from_date.replace(year=from_date.year + 1, month=1, day=1) - _dt.timedelta(days=1)
+            else:
+                to_date = from_date.replace(month=from_date.month + 1, day=1) - _dt.timedelta(days=1)
+        elif period == 'year':
+            from_date = anchor.replace(month=1, day=1)
+            to_date = anchor.replace(month=12, day=31)
         else:
             from_date = None  # all time
-
-        q = Shift.query
-        if from_date:
-            q = q.filter(Shift.date >= from_date.isoformat())
-
-        shifts = q.order_by(Shift.date.asc()).all()
+            to_date = None
 
         total_client = 0
         total_nanny = 0
@@ -4078,45 +4642,85 @@ def create_app() -> Flask:
         total_hours = 0
         shifts_done = 0
         shifts_pending = 0
+        source_leads = 0
+        source_shifts = 0
         daily = {}  # date -> {client, nanny, margin, hours}
 
-        for s in shifts:
-            start = s.nanny_actual_start or s.planned_start
-            end = s.nanny_actual_end or s.planned_end
-            if not (s.date and start and end):
-                shifts_pending += 1
-                continue
+        def _in_period(date_str: str | None) -> bool:
+            if not date_str:
+                return False
+            if not from_date:
+                return True
             try:
-                cr = s.client_rate_per_hour or DEFAULT_CLIENT_RATE_VND
-                nr = s.nanny_rate_per_hour or DEFAULT_NANNY_RATE_VND
-                client_amt = compute_amount_vnd(s.date, start, end, cr)
-                nanny_amt = compute_amount_vnd(s.date, start, end, nr)
+                value = _dt.date.fromisoformat(str(date_str)[:10])
             except Exception:
+                return False
+            return from_date <= value <= to_date
+
+        def _add_row(date_str: str, client_amt, nanny_amt, hours, is_done: bool):
+            nonlocal total_client, total_nanny, total_margin, total_hours, shifts_done, shifts_pending
+            if client_amt is None or nanny_amt is None:
                 shifts_pending += 1
-                continue
-
-            # compute hours
-            def _to_min(t):
-                if not t: return 0
-                parts = t.split(':')
-                return int(parts[0])*60 + (int(parts[1]) if len(parts)>1 else 0)
-            hours = max(0, _to_min(end) - _to_min(start)) / 60.0
-
+                return
             margin = client_amt - nanny_amt
             total_client += client_amt
             total_nanny += nanny_amt
             total_margin += margin
-            total_hours += hours
-            shifts_done += 1
-
-            d = s.date
+            total_hours += hours or 0
+            if is_done:
+                shifts_done += 1
+            else:
+                shifts_pending += 1
+            d = date_str
             if d not in daily:
                 daily[d] = {'date': d, 'client': 0, 'nanny': 0, 'margin': 0, 'hours': 0, 'shifts': 0}
             daily[d]['client'] += client_amt
             daily[d]['nanny'] += nanny_amt
             daily[d]['margin'] += margin
-            daily[d]['hours'] += hours
+            daily[d]['hours'] += hours or 0
             daily[d]['shifts'] += 1
+
+        for lead in load_leads():
+            for d, info in (lead.get('work_dates') or {}).items():
+                if not _in_period(d):
+                    continue
+                slot = info if isinstance(info, dict) else {}
+                if slot.get('status') == 'cancelled':
+                    continue
+                finance = _lead_slot_finance(lead, d, slot)
+                done = bool(
+                    slot.get('status') in ('confirmed', 'resolved')
+                    or (slot.get('client_actual_start') and slot.get('client_actual_end') and slot.get('fact_start') and slot.get('fact_end'))
+                )
+                _add_row(
+                    d,
+                    finance.get('client_total_vnd'),
+                    finance.get('nanny_total_vnd'),
+                    finance.get('hours'),
+                    done,
+                )
+                source_leads += 1
+
+        if use_sql:
+            q = Shift.query
+            if from_date:
+                q = q.filter(Shift.date >= from_date.isoformat(), Shift.date <= to_date.isoformat())
+            for s in q.order_by(Shift.date.asc()).all():
+                if s.status == 'cancelled' or not _in_period(s.date):
+                    continue
+                start = s.resolved_start or s.client_actual_start or s.nanny_actual_start or s.planned_start
+                end = s.resolved_end or s.client_actual_end or s.nanny_actual_end or s.planned_end
+                if not (s.date and start and end):
+                    shifts_pending += 1
+                    source_shifts += 1
+                    continue
+                cr = s.client_rate_per_hour or DEFAULT_CLIENT_RATE_VND
+                nr = s.nanny_rate_per_hour or DEFAULT_NANNY_RATE_VND
+                client_amt = compute_amount_vnd(s.date, start, end, cr)
+                nanny_amt = compute_amount_vnd(s.date, start, end, nr)
+                done = bool(s.status in ('confirmed', 'resolved') or s.resolved_start or (s.client_actual_start and s.nanny_actual_start))
+                _add_row(s.date, client_amt, nanny_amt, _minutes_between(start, end), done)
+                source_shifts += 1
 
         daily_list = sorted(daily.values(), key=lambda x: x['date'])
 
@@ -4124,6 +4728,7 @@ def create_app() -> Flask:
             'ok': True,
             'period': period,
             'from_date': from_date.isoformat() if from_date else None,
+            'to_date': to_date.isoformat() if to_date else None,
             'summary': {
                 'client_total': round(total_client),
                 'nanny_total': round(total_nanny),
@@ -4131,6 +4736,8 @@ def create_app() -> Flask:
                 'hours': round(total_hours, 1),
                 'shifts_done': shifts_done,
                 'shifts_pending': shifts_pending,
+                'source_leads': source_leads,
+                'source_shifts': source_shifts,
             },
             'daily': daily_list,
         })

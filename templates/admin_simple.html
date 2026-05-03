@@ -92,8 +92,10 @@
           <button class="earn-tab active" data-p="day">День</button>
           <button class="earn-tab" data-p="week">Неделя</button>
           <button class="earn-tab" data-p="month">Месяц</button>
+          <button class="earn-tab" data-p="year">Год</button>
           <button class="earn-tab" data-p="all">Всё время</button>
         </div>
+        <input id="profitDate" type="date" style="max-width:160px;padding:7px 10px;border-radius:var(--r-sm);border:1.5px solid var(--c-border-str);font-size:13px;">
       </div>
 
       <!-- Summary KPIs -->
@@ -155,8 +157,8 @@
         <input type="text" id="leadsSearch" placeholder="Поиск по имени, Telegram…" />
       </div>
 
-      <div class="overflow-x-auto">
-        <table class="data-table" id="leadsTable">
+      <div class="overflow-x-auto admin-leads-wrap">
+        <table class="data-table admin-leads-table" id="leadsTable">
           <thead>
             <tr>
               <th>Дата</th>
@@ -175,9 +177,9 @@
           {% for lead in leads %}
             <tr class="{% if not lead.assigned_nanny_id %}row--warning{% else %}row--success{% endif %}"
                 data-search="{{ (lead.parent_name ~ ' ' ~ lead.telegram ~ ' ' ~ lead.child_name)|lower }}">
-              <td style="white-space:nowrap; font-size:12px; color:var(--c-text-muted);">{{ lead.submitted_at[:10] | fmt_date }}</td>
-              <td><strong>{{ lead.parent_name }}</strong></td>
-              <td style="font-size:12px;">
+              <td data-label="Дата" style="white-space:nowrap; font-size:12px; color:var(--c-text-muted);">{{ lead.submitted_at[:10] | fmt_date }}</td>
+              <td data-label="Клиент"><strong>{{ lead.parent_name }}</strong></td>
+              <td data-label="Telegram" style="font-size:12px;">
                 {{ lead.telegram }}
                 {% if lead.telegram | is_numeric_tg_id %}
                   <span title="Числовой Telegram ID — уведомления клиенту работают" style="color:var(--c-success);font-size:10px;margin-left:2px;">✓</span>
@@ -185,16 +187,16 @@
                   <span title="Не числовой ID — уведомление клиенту НЕ отправится. Нужен числовой Telegram ID." style="color:var(--c-danger);font-size:10px;margin-left:2px;cursor:help;">⚠ не ID</span>
                 {% endif %}
               </td>
-              <td style="font-size:13px;">{{ lead.child_name }}, {{ lead.child_age }}</td>
-              <td style="font-size:13px; white-space:nowrap;">{{ lead.meeting_date | fmt_date if lead.meeting_date else '—' }}</td>
-              <td style="text-align:center;">
+              <td data-label="Ребёнок" style="font-size:13px;">{{ lead.child_name }}, {{ lead.child_age }}</td>
+              <td data-label="Встреча" style="font-size:13px; white-space:nowrap;">{{ lead.meeting_date | fmt_date if lead.meeting_date else '—' }}</td>
+              <td data-label="Даты" style="text-align:center;">
                 {% if lead.work_dates|length > 0 %}
                   <span class="badge badge--info">{{ lead.work_dates|length }}</span>
                 {% else %}
                   <span style="opacity:.4">0</span>
                 {% endif %}
               </td>
-              <td>
+              <td data-label="Статус">
                 {% if lead.assigned_nanny_id %}
                   {% for n in nannies %}{% if n.id|string == lead.assigned_nanny_id|string %}
                     <span class="badge badge--success">✓ {{ n.name }}</span>
@@ -203,10 +205,10 @@
                   <span class="badge badge--warning">не назначена</span>
                 {% endif %}
               </td>
-              <td>
+              <td data-label="ЛК">
                 <a class="action-link" href="/client/{{ lead.token }}" target="_blank" title="Открыть ЛК">ЛК →</a>
               </td>
-              <td>
+              <td data-label="Назначить">
                 <form method="POST" action="/admin/assign" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                   <input type="hidden" name="token" value="{{ lead.token }}" />
                   <select name="nanny_id" style="padding:5px 8px; border-radius:var(--r-sm); border:1.5px solid var(--c-border-str); font-size:12px; width:auto;">
@@ -218,7 +220,7 @@
                   <button type="submit" class="btn" style="padding:5px 12px; font-size:12px; margin-top:0; background:var(--c-teal); color:#fff;">ОК</button>
                 </form>
               </td>
-              <td style="min-width:200px;">
+              <td data-label="Ставки" style="min-width:200px;">
                 <div class="rate-editor" data-token="{{ lead.token }}"
                      data-cr="{{ lead.client_rate_per_hour | default(130000) }}"
                      data-nr="{{ lead.nanny_rate_per_hour | default(110000) }}"
@@ -997,6 +999,9 @@
   function fmtDate(iso){
     const[y,m,d]=iso.split('-'); return `${d}.${m}.${y}`;
   }
+  function fmtMoney(v){
+    return v == null ? '—' : Number(v).toLocaleString('ru-RU') + ' ₫';
+  }
 
   function showDay(dateStr, evts, offs){
     const detail = document.getElementById('calDayDetail');
@@ -1031,6 +1036,14 @@
           ? `<div style="font-size:11px;color:#3b82f6;margin-top:3px;background:rgba(59,130,246,.06);padding:4px 8px;border-radius:6px;">💬 Клиент: ${esc(e.client_comment)}</div>` : '';
         const reviewStr = e.client_review
           ? `<div style="font-size:11px;color:#b45309;margin-top:3px;background:rgba(245,158,11,.1);padding:4px 8px;border-radius:6px;">${'⭐'.repeat(Math.max(1,Math.min(5,parseInt(e.client_review_stars||5,10)||5)))} ${esc(e.client_review)}</div>` : '';
+        const financeStr = e.client_total_vnd != null
+          ? `<div class="admin-day-money">
+              <span>Клиент: <strong>${fmtMoney(e.client_total_vnd)}</strong></span>
+              <span>ЗП няни: <strong>${fmtMoney(e.nanny_total_vnd)}</strong></span>
+              <span>Агентство: <strong>${fmtMoney(e.margin_vnd)}</strong></span>
+              <small>${e.finance_source==='actual'?'факт':'план'}${e.hours ? ` · ${e.hours} ч` : ''}</small>
+            </div>`
+          : `<div class="admin-day-money admin-day-money--empty">Нет времени для расчета суммы</div>`;
 
         // Confirm/reject buttons for pending dates
         const pendingActions = (e.type==='pending') ? `
@@ -1073,6 +1086,7 @@
             </div>
             ${e.nanny_name?`<div style="font-size:12px;color:var(--c-text-2);margin-top:3px;">👩 ${esc(e.nanny_name)}</div>`:''}
             ${factNanny}${factClient}
+            ${financeStr}
             ${nannyComment}${clientComment}${reviewStr}
             ${pendingActions}${resolveFactActions}${assignAction}
             <div style="margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
@@ -1277,8 +1291,13 @@
 (function(){
   const fmtMoney = v => v == null ? '—' : Number(v).toLocaleString('ru-RU') + ' ₫';
   const fmtDate = ymd => { if(!ymd||ymd.length!==10)return ymd; const[y,m,d]=ymd.split('-'); return `${d}.${m}`; };
+  const dateInput = document.getElementById('profitDate');
 
-  let profitPeriod = 'month';
+  let profitPeriod = 'day';
+  if(dateInput){
+    dateInput.value = new Date().toISOString().slice(0,10);
+    dateInput.addEventListener('change', loadProfit);
+  }
 
   document.getElementById('profitPeriodTabs').addEventListener('click', function(e){
     const btn = e.target.closest('.earn-tab');
@@ -1291,7 +1310,8 @@
 
   async function loadProfit(){
     try{
-      const r = await fetch('/api/admin/profit?period=' + profitPeriod);
+      const dateParam = dateInput && dateInput.value ? '&date=' + encodeURIComponent(dateInput.value) : '';
+      const r = await fetch('/api/admin/profit?period=' + profitPeriod + dateParam);
       const d = await r.json();
       if(!d.ok) return;
       const s = d.summary;
@@ -1345,9 +1365,39 @@
 .profit-kpi__val{font-size:1.2rem;font-weight:900;color:var(--c-text);}
 .profit-kpi--margin .profit-kpi__val{color:var(--c-lime-dk);}
 .profit-kpi--client .profit-kpi__val{color:var(--c-teal-dk);}
+.admin-day-money{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px;padding:8px;border-radius:8px;background:rgba(255,255,255,.72);border:1px solid rgba(1,107,130,.12);font-size:11px;color:var(--c-text-2);}
+.admin-day-money span{min-width:0;}
+.admin-day-money strong{display:block;color:var(--c-text);font-size:12px;margin-top:2px;}
+.admin-day-money small{grid-column:1/-1;color:var(--c-text-muted);font-weight:700;}
+.admin-day-money--empty{display:block;color:var(--c-text-muted);}
 /* Period tabs */
 .earn-tab{padding:6px 12px;border-radius:var(--r-pill);border:1px solid var(--c-border);background:var(--c-surface);font-size:12px;font-weight:600;cursor:pointer;color:var(--c-text-muted);transition:all .15s;}
 .earn-tab.active{background:var(--c-teal);color:#fff;border-color:var(--c-teal);}
+@media(max-width:760px){
+  .admin-header{padding:var(--s4) 0;}
+  .admin-header h1{font-size:1.55rem;}
+  .admin-section .panel{padding:var(--s4);}
+  .admin-leads-wrap{overflow:visible;}
+  .admin-leads-table,
+  .admin-leads-table thead,
+  .admin-leads-table tbody,
+  .admin-leads-table tr,
+  .admin-leads-table td{display:block;width:100%;}
+  .admin-leads-table thead{display:none;}
+  .admin-leads-table tbody tr{margin-bottom:12px;padding:12px;border:1px solid var(--c-border);border-radius:10px;background:var(--c-surface);box-shadow:var(--sh-sm);}
+  .admin-leads-table tbody tr.row--warning,
+  .admin-leads-table tbody tr.row--success{background:var(--c-surface);}
+  .admin-leads-table tbody td{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;align-items:start;padding:8px 0;border-bottom:1px solid var(--c-border);}
+  .admin-leads-table tbody td:last-child{border-bottom:0;}
+  .admin-leads-table tbody td::before{content:attr(data-label);font-size:11px;font-weight:800;color:var(--c-text-muted);text-transform:uppercase;letter-spacing:.02em;}
+  .admin-leads-table form{width:100%;}
+  .admin-leads-table select,
+  .admin-leads-table input{max-width:100%;}
+  .rate-editor>div{display:grid!important;grid-template-columns:1fr 1fr auto;align-items:end;}
+  .rate-editor .rate-cr,
+  .rate-editor .rate-nr{width:100%!important;}
+  .admin-day-money{grid-template-columns:1fr;}
+}
 @media(max-width:600px){.profit-kpi-grid{grid-template-columns:1fr 1fr;}}
 @media(max-width:400px){.profit-kpi-grid{grid-template-columns:1fr;}}
 </style>

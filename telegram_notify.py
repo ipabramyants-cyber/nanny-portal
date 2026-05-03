@@ -11,7 +11,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def send_message(chat_id: int | str, text: str, parse_mode: str = 'HTML') -> dict:
+def send_message(
+    chat_id: int | str,
+    text: str,
+    parse_mode: str = 'HTML',
+    reply_markup: dict | None = None,
+) -> dict:
     """
     Send a message to a Telegram chat.
     Returns the Telegram API response dict.
@@ -29,6 +34,8 @@ def send_message(chat_id: int | str, text: str, parse_mode: str = 'HTML') -> dic
         'parse_mode': parse_mode,
         'disable_web_page_preview': True,
     }
+    if reply_markup:
+        payload['reply_markup'] = reply_markup
     data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(
         url,

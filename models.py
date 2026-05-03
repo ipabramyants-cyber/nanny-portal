@@ -103,8 +103,11 @@ class Shift(db.Model):
     client_rate_per_hour = db.Column(db.Integer, nullable=True)   # VND per hour
 
     notes = db.Column(db.Text, nullable=True)
+    pre2h_reminder_sent_at = db.Column(db.DateTime, nullable=True)
     reminder_sent_at = db.Column(db.DateTime, nullable=True)
     post_reminder_sent_at = db.Column(db.DateTime, nullable=True)
+    nanny_missing_fact_sent_at = db.Column(db.DateTime, nullable=True)
+    review_reminder_sent_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
 
 
