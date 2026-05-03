@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block head_meta %}
+<meta name="robots" content="noindex, nofollow">
+{% endblock %}
+{% block title %}Регистрация партнера — Няня на час{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+  <div class="container">
+    <h1>Регистрация реферального агента</h1>
+    <p>Оставьте данные, администратор проверит заявку и активирует партнерский кабинет.</p>
+  </div>
+</div>
+
+<div class="container" style="padding:var(--s5) 0 var(--s10);max-width:720px;">
+  <div class="panel">
+    {% if success %}
+      <div style="text-align:center;padding:var(--s6) var(--s3);">
+        <div style="font-size:48px;margin-bottom:var(--s3);">✓</div>
+        <h2 style="margin-top:0;">Заявка принята</h2>
+        <p class="hint">
+          {% if already %}
+            Такая заявка уже есть. Администратор проверит данные и свяжется с вами.
+          {% else %}
+            После проверки администратор активирует кабинет и отправит вам ссылку.
+          {% endif %}
+        </p>
+        <a class="btn primary" href="/" style="width:auto;text-decoration:none;">На главную</a>
+      </div>
+    {% else %}
+      {% if error %}
+        <div class="form-error" style="margin-bottom:var(--s3);">{{ error }}</div>
+      {% endif %}
+      <form method="POST" action="/agent/register" style="display:grid;gap:14px;">
+        <div>
+          <label>Имя или название партнера</label>
+          <input name="name" required maxlength="120" placeholder="Имя, отель, агентство, блог">
+        </div>
+        <div>
+          <label>Telegram ID или @username</label>
+          <input name="telegram" maxlength="120" placeholder="Например 123456789 или @partner">
+          <p class="hint" style="margin-top:4px;">Если знаете числовой Telegram ID, кабинет сможет открываться через Telegram Mini App.</p>
+        </div>
+        <div>
+          <label>Дополнительный контакт</label>
+          <input name="contact" maxlength="200" placeholder="Телефон, WhatsApp, email">
+        </div>
+        <div>
+          <label>Комментарий</label>
+          <textarea name="notes" rows="4" maxlength="800" placeholder="Откуда клиенты, формат сотрудничества, город"></textarea>
+        </div>
+        <button type="submit" class="btn primary" style="width:auto;">Отправить заявку</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -154,12 +154,19 @@
 
   <!-- LEADS -->
   <div class="admin-section">
-    <div class="panel">
-      <h2>📋 Заявки ({{ leads|length }})</h2>
+    <div class="panel" id="leadsPanel">
+      <h2>📋 Заявки ({{ crm.attention_leads_total }} требуют внимания / {{ leads|length }} всего)</h2>
 
       <div class="search-bar">
         <input type="text" id="leadsSearch" placeholder="Поиск по имени, Telegram…" />
       </div>
+
+      <details class="resolved-leads-toggle" id="resolvedLeadsToggle">
+        <summary>
+          Назначенные заявки без решения свернуты: {{ crm.resolved_leads_total }}
+          <span>Открыть / скрыть</span>
+        </summary>
+      </details>
 
       <div class="overflow-x-auto admin-leads-wrap">
         <table class="data-table admin-leads-table" id="leadsTable">
@@ -178,8 +185,13 @@
             </tr>
           </thead>
           <tbody>
+          {% if leads and crm.attention_leads_total == 0 %}
+            <tr class="lead-all-resolved-note"><td colspan="10" style="padding:18px;text-align:center;color:var(--c-text-muted);">Все заявки назначены и свернуты. Откройте блок выше, чтобы посмотреть архив.</td></tr>
+          {% endif %}
           {% for lead in leads %}
+            {% set lead_resolved = lead.assigned_nanny_id and lead.client_rate_per_hour and lead.nanny_rate_per_hour %}
             <tr class="{% if not lead.assigned_nanny_id %}row--warning{% else %}row--success{% endif %}"
+                data-resolved="{{ '1' if lead_resolved else '0' }}"
                 data-search="{{ (lead.parent_name ~ ' ' ~ lead.telegram ~ ' ' ~ lead.child_name)|lower }}">
               <td data-label="Дата" style="white-space:nowrap; font-size:12px; color:var(--c-text-muted);">{{ lead.submitted_at[:10] | fmt_date }}</td>
               <td data-label="Клиент"><strong>{{ lead.parent_name }}</strong></td>
@@ -401,6 +413,14 @@
   <div class="admin-section">
     <div class="panel">
       <h2>🤝 Реферальные агенты ({{ agents|length }})</h2>
+      <div class="agent-register-link">
+        <div>
+          <strong>Ссылка для регистрации партнеров</strong>
+          <span>Отправьте ее потенциальному агенту. Новая заявка появится здесь неактивной до проверки.</span>
+        </div>
+        <input id="agentRegisterLink" value="{{ site_url }}/agent/register" readonly>
+        <button type="button" class="btn secondary" id="copyAgentRegisterLink" style="width:auto;margin-top:0;">Копировать</button>
+      </div>
       <div style="display:grid;gap:10px;">
       {% for agent in agents %}
         <details {% if not agent.is_active %}style="opacity:.58;"{% endif %}>
@@ -1293,7 +1313,29 @@
 
 // Live search for leads table
 (function(){
+  const copyAgentBtn = document.getElementById('copyAgentRegisterLink');
+  const agentLinkInput = document.getElementById('agentRegisterLink');
+  if (copyAgentBtn && agentLinkInput) {
+    copyAgentBtn.addEventListener('click', async function(){
+      try {
+        await navigator.clipboard.writeText(agentLinkInput.value);
+        copyAgentBtn.textContent = 'Скопировано';
+        setTimeout(() => copyAgentBtn.textContent = 'Копировать', 1600);
+      } catch (e) {
+        agentLinkInput.select();
+        document.execCommand('copy');
+      }
+    });
+  }
+
   const inp = document.getElementById('leadsSearch');
+  const panel = document.getElementById('leadsPanel');
+  const toggle = document.getElementById('resolvedLeadsToggle');
+  if (toggle && panel) {
+    toggle.addEventListener('toggle', function(){
+      panel.classList.toggle('show-resolved-leads', toggle.open);
+    });
+  }
   if (!inp) return;
   inp.addEventListener('input', function(){
     const q = this.value.toLowerCase();

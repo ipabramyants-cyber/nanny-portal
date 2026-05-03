@@ -2098,6 +2098,92 @@ def create_app() -> Flask:
         session['referral_agent_id'] = _agent_id(agent)
         return redirect(f"/?ref={_agent_value(agent, 'referral_code')}#leadForm")
 
+    _agent_register_rate: dict[str, list[float]] = {}
+
+    @app.route('/agent/register', methods=['GET', 'POST'])
+    def agent_register():
+        if request.method == 'GET':
+            return render_template('agent_register.html')
+
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
+        now = time.time()
+        hits = [t for t in _agent_register_rate.get(ip, []) if now - t < 3600]
+        if len(hits) >= 3:
+            return render_template('agent_register.html', error='Слишком много заявок. Попробуйте позже.'), 429
+        hits.append(now)
+        _agent_register_rate[ip] = hits
+
+        name = _clean_user_text(request.form.get('name'), 120)
+        telegram_raw = _clean_user_text(request.form.get('telegram'), 120)
+        contact = _clean_user_text(request.form.get('contact'), 200)
+        notes = _clean_user_text(request.form.get('notes'), 800)
+        if not name:
+            return render_template('agent_register.html', error='Укажите имя или название партнера.'), 400
+
+        telegram_user_id = None
+        if telegram_raw and re.fullmatch(r'-?\d{5,20}', telegram_raw.strip()):
+            try:
+                telegram_user_id = int(telegram_raw.strip())
+            except Exception:
+                telegram_user_id = None
+        final_notes = '\n'.join(filter(None, [
+            f"Telegram/contact: {telegram_raw}" if telegram_raw else '',
+            f"Контакт: {contact}" if contact else '',
+            notes,
+            "Самостоятельная регистрация партнера. Требуется проверка и активация админом.",
+        ]))
+
+        if use_sql:
+            existing = ReferralAgent.query.filter_by(telegram_user_id=telegram_user_id).first() if telegram_user_id else None
+            if existing:
+                return render_template('agent_register.html', success=True, already=True)
+            agent = ReferralAgent(
+                name=name,
+                telegram_user_id=telegram_user_id,
+                portal_token=secrets.token_urlsafe(18),
+                referral_code=_new_agent_code(name),
+                commission_vnd=200000,
+                payout_delay_days=14,
+                notes=final_notes,
+                is_active=False,
+            )
+            db.session.add(agent)
+            db.session.commit()
+            agent_for_notify = agent
+        else:
+            agents = load_agents()
+            if telegram_user_id and any(str(a.get('telegram_user_id') or '') == str(telegram_user_id) for a in agents):
+                return render_template('agent_register.html', success=True, already=True)
+            next_id = str(max([int(a.get('id') or 0) for a in agents] or [0]) + 1)
+            agent = {
+                'id': next_id,
+                'name': name,
+                'telegram_user_id': telegram_user_id or '',
+                'portal_token': secrets.token_urlsafe(18),
+                'referral_code': _new_agent_code(name),
+                'commission_vnd': 200000,
+                'payout_delay_days': 14,
+                'notes': final_notes,
+                'is_active': False,
+                'created_at': datetime.datetime.utcnow().isoformat(),
+            }
+            agents.append(agent)
+            save_agents(agents)
+            agent_for_notify = agent
+
+        _notify_admins(
+            "🤝 Новая заявка реферального агента\n"
+            f"Партнер: {name}\n"
+            f"Telegram/contact: {telegram_raw or contact or '—'}\n"
+            "Статус: ожидает проверки и активации в админке.",
+            [[_url_button('Открыть админку', f"{_site_url()}/admin")]],
+        )
+        _send_to_agent(
+            agent_for_notify,
+            "Заявка партнера принята. Администратор проверит данные и активирует кабинет.",
+        )
+        return render_template('agent_register.html', success=True)
+
     @app.route('/agent')
     def agent_home():
         return redirect(url_for('agent_app'))
@@ -3954,10 +4040,16 @@ def create_app() -> Flask:
         assigned_count = len([l for l in leads if l.get('assigned_nanny_id')])
         unassigned_count = max(0, len(leads) - assigned_count)
         work_dates_total = sum(len((l.get('work_dates') or {}).keys()) for l in leads)
+        resolved_leads_count = len([
+            l for l in leads
+            if l.get('assigned_nanny_id') and l.get('client_rate_per_hour') and l.get('nanny_rate_per_hour')
+        ])
         crm = {
             'leads_total': len(leads),
             'assigned_total': assigned_count,
             'unassigned_total': unassigned_count,
+            'attention_leads_total': max(0, len(leads) - resolved_leads_count),
+            'resolved_leads_total': resolved_leads_count,
             'work_dates_total': work_dates_total,
             'reviews_total': len(reviews),
             'shifts_total': len(shift_rows),
