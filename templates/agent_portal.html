@@ -9,6 +9,19 @@
   </div>
 </div>
 
+{% if switch_portals %}
+<div class="container portal-switch-wrap">
+  <div class="portal-switch">
+    <span>Доступны другие кабинеты</span>
+    <div>
+      {% for portal in switch_portals %}
+        <a class="btn secondary" href="{{ portal.url }}" style="width:auto;margin-top:0;text-decoration:none;">{{ portal.label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <div class="container agent-page">
   <section class="agent-hero">
     <div class="panel agent-qr-panel">

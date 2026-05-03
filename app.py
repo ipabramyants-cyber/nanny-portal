@@ -900,6 +900,122 @@ def create_app() -> Flask:
             return None
         return str(agent.get('id') if isinstance(agent, dict) else agent.id)
 
+    def _client_portal_for_telegram(telegram_user_id, telegram_username: str | None = None, attach: bool = False) -> dict | None:
+        if not telegram_user_id:
+            return None
+        tg_id_str = str(telegram_user_id)
+        tg_username = (telegram_username or '').strip().lstrip('@').lower()
+        lead_obj = None
+        if use_sql:
+            lead_obj = Lead.query.filter_by(telegram_user_id=int(telegram_user_id)).order_by(Lead.submitted_at.desc()).first()
+            if not lead_obj and tg_username:
+                lead_obj = Lead.query.filter(
+                    db.func.lower(Lead.telegram).in_([tg_username, '@' + tg_username])
+                ).order_by(Lead.submitted_at.desc()).first()
+            if not lead_obj:
+                lead_obj = Lead.query.filter_by(telegram=tg_id_str).order_by(Lead.submitted_at.desc()).first()
+            if lead_obj:
+                changed = False
+                if attach and not lead_obj.telegram_user_id:
+                    lead_obj.telegram_user_id = int(telegram_user_id)
+                    changed = True
+                referral_agent = _agent_by_referral_code(session.get('referral_agent_code')) if attach else None
+                if referral_agent and not lead_obj.referral_agent_id:
+                    lead_obj.referral_agent_id = int(_agent_id(referral_agent))
+                    changed = True
+                if changed:
+                    db.session.commit()
+                return {
+                    'role': 'client',
+                    'label': 'Кабинет клиента',
+                    'url': f"/client/{lead_obj.token}",
+                }
+            client_row = Client.query.filter_by(telegram_user_id=int(telegram_user_id)).first()
+            if client_row:
+                return {'role': 'client', 'label': 'Кабинет клиента', 'url': '/client/app'}
+            return None
+
+        leads_list = _read_json(LEADS_FILE, [])
+        for lead in leads_list:
+            lead_tg = str(lead.get('telegram_user_id') or '')
+            lead_uname = str(lead.get('telegram_username') or '').lstrip('@').lower()
+            lead_field = str(lead.get('telegram') or '').lstrip('@').lower()
+            if (lead_tg and lead_tg == tg_id_str) or \
+               (lead_field and lead_field == tg_id_str) or \
+               (tg_username and (lead_uname == tg_username or lead_field == tg_username)):
+                lead_obj = lead
+                break
+        if not lead_obj or not lead_obj.get('token'):
+            return None
+        changed = False
+        if attach and not lead_obj.get('telegram_user_id'):
+            lead_obj['telegram_user_id'] = int(telegram_user_id)
+            changed = True
+        referral_agent = _agent_by_referral_code(session.get('referral_agent_code')) if attach else None
+        if referral_agent and not lead_obj.get('referral_agent_id'):
+            lead_obj['referral_agent_id'] = _agent_id(referral_agent)
+            changed = True
+        if changed:
+            save_leads(leads_list)
+        return {
+            'role': 'client',
+            'label': 'Кабинет клиента',
+            'url': f"/client/{lead_obj['token']}",
+        }
+
+    def _available_portals_for_telegram(telegram_user_id, telegram_username: str | None = None, attach_client: bool = False) -> list[dict]:
+        if not telegram_user_id:
+            return []
+        portals: list[dict] = []
+        try:
+            tid = int(telegram_user_id)
+        except Exception:
+            return portals
+
+        if tid in admin_ids():
+            portals.append({'role': 'admin', 'label': 'Кабинет админа', 'url': '/admin'})
+
+        if use_sql:
+            nanny = Nanny.query.filter_by(telegram_user_id=tid).first()
+            if nanny:
+                portals.append({'role': 'nanny', 'label': 'Кабинет няни', 'url': '/nanny/app'})
+        else:
+            nanny = next((n for n in _read_json(NANNIES_FILE, []) if str(n.get('telegram_user_id') or '') == str(tid)), None)
+            if nanny:
+                portals.append({'role': 'nanny', 'label': 'Кабинет няни', 'url': '/nanny/app'})
+
+        client_portal = _client_portal_for_telegram(tid, telegram_username, attach=attach_client)
+        if client_portal:
+            portals.append(client_portal)
+
+        agent = _agent_by_telegram_id(tid)
+        if agent:
+            portals.append({'role': 'agent', 'label': 'Кабинет агента', 'url': '/agent/app'})
+
+        seen = set()
+        unique = []
+        for portal in portals:
+            key = (portal.get('role'), portal.get('url'))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(portal)
+        return unique
+
+    def _portal_switch_options_for_session(current_role: str) -> list[dict]:
+        tid = session.get('telegram_user_id')
+        if not tid:
+            return []
+        portals = _available_portals_for_telegram(tid, session.get('telegram_username'), attach_client=False)
+        return [p for p in portals if p.get('role') != current_role]
+
+    def _append_auth_token(url: str, role: str, telegram_user_id: int) -> str:
+        if role == 'client':
+            return url
+        token = _make_auth_token(role, telegram_user_id)
+        sep = '&' if '?' in url else '?'
+        return f"{url}{sep}_t={token}"
+
     _NANNY_REVIEW_TEMPLATES = [
         {
             'author': 'Елена',
@@ -1225,35 +1341,23 @@ def create_app() -> Flask:
         session['telegram_display_name'] = (user_obj.get('first_name') or '')
         session['auth_at'] = int(time.time())
 
-        # Upsert user in DB (only in SQL mode)
-        # NOTE: Role assignment is minimal for now.
-        role = 'admin' if telegram_user_id in admin_ids() else 'client'
+        portals = _available_portals_for_telegram(
+            telegram_user_id,
+            user_obj.get('username'),
+            attach_client=True,
+        )
+        portal_roles = [p.get('role') for p in portals]
+        if 'admin' in portal_roles:
+            role = 'admin'
+        elif 'nanny' in portal_roles:
+            role = 'nanny'
+        elif 'agent' in portal_roles:
+            role = 'agent'
+        elif 'client' in portal_roles:
+            role = 'client'
+        else:
+            role = 'client'
 
-        # If this Telegram user is linked as nanny, assign nanny role
-        if role != 'admin':
-            if use_sql:
-                try:
-                    n = Nanny.query.filter_by(telegram_user_id=telegram_user_id).first()
-                    if n:
-                        role = 'nanny'
-                    else:
-                        agent_row = ReferralAgent.query.filter_by(telegram_user_id=telegram_user_id, is_active=True).first()
-                        if agent_row:
-                            role = 'agent'
-                except Exception:
-                    pass
-            else:
-                # JSON mode: check nannies.json
-                nannies_list = _read_json(NANNIES_FILE, [])
-                for _n in nannies_list:
-                    if str(_n.get('telegram_user_id') or '') == str(telegram_user_id):
-                        role = 'nanny'
-                        break
-                if role != 'nanny':
-                    for _a in load_agents():
-                        if str(_a.get('telegram_user_id') or '') == str(telegram_user_id) and _a.get('is_active', True):
-                            role = 'agent'
-                            break
         if use_sql:
             u = User.query.filter_by(telegram_user_id=telegram_user_id).first()
             if not u:
@@ -1275,56 +1379,13 @@ def create_app() -> Flask:
         session['telegram_user_id'] = telegram_user_id
         session['role'] = role
 
-        # For linked roles: return the destination Mini App URL.
-        lk_url = None
-        if role == 'agent':
-            lk_url = '/agent/app'
-
-        # For client role: find their LK token if they already have a lead
-        if role == 'client':
-            tg_id_str = str(telegram_user_id)
-            tg_username = (user_obj.get('username') or '').lower()
-            if use_sql:
-                try:
-                    lead_row = Lead.query.filter_by(telegram_user_id=telegram_user_id).order_by(Lead.submitted_at.desc()).first()
-                    if not lead_row and tg_username:
-                        # fallback: match by @username stored in telegram field
-                        lead_row = Lead.query.filter(
-                            db.func.lower(Lead.telegram).in_([tg_username, '@' + tg_username])
-                        ).order_by(Lead.submitted_at.desc()).first()
-                        # Save numeric tg_user_id so next login finds by ID, not username
-                        if lead_row and not lead_row.telegram_user_id:
-                            lead_row.telegram_user_id = telegram_user_id
-                    referral_agent = _agent_by_referral_code(session.get('referral_agent_code'))
-                    if lead_row and referral_agent and not lead_row.referral_agent_id:
-                        lead_row.referral_agent_id = int(_agent_id(referral_agent))
-                    if lead_row:
-                        db.session.commit()
-                    if lead_row and lead_row.token:
-                        lk_url = f"/client/{lead_row.token}"
-                except Exception:
-                    pass
-            else:
-                leads_list = _read_json(LEADS_FILE, [])
-                found_lead = None
-                for lead in leads_list:
-                    lead_tg = str(lead.get('telegram_user_id') or '')
-                    lead_uname = str(lead.get('telegram_username') or '').lstrip('@').lower()
-                    lead_field = str(lead.get('telegram') or '').lstrip('@').lower()
-                    if (lead_tg and lead_tg == tg_id_str) or \
-                       (tg_username and (lead_uname == tg_username or lead_field == tg_username)):
-                        if lead.get('token'):
-                            lk_url = f"/client/{lead['token']}"
-                            found_lead = lead
-                            break
-                # Save numeric tg_user_id into JSON lead so next login finds by ID
-                if found_lead and not found_lead.get('telegram_user_id') and telegram_user_id:
-                    found_lead['telegram_user_id'] = telegram_user_id
-                referral_agent = _agent_by_referral_code(session.get('referral_agent_code'))
-                if found_lead and referral_agent and not found_lead.get('referral_agent_id'):
-                    found_lead['referral_agent_id'] = _agent_id(referral_agent)
-                if found_lead:
-                    save_leads(leads_list)
+        available_portals = []
+        for portal in portals:
+            item = dict(portal)
+            item['url'] = _append_auth_token(item.get('url') or '/', item.get('role') or 'client', telegram_user_id)
+            available_portals.append(item)
+        primary_portal = next((p for p in available_portals if p.get('role') == role), None)
+        lk_url = (primary_portal or {}).get('url')
 
         return {
             'ok': True,
@@ -1334,6 +1395,7 @@ def create_app() -> Flask:
             'role': role,
             'auth_token': auth_token,
             'lk_url': lk_url,
+            'available_portals': available_portals,
         }
 
     def _require_telegram_session() -> int:
@@ -2220,6 +2282,7 @@ def create_app() -> Flask:
             agent=_agent_to_dict(agent),
             referral_url=_agent_referral_url(agent),
             portal_url=_agent_portal_url(agent),
+            switch_portals=_portal_switch_options_for_session('agent'),
             clients=payload['clients'],
             events=payload['events'],
             summary=payload['summary'],
@@ -2458,7 +2521,13 @@ def create_app() -> Flask:
                     for b in blocks
                     if str(b.get('nanny_id')) == str(nanny.get('id')) and b.get('kind', 'dayoff') == 'dayoff'
                 ]
-        return render_template('client_portal.html', lead=lead, nanny=nanny, nanny_dayoffs=nanny_dayoffs)
+        return render_template(
+            'client_portal.html',
+            lead=lead,
+            nanny=nanny,
+            nanny_dayoffs=nanny_dayoffs,
+            switch_portals=_portal_switch_options_for_session('client'),
+        )
 
     @app.route('/api/client/<token>/link_tg', methods=['POST'])
     def api_client_link_tg(token: str):
@@ -2524,7 +2593,19 @@ def create_app() -> Flask:
             if changed:
                 save_leads(leads)
 
-        return {'ok': True, 'telegram_user_id': tg_user_id, 'name': tg_name}
+        session.permanent = True
+        session['telegram_user_id'] = tg_user_id
+        session['telegram_username'] = tg_username
+        session['telegram_display_name'] = tg_name or ''
+        if not session.get('role'):
+            session['role'] = 'client'
+
+        return {
+            'ok': True,
+            'telegram_user_id': tg_user_id,
+            'name': tg_name,
+            'available_portals': _available_portals_for_telegram(tg_user_id, tg_username, attach_client=False),
+        }
 
     @app.route('/api/client/<token>/update', methods=['POST'])
     def api_client_update(token: str):

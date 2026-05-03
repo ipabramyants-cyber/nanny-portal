@@ -22,6 +22,26 @@
 <script>
 // Auto-link Telegram user ID when opened inside Telegram Mini App
 (function(){
+  function renderPortalSwitch(portals) {
+    var box = document.getElementById('roleSwitchBox');
+    var links = document.getElementById('roleSwitchLinks');
+    if (!box || !links || !Array.isArray(portals)) return;
+    var other = portals.filter(function(p){ return p && p.role !== 'client' && p.url; });
+    if (!other.length) return;
+    links.innerHTML = '';
+    other.forEach(function(portal){
+      var a = document.createElement('a');
+      a.className = 'btn secondary';
+      a.href = portal.url;
+      a.textContent = portal.label || 'Открыть кабинет';
+      a.style.width = 'auto';
+      a.style.marginTop = '0';
+      a.style.textDecoration = 'none';
+      links.appendChild(a);
+    });
+    box.style.display = 'flex';
+  }
+
   var tries = 0;
   var timer = setInterval(function(){
     tries++;
@@ -38,7 +58,10 @@
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({init_data: initData}),
         credentials: 'include',
-      }).catch(function(){});
+      })
+        .then(function(r){ return r.json().catch(function(){ return null; }); })
+        .then(function(data){ if (data) renderPortalSwitch(data.available_portals); })
+        .catch(function(){});
     } else if (tries > 40) {
       clearInterval(timer); // not in Telegram — skip
     }
@@ -61,6 +84,17 @@
         <span style="opacity:.8;">⏳ Подбираем няню…</span>
       {% endif %}
     </p>
+  </div>
+</div>
+
+<div class="container portal-switch-wrap">
+  <div id="roleSwitchBox" class="portal-switch" {% if not switch_portals %}style="display:none;"{% endif %}>
+    <span>Доступны другие кабинеты</span>
+    <div id="roleSwitchLinks">
+      {% for portal in switch_portals %}
+        <a class="btn secondary" href="{{ portal.url }}" style="width:auto;margin-top:0;text-decoration:none;">{{ portal.label }}</a>
+      {% endfor %}
+    </div>
   </div>
 </div>
 

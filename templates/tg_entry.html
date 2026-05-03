@@ -56,7 +56,18 @@
         var role      = res.data.role || 'client';
         var authToken = res.data.auth_token || '';
         var lkUrl     = res.data.lk_url || '';
+        var portals   = Array.isArray(res.data.available_portals) ? res.data.available_portals : [];
         var dest;
+
+        if (portals.length > 1) {
+          buttonsEl.innerHTML = '';
+          setStatus('Выберите кабинет');
+          portals.forEach(function (portal, idx) {
+            if (!portal || !portal.url) return;
+            addButton(portal.label || 'Открыть кабинет', portal.url, idx === 0);
+          });
+          return;
+        }
 
         if (role === 'admin') {
           dest = '/admin';

@@ -37,6 +37,7 @@ class FullScenarioTest(unittest.TestCase):
             return {'ok': True, 'result': {'message_id': len(self.sent_messages)}}
 
         app_module.send_message = fake_send_message
+        self.app_module = app_module
         self.app = app_module.create_app()
         self.client = self.app.test_client()
         self.base_url = 'https://example.test'
@@ -138,6 +139,55 @@ class FullScenarioTest(unittest.TestCase):
         self.assertGreaterEqual(len(notification_log), 6)
         self.assertTrue(any(item.get('status') == 'delivered' for item in notification_log))
         self.assertGreaterEqual(len(self.sent_messages), 6)
+
+    def test_same_telegram_id_can_open_client_and_agent_portals(self):
+        tg_id = 333333333
+        self.write_json('referral_agents.json', [{
+            'id': '1',
+            'name': 'Dual Role Agent',
+            'telegram_user_id': tg_id,
+            'portal_token': 'agent-dual-token',
+            'referral_code': 'dual-agent-code',
+            'commission_vnd': 200000,
+            'payout_delay_days': 14,
+            'is_active': True,
+            'created_at': datetime.datetime.utcnow().isoformat(),
+        }])
+
+        lead_resp = self.client.post('/api/lead', json={
+            'parent_name': 'Dual Client',
+            'telegram': '@dualuser',
+            'child_name': 'Mila',
+            'child_age': '4',
+            'work_dates': {},
+        }, base_url=self.base_url)
+        self.assertEqual(lead_resp.status_code, 200, lead_resp.get_data(as_text=True))
+        lead_token = lead_resp.get_json()['lk_url'].rstrip('/').split('/')[-1]
+
+        old_validate = self.app_module.validate_webapp_init_data
+        self.app_module.validate_webapp_init_data = lambda init_data, bot_token: {
+            'user': json.dumps({'id': tg_id, 'username': 'dualuser', 'first_name': 'Dual'})
+        }
+        try:
+            auth_resp = self.client.post('/api/auth/telegram', json={'init_data': 'valid'}, base_url=self.base_url)
+        finally:
+            self.app_module.validate_webapp_init_data = old_validate
+
+        self.assertEqual(auth_resp.status_code, 200, auth_resp.get_data(as_text=True))
+        data = auth_resp.get_json()
+        roles = {p.get('role') for p in data.get('available_portals', [])}
+        self.assertIn('client', roles)
+        self.assertIn('agent', roles)
+        self.assertTrue(any(p.get('url', '').startswith(f'/client/{lead_token}') for p in data['available_portals']))
+        self.assertTrue(any(p.get('url', '').startswith('/agent/app') for p in data['available_portals']))
+
+        agent_resp = self.client.get('/agent/app', base_url=self.base_url)
+        self.assertEqual(agent_resp.status_code, 302)
+        self.assertIn('/agent/agent-dual-token', agent_resp.headers.get('Location', ''))
+
+        client_resp = self.client.get(f'/client/{lead_token}', base_url=self.base_url)
+        self.assertEqual(client_resp.status_code, 200)
+        self.assertIn(b'/agent/app', client_resp.data)
 
 
 if __name__ == '__main__':
