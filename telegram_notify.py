@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def send_message(
     chat_id: int | str,
     text: str,
-    parse_mode: str = 'HTML',
+    parse_mode: str | None = None,
     reply_markup: dict | None = None,
 ) -> dict:
     """
@@ -31,9 +31,10 @@ def send_message(
     payload = {
         'chat_id': chat_id,
         'text': text,
-        'parse_mode': parse_mode,
         'disable_web_page_preview': True,
     }
+    if parse_mode:
+        payload['parse_mode'] = parse_mode
     if reply_markup:
         payload['reply_markup'] = reply_markup
     data = json.dumps(payload).encode('utf-8')

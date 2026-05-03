@@ -1,26 +1,30 @@
-// Splash loader — показывает анимацию логотипа при загрузке
+// Splash loader: short branded intro with a safe fallback timeout.
 (function () {
   var splash = document.getElementById('splash');
   if (!splash) return;
 
+  var hidden = false;
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var minDelay = reduceMotion ? 120 : 950;
+  var maxDelay = reduceMotion ? 800 : 2800;
+
   function hideSplash() {
+    if (hidden) return;
+    hidden = true;
     splash.classList.add('hide');
     setTimeout(function () {
       splash.style.display = 'none';
-    }, 400);
+      splash.setAttribute('aria-hidden', 'true');
+    }, reduceMotion ? 80 : 460);
   }
 
-  // Минимум 1.4 сек показа анимации, потом ждём load
-  var minTimer = setTimeout(function () {
+  setTimeout(function () {
     if (document.readyState === 'complete') {
       hideSplash();
     } else {
       window.addEventListener('load', hideSplash, { once: true });
     }
-  }, 1400);
+  }, minDelay);
 
-  window.addEventListener('load', function () {
-    // Если страница загрузилась раньше — ждём минимальный таймер
-    // (minTimer сам вызовет hideSplash)
-  }, { once: true });
+  setTimeout(hideSplash, maxDelay);
 })();
