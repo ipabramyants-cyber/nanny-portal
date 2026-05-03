@@ -401,6 +401,7 @@
           child_name:    fd.get('child_name'),
           child_age:     fd.get('child_age'),
           notes:         fd.get('notes'),
+          referral_code: new URLSearchParams(window.location.search).get('ref') || '',
           meeting_date:  meetingDate,
           work_dates:    workDates,
         };

@@ -393,6 +393,74 @@
   </div>
   {% endif %}
 
+  <!-- REFERRAL AGENTS -->
+  <div class="admin-section">
+    <div class="panel">
+      <h2>🤝 Реферальные агенты ({{ agents|length }})</h2>
+      <div style="display:grid;gap:10px;">
+      {% for agent in agents %}
+        <details {% if not agent.is_active %}style="opacity:.58;"{% endif %}>
+          <summary>
+            <span style="font-weight:800;color:var(--c-teal-dk);">{{ agent.name }}</span>
+            <span class="badge badge--info">{{ agent_stats.get(agent.id|string, 0) }} клиентов</span>
+            <span class="badge {% if agent.is_active %}badge--success{% else %}badge--neutral{% endif %}">
+              {% if agent.is_active %}активен{% else %}отключён{% endif %}
+            </span>
+          </summary>
+          <div style="display:grid;gap:12px;padding:16px;margin-top:8px;background:var(--c-surface-2);border-radius:var(--r-md);border:1px solid var(--c-border);max-width:820px;">
+            <form method="POST" action="/admin/agent/save" style="display:grid;gap:12px;">
+              <input type="hidden" name="id" value="{{ agent.id }}">
+              <div style="display:grid;grid-template-columns:1fr 180px 150px;gap:12px;">
+                <div><label>Имя агента</label><input name="name" value="{{ agent.name }}" required></div>
+                <div><label>Telegram ID</label><input name="telegram_user_id" value="{{ agent.telegram_user_id or '' }}" placeholder="числовой ID"></div>
+                <div>
+                  <label>Статус</label>
+                  <select name="is_active">
+                    <option value="1" {% if agent.is_active %}selected{% endif %}>Активен</option>
+                    <option value="0" {% if not agent.is_active %}selected{% endif %}>Отключён</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 140px 150px;gap:12px;">
+                <div><label>Реферальный код</label><input name="referral_code" value="{{ agent.referral_code }}" required></div>
+                <div><label>Комиссия, %</label><input name="commission_percent" type="number" min="0" max="100" value="{{ agent.commission_percent }}"></div>
+                <div><label>Выплата через дней</label><input name="payout_delay_days" type="number" min="0" max="90" value="{{ agent.payout_delay_days }}"></div>
+              </div>
+              <div><label>Заметки</label><textarea name="notes" rows="2">{{ agent.notes or '' }}</textarea></div>
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <button type="submit" class="btn primary" style="width:auto;margin-top:0;">Сохранить</button>
+                <a class="action-link" href="{{ site_url }}/agent/{{ agent.portal_token }}" target="_blank">Кабинет агента →</a>
+                <a class="action-link" href="{{ site_url }}/r/{{ agent.referral_code }}" target="_blank">Реферальная ссылка →</a>
+              </div>
+            </form>
+            <form method="POST" action="/admin/agent/delete">
+              <input type="hidden" name="id" value="{{ agent.id }}">
+              <button type="submit" class="btn danger" style="width:auto;" onclick="return confirm('Отключить агента? История клиентов сохранится.')">Отключить агента</button>
+            </form>
+          </div>
+        </details>
+      {% endfor %}
+      </div>
+
+      <details style="margin-top:20px;">
+        <summary>+ Добавить агента</summary>
+        <form method="POST" action="/admin/agent/save" style="display:grid;gap:12px;margin-top:14px;max-width:760px;padding:16px;background:var(--c-surface-2);border-radius:var(--r-md);border:1px solid var(--c-border);">
+          <div style="display:grid;grid-template-columns:1fr 180px;gap:12px;">
+            <div><label>Имя агента</label><input name="name" required placeholder="Анна / отель / партнёр"></div>
+            <div><label>Telegram ID</label><input name="telegram_user_id" placeholder="числовой ID"></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 140px 150px;gap:12px;">
+            <div><label>Реферальный код</label><input name="referral_code" placeholder="можно оставить пустым"></div>
+            <div><label>Комиссия, %</label><input name="commission_percent" type="number" min="0" max="100" value="10"></div>
+            <div><label>Выплата через дней</label><input name="payout_delay_days" type="number" min="0" max="90" value="3"></div>
+          </div>
+          <div><label>Заметки</label><textarea name="notes" rows="2" placeholder="Источник, договорённости, контакты"></textarea></div>
+          <div><button type="submit" class="btn primary" style="width:auto;margin-top:0;">Добавить агента</button></div>
+        </form>
+      </details>
+    </div>
+  </div>
+
   <!-- NANNIES -->
   <div class="admin-section">
     <div class="panel">
@@ -1393,6 +1461,7 @@
   .admin-leads-table form{width:100%;}
   .admin-leads-table select,
   .admin-leads-table input{max-width:100%;}
+  form[action="/admin/agent/save"] > div{grid-template-columns:1fr!important;}
   .rate-editor>div{display:grid!important;grid-template-columns:1fr 1fr auto;align-items:end;}
   .rate-editor .rate-cr,
   .rate-editor .rate-nr{width:100%!important;}

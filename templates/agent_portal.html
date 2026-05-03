@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% block title %}Кабинет агента — Няня на час{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+  <div class="container">
+    <h1>Кабинет реферального агента</h1>
+    <p>{{ agent.name }} · комиссия {{ summary.commission_percent }}% · выплата через {{ summary.payout_delay_days }} дн.</p>
+  </div>
+</div>
+
+<div class="container agent-page">
+  <section class="agent-hero">
+    <div class="panel agent-qr-panel">
+      <div>
+        <h2>QR-код агента</h2>
+        <p class="hint">Клиент сканирует код, оставляет заявку, и заявка закрепляется за вами автоматически.</p>
+      </div>
+      <canvas id="agentQr" width="220" height="220" aria-label="QR код реферальной ссылки"></canvas>
+      <div class="agent-ref-link" id="agentRefLink">{{ referral_url }}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn primary" id="copyRefBtn" style="width:auto;margin-top:0;">Скопировать ссылку</button>
+        <a class="btn secondary" href="{{ referral_url }}" target="_blank" style="width:auto;margin-top:0;text-decoration:none;">Открыть ссылку</a>
+      </div>
+    </div>
+
+    <div class="agent-kpis">
+      <div class="kpi-card">
+        <div class="kpi-icon">👥</div>
+        <div class="kpi-value">{{ summary.clients_total }}</div>
+        <div class="kpi-label">Клиентов</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">📅</div>
+        <div class="kpi-value">{{ summary.clients_with_dates }}</div>
+        <div class="kpi-label">С датами работы</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon">₫</div>
+        <div class="kpi-value">{{ '{:,}'.format(summary.expected_commission_vnd).replace(',', ' ') }}</div>
+        <div class="kpi-label">Ожидаемая комиссия</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="agent-grid">
+    <div class="panel">
+      <div class="calendar-head">
+        <button type="button" id="agentCalPrev">‹</button>
+        <strong id="agentCalLabel"></strong>
+        <button type="button" id="agentCalNext">›</button>
+      </div>
+      <div id="agentCalendar" class="calendar"></div>
+      <div class="agent-legend">
+        <span><i class="work"></i>Рабочая дата</span>
+        <span><i class="payout"></i>План выплаты</span>
+      </div>
+      <div id="agentDayDetail" class="agent-day-detail"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Калькулятор прибыли</h2>
+      <div class="agent-calc">
+        <label>Клиентов в месяц<input id="calcClients" type="number" min="0" value="5"></label>
+        <label>Смен на клиента<input id="calcShifts" type="number" min="1" value="2"></label>
+        <label>Часов в смене<input id="calcHours" type="number" min="1" value="4"></label>
+        <label>Ставка клиента, ₫/ч<input id="calcClientRate" type="number" min="0" value="130000"></label>
+        <label>Ставка няни, ₫/ч<input id="calcNannyRate" type="number" min="0" value="110000"></label>
+      </div>
+      <div class="agent-calc-result" id="calcResult"></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Клиенты агента</h2>
+    {% if clients %}
+      <div class="agent-client-list">
+        {% for client in clients %}
+          <div class="agent-client-card">
+            <div>
+              <strong>{{ client.parent_name }}</strong>
+              <div class="hint">{{ client.child_name }}{% if client.child_age %}, {{ client.child_age }}{% endif %} · {{ client.telegram }}</div>
+            </div>
+            <div>
+              <span class="badge badge--info">{{ client.dates_count }} дат</span>
+              {% if client.first_work_date %}
+                <div class="agent-client-meta">Первая дата: {{ client.first_work_date | fmt_date }} {{ client.first_work_time or '' }}</div>
+                <div class="agent-client-meta">План выплаты: {{ client.payout_date | fmt_date }}</div>
+              {% else %}
+                <div class="agent-client-meta">Дата работы ещё не выбрана</div>
+              {% endif %}
+            </div>
+            <div class="agent-money">
+              {{ '{:,}'.format(client.commission_vnd).replace(',', ' ') }} ₫
+              <small>ожидаемая комиссия</small>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="hint">Пока нет клиентов по вашей реферальной ссылке.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Статьи для работы с клиентами</h2>
+    {% if articles %}
+      <div class="agent-article-list">
+        {% for article in articles %}
+          <a href="/blog/{{ article.slug }}" target="_blank" class="agent-article">
+            {% if article.cover_url %}
+              <img src="{{ article.cover_url }}" alt="" loading="lazy" onerror="this.style.display='none'">
+            {% else %}
+              <span>📝</span>
+            {% endif %}
+            <div>
+              <strong>{{ article.title }}</strong>
+              <p>{{ article.excerpt }}</p>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="hint">Статьи появятся здесь после публикации в админ-портале.</p>
+    {% endif %}
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<script>
+(function(){
+  const REF_URL = {{ referral_url | tojson }};
+  const EVENTS = {{ events | tojson }};
+  const COMMISSION_PERCENT = Number({{ summary.commission_percent | tojson }}) || 10;
+  const qr = document.getElementById('agentQr');
+  if (window.QRCode && qr) {
+    QRCode.toCanvas(qr, REF_URL, { width: 220, margin: 1, color: { dark: '#016b82', light: '#ffffff' } });
+  }
+  document.getElementById('copyRefBtn').addEventListener('click', async function(){
+    try {
+      await navigator.clipboard.writeText(REF_URL);
+      this.textContent = 'Ссылка скопирована';
+      setTimeout(() => this.textContent = 'Скопировать ссылку', 1800);
+    } catch(e) {
+      alert(REF_URL);
+    }
+  });
+
+  const byDate = {};
+  EVENTS.forEach(e => (byDate[e.date] || (byDate[e.date] = [])).push(e));
+  const monthNames = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+  const dow = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  const firstEventDate = EVENTS.length ? EVENTS[0].date : new Date().toISOString().slice(0,10);
+  let cur = new Date(firstEventDate.slice(0,7) + '-01');
+  const cal = document.getElementById('agentCalendar');
+  const detail = document.getElementById('agentDayDetail');
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function iso(y,m,d){ return `${y}-${pad(m+1)}-${pad(d)}`; }
+  function fmtDate(d){ const p = String(d||'').split('-'); return p.length === 3 ? `${p[2]}.${p[1]}.${p[0]}` : d; }
+  function money(v){ return v == null ? '—' : Number(v).toLocaleString('ru-RU') + ' ₫'; }
+
+  function renderCalendar(){
+    const y = cur.getFullYear();
+    const m = cur.getMonth();
+    document.getElementById('agentCalLabel').textContent = monthNames[m] + ' ' + y;
+    cal.innerHTML = '';
+    const header = document.createElement('div');
+    header.className = 'cal-row';
+    dow.forEach(day => {
+      const c = document.createElement('div');
+      c.className = 'cal-cell dow';
+      c.textContent = day;
+      header.appendChild(c);
+    });
+    cal.appendChild(header);
+    const firstDow = (new Date(y,m,1).getDay()+6)%7;
+    const dim = new Date(y,m+1,0).getDate();
+    let day = 1;
+    for(let r=0;r<6;r++){
+      if(day > dim) break;
+      const row = document.createElement('div');
+      row.className = 'cal-row';
+      for(let c=0;c<7;c++){
+        const cell = document.createElement('div');
+        cell.className = 'cal-cell';
+        if((r===0 && c<firstDow) || day>dim){ cell.classList.add('muted'); row.appendChild(cell); continue; }
+        const d = iso(y,m,day);
+        const evs = byDate[d] || [];
+        cell.innerHTML = `<div class="cal-num">${day}</div>`;
+        if(evs.length){
+          cell.classList.add(evs.some(e=>e.type==='payout') ? 'agent-cal-payout' : 'agent-cal-work');
+          const label = document.createElement('div');
+          label.className = 'agent-cal-label';
+          label.textContent = evs.length === 1 ? (evs[0].type === 'payout' ? 'выплата' : evs[0].client) : evs.length + ' событий';
+          cell.appendChild(label);
+          cell.addEventListener('click', () => showDay(d, evs));
+        }
+        row.appendChild(cell);
+        day++;
+      }
+      cal.appendChild(row);
+    }
+  }
+
+  function showDay(date, evs){
+    detail.innerHTML = `<h3>${fmtDate(date)}</h3>` + evs.map(e => {
+      if(e.type === 'payout'){
+        return `<div class="agent-event payout"><strong>План выплаты</strong><span>${e.client}</span><b>${money(e.amount_vnd)}</b><small>за дату ${fmtDate(e.source_date)}</small></div>`;
+      }
+      return `<div class="agent-event work"><strong>${e.first ? 'Первая рабочая дата' : 'Рабочая дата'}</strong><span>${e.client}${e.child ? ' · ' + e.child : ''}</span><b>${e.time || 'время уточняется'}</b><small>Клиент: ${money(e.client_total_vnd)} · Маржа: ${money(e.margin_vnd)}</small></div>`;
+    }).join('');
+  }
+
+  document.getElementById('agentCalPrev').addEventListener('click', () => { cur.setMonth(cur.getMonth()-1); renderCalendar(); });
+  document.getElementById('agentCalNext').addEventListener('click', () => { cur.setMonth(cur.getMonth()+1); renderCalendar(); });
+  renderCalendar();
+
+  const calcIds = ['calcClients','calcShifts','calcHours','calcClientRate','calcNannyRate'];
+  const out = document.getElementById('calcResult');
+  function recalc(){
+    const clients = Number(document.getElementById('calcClients').value) || 0;
+    const shifts = Number(document.getElementById('calcShifts').value) || 0;
+    const hours = Number(document.getElementById('calcHours').value) || 0;
+    const clientRate = Number(document.getElementById('calcClientRate').value) || 0;
+    const nannyRate = Number(document.getElementById('calcNannyRate').value) || 0;
+    const margin = Math.max(0, (clientRate - nannyRate) * hours * shifts * clients);
+    const agentProfit = Math.round(margin * COMMISSION_PERCENT / 100);
+    out.innerHTML = `<span>Маржа агентства: <strong>${money(margin)}</strong></span><span>Доход агента: <strong>${money(agentProfit)}</strong></span>`;
+  }
+  calcIds.forEach(id => document.getElementById(id).addEventListener('input', recalc));
+  recalc();
+})();
+</script>
+
+<style>
+.agent-page{padding:var(--s5) 0 var(--s12);}
+.agent-hero{display:grid;grid-template-columns:minmax(280px,420px) 1fr;gap:var(--s4);align-items:stretch;}
+.agent-qr-panel{display:flex;flex-direction:column;gap:var(--s3);align-items:flex-start;}
+.agent-ref-link{max-width:100%;padding:8px 10px;border-radius:8px;background:var(--c-surface-2);border:1px solid var(--c-border);font-size:12px;word-break:break-all;color:var(--c-text-2);}
+.agent-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s3);}
+.agent-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:var(--s4);margin-top:var(--s4);}
+.agent-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--c-text-muted);}
+.agent-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;}
+.agent-legend .work{background:#0d9488;}
+.agent-legend .payout{background:#f59e0b;}
+.agent-cal-work{background:#f0fdfa!important;border-top:2px solid #0d9488!important;cursor:pointer;}
+.agent-cal-payout{background:#fff7ed!important;border-top:2px solid #f59e0b!important;cursor:pointer;}
+.agent-cal-label{font-size:9px;line-height:1.1;margin-top:2px;font-weight:800;color:var(--c-text-2);overflow:hidden;text-overflow:ellipsis;}
+.agent-day-detail{margin-top:var(--s4);display:grid;gap:8px;}
+.agent-day-detail:empty{display:none;}
+.agent-event{border-radius:10px;padding:10px 12px;display:grid;gap:2px;border:1px solid var(--c-border);}
+.agent-event.work{background:#f0fdfa;border-color:rgba(13,148,136,.22);}
+.agent-event.payout{background:#fff7ed;border-color:rgba(245,158,11,.28);}
+.agent-event span,.agent-event small{color:var(--c-text-2);font-size:12px;}
+.agent-event b{font-size:13px;}
+.agent-calc{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.agent-calc label{font-size:12px;color:var(--c-text-2);font-weight:800;}
+.agent-calc input{margin-top:4px;}
+.agent-calc-result{display:grid;gap:6px;margin-top:var(--s4);padding:12px;border-radius:10px;background:var(--c-teal-lt);color:var(--c-teal-dk);font-size:13px;}
+.agent-calc-result strong{font-size:16px;}
+.agent-client-list{display:grid;gap:10px;}
+.agent-client-card{display:grid;grid-template-columns:1fr minmax(180px,260px) minmax(130px,180px);gap:12px;align-items:center;padding:12px;border:1px solid var(--c-border);border-radius:10px;background:var(--c-surface);}
+.agent-client-meta{font-size:12px;color:var(--c-text-2);margin-top:3px;}
+.agent-money{text-align:right;font-weight:900;color:var(--c-teal-dk);}
+.agent-money small{display:block;font-size:11px;font-weight:600;color:var(--c-text-muted);}
+.agent-article-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+.agent-article{display:flex;gap:10px;align-items:center;padding:10px;border:1px solid var(--c-border);border-radius:10px;text-decoration:none;color:inherit;background:var(--c-surface);}
+.agent-article img,.agent-article span{width:58px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;background:var(--c-teal-lt);display:flex;align-items:center;justify-content:center;font-size:22px;}
+.agent-article strong{display:block;font-size:13px;color:var(--c-teal-dk);}
+.agent-article p{margin:3px 0 0;font-size:12px;color:var(--c-text-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+@media(max-width:860px){
+  .agent-hero,.agent-grid{grid-template-columns:1fr;}
+  .agent-kpis{grid-template-columns:1fr 1fr;}
+  .agent-client-card{grid-template-columns:1fr;}
+  .agent-money{text-align:left;}
+}
+@media(max-width:520px){
+  .agent-kpis,.agent-calc{grid-template-columns:1fr;}
+}
+</style>
+{% endblock %}

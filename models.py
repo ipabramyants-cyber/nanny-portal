@@ -45,10 +45,27 @@ class Lead(db.Model):
     assigned_nanny_id = db.Column(db.Integer, db.ForeignKey('nannies.id'), nullable=True)
     client_rate_per_hour = db.Column(db.Integer, nullable=True)
     nanny_rate_per_hour = db.Column(db.Integer, nullable=True)
+    referral_agent_id = db.Column(db.Integer, db.ForeignKey('referral_agents.id'), nullable=True)
     telegram_user_id = db.Column(db.BigInteger, nullable=True)
     submitted_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     assigned_nanny = db.relationship('Nanny', foreign_keys=[assigned_nanny_id])
+    referral_agent = db.relationship('ReferralAgent', foreign_keys=[referral_agent_id])
+
+
+class ReferralAgent(db.Model):
+    __tablename__ = 'referral_agents'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    telegram_user_id = db.Column(db.BigInteger, nullable=True)
+    portal_token = db.Column(db.String(100), unique=True, nullable=False)
+    referral_code = db.Column(db.String(80), unique=True, nullable=False)
+    commission_percent = db.Column(db.Integer, default=10, nullable=False)
+    payout_delay_days = db.Column(db.Integer, default=3, nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.datetime.utcnow, nullable=False)
 
 
 class User(db.Model):

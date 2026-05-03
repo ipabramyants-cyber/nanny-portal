@@ -21,7 +21,7 @@ from config import admin_ids
 from telegram_notify import send_message
 from telegram_auth import validate_webapp_init_data, TelegramAuthError
 
-from models import db, Nanny, Lead, User, Shift, Client, NannyBlock, Review, Article
+from models import db, Nanny, Lead, User, Shift, Client, NannyBlock, Review, Article, ReferralAgent
 
 _ARTICLE_COVER_CACHE: dict[str, str] = {}
 
@@ -199,6 +199,9 @@ def create_app() -> Flask:
                         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS nanny_rate_per_hour INTEGER"
                     ))
                     _conn.execute(db.text(
+                        "ALTER TABLE leads ADD COLUMN IF NOT EXISTS referral_agent_id INTEGER"
+                    ))
+                    _conn.execute(db.text(
                         "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS post_reminder_sent_at TIMESTAMP"
                     ))
                     _conn.execute(db.text(
@@ -351,6 +354,7 @@ def create_app() -> Flask:
     LEADS_FILE = os.path.join(app.config['DATA_DIR'], 'leads.json')
     REVIEWS_FILE = os.path.join(app.config['DATA_DIR'], 'reviews.json')
     USERS_FILE = os.path.join(app.config['DATA_DIR'], 'users.json')
+    AGENTS_FILE = os.path.join(app.config['DATA_DIR'], 'referral_agents.json')
     ASSIGNMENTS_FILE = os.path.join(app.config['DATA_DIR'], 'assignments.json')
     RECEIPTS_FILE = os.path.join(app.config['DATA_DIR'], 'receipts.json')
     NANNY_BLOCKS_FILE = os.path.join(app.config['DATA_DIR'], 'nanny_blocks.json')
@@ -700,6 +704,108 @@ def create_app() -> Flask:
             ]
         return _read_json(NANNIES_FILE, [])
 
+    def _agent_to_dict(agent) -> dict:
+        if isinstance(agent, dict):
+            return {
+                'id': str(agent.get('id') or ''),
+                'name': agent.get('name') or '',
+                'telegram_user_id': agent.get('telegram_user_id') or '',
+                'portal_token': agent.get('portal_token') or '',
+                'referral_code': agent.get('referral_code') or '',
+                'commission_percent': int(agent.get('commission_percent') or 10),
+                'payout_delay_days': int(agent.get('payout_delay_days') or 3),
+                'notes': agent.get('notes') or '',
+                'is_active': bool(agent.get('is_active', True)),
+                'created_at': agent.get('created_at') or '',
+            }
+        return {
+            'id': str(agent.id),
+            'name': agent.name or '',
+            'telegram_user_id': agent.telegram_user_id or '',
+            'portal_token': agent.portal_token or '',
+            'referral_code': agent.referral_code or '',
+            'commission_percent': int(agent.commission_percent or 10),
+            'payout_delay_days': int(agent.payout_delay_days or 3),
+            'notes': agent.notes or '',
+            'is_active': bool(agent.is_active),
+            'created_at': agent.created_at.isoformat() if agent.created_at else '',
+        }
+
+    def load_agents():
+        if use_sql:
+            return [_agent_to_dict(a) for a in ReferralAgent.query.order_by(ReferralAgent.id.asc()).all()]
+        raw = _read_json(AGENTS_FILE, [])
+        if not isinstance(raw, list):
+            return []
+        changed = False
+        normalized = []
+        for idx, item in enumerate(raw):
+            if not isinstance(item, dict):
+                changed = True
+                continue
+            row = _agent_to_dict(item)
+            if not row['id']:
+                row['id'] = str(idx + 1)
+                changed = True
+            if not row['portal_token']:
+                row['portal_token'] = secrets.token_urlsafe(16)
+                changed = True
+            if not row['referral_code']:
+                row['referral_code'] = _legacy_token('ref-', row['name'] or row['id'])[:18]
+                changed = True
+            normalized.append(row)
+        if changed:
+            _write_json(AGENTS_FILE, normalized)
+        return normalized
+
+    def save_agents(agents):
+        if use_sql:
+            raise RuntimeError('save_agents is not used in SQL mode')
+        _write_json(AGENTS_FILE, agents)
+
+    def _agent_by_referral_code(code: str | None):
+        code = (code or '').strip()
+        if not code:
+            return None
+        if use_sql:
+            return ReferralAgent.query.filter_by(referral_code=code, is_active=True).first()
+        return next((a for a in load_agents() if a.get('referral_code') == code and a.get('is_active', True)), None)
+
+    def _agent_by_portal_token(portal_token: str | None):
+        portal_token = (portal_token or '').strip()
+        if not portal_token:
+            return None
+        if use_sql:
+            return ReferralAgent.query.filter_by(portal_token=portal_token, is_active=True).first()
+        return next((a for a in load_agents() if a.get('portal_token') == portal_token and a.get('is_active', True)), None)
+
+    def _agent_by_telegram_id(telegram_user_id):
+        if not telegram_user_id:
+            return None
+        if use_sql:
+            return ReferralAgent.query.filter_by(telegram_user_id=int(telegram_user_id), is_active=True).first()
+        return next((a for a in load_agents() if str(a.get('telegram_user_id') or '') == str(telegram_user_id) and a.get('is_active', True)), None)
+
+    def _new_agent_code(name: str | None = None) -> str:
+        def _code_exists(code: str) -> bool:
+            if use_sql:
+                return ReferralAgent.query.filter_by(referral_code=code).first() is not None
+            return any(a.get('referral_code') == code for a in load_agents())
+
+        base = re.sub(r'[^a-z0-9]+', '-', (name or '').lower()).strip('-')[:18]
+        prefix = base or 'agent'
+        for _ in range(20):
+            suffix = secrets.token_urlsafe(4).replace('-', '').replace('_', '')[:6].lower()
+            code = f"{prefix}-{suffix}"[:32]
+            if not _code_exists(code):
+                return code
+        return secrets.token_urlsafe(10).replace('-', '').replace('_', '').lower()
+
+    def _agent_id(agent) -> str | None:
+        if not agent:
+            return None
+        return str(agent.get('id') if isinstance(agent, dict) else agent.id)
+
     _NANNY_REVIEW_TEMPLATES = [
         {
             'author': 'Елена',
@@ -835,6 +941,7 @@ def create_app() -> Flask:
                     'assigned_nanny_id': str(l.assigned_nanny_id) if l.assigned_nanny_id else None,
                     'client_rate_per_hour': l.client_rate_per_hour or DEFAULT_CLIENT_RATE_VND,
                     'nanny_rate_per_hour': l.nanny_rate_per_hour or DEFAULT_NANNY_RATE_VND,
+                    'referral_agent_id': str(l.referral_agent_id) if l.referral_agent_id else None,
                     'telegram_user_id': l.telegram_user_id,
                     'submitted_at': l.submitted_at.isoformat(),
                     'documents': l.documents or {},
@@ -916,6 +1023,7 @@ def create_app() -> Flask:
                 'assigned_nanny_id': assigned_nanny_id,
                 'client_rate_per_hour': item.get('client_rate_per_hour') or DEFAULT_CLIENT_RATE_VND,
                 'nanny_rate_per_hour': item.get('nanny_rate_per_hour') or DEFAULT_NANNY_RATE_VND,
+                'referral_agent_id': item.get('referral_agent_id'),
                 'telegram_user_id': item.get('telegram_user_id'),
                 'telegram_username': item.get('telegram_username'),
                 'submitted_at': item.get('submitted_at') or datetime.datetime.utcnow().isoformat(),
@@ -1034,6 +1142,10 @@ def create_app() -> Flask:
                     n = Nanny.query.filter_by(telegram_user_id=telegram_user_id).first()
                     if n:
                         role = 'nanny'
+                    else:
+                        agent_row = ReferralAgent.query.filter_by(telegram_user_id=telegram_user_id, is_active=True).first()
+                        if agent_row:
+                            role = 'agent'
                 except Exception:
                     pass
             else:
@@ -1043,6 +1155,11 @@ def create_app() -> Flask:
                     if str(_n.get('telegram_user_id') or '') == str(telegram_user_id):
                         role = 'nanny'
                         break
+                if role != 'nanny':
+                    for _a in load_agents():
+                        if str(_a.get('telegram_user_id') or '') == str(telegram_user_id) and _a.get('is_active', True):
+                            role = 'agent'
+                            break
         if use_sql:
             u = User.query.filter_by(telegram_user_id=telegram_user_id).first()
             if not u:
@@ -1050,9 +1167,9 @@ def create_app() -> Flask:
                 db.session.add(u)
             u.username = user_obj.get('username')
             u.display_name = (user_obj.get('first_name') or '')
-            # keep role=admin if allowlisted
-            if role == 'admin':
-                u.role = 'admin'
+            # keep elevated/linked roles fresh
+            if role == 'admin' or u.role != 'admin':
+                u.role = role
             db.session.commit()
 
         auth_token = _make_auth_token(role, telegram_user_id)
@@ -1064,8 +1181,12 @@ def create_app() -> Flask:
         session['telegram_user_id'] = telegram_user_id
         session['role'] = role
 
-        # For client role: find their LK token if they already have a lead
+        # For linked roles: return the destination Mini App URL.
         lk_url = None
+        if role == 'agent':
+            lk_url = '/agent/app'
+
+        # For client role: find their LK token if they already have a lead
         if role == 'client':
             tg_id_str = str(telegram_user_id)
             tg_username = (user_obj.get('username') or '').lower()
@@ -1080,7 +1201,11 @@ def create_app() -> Flask:
                         # Save numeric tg_user_id so next login finds by ID, not username
                         if lead_row and not lead_row.telegram_user_id:
                             lead_row.telegram_user_id = telegram_user_id
-                            db.session.commit()
+                    referral_agent = _agent_by_referral_code(session.get('referral_agent_code'))
+                    if lead_row and referral_agent and not lead_row.referral_agent_id:
+                        lead_row.referral_agent_id = int(_agent_id(referral_agent))
+                    if lead_row:
+                        db.session.commit()
                     if lead_row and lead_row.token:
                         lk_url = f"/client/{lead_row.token}"
                 except Exception:
@@ -1101,6 +1226,10 @@ def create_app() -> Flask:
                 # Save numeric tg_user_id into JSON lead so next login finds by ID
                 if found_lead and not found_lead.get('telegram_user_id') and telegram_user_id:
                     found_lead['telegram_user_id'] = telegram_user_id
+                referral_agent = _agent_by_referral_code(session.get('referral_agent_code'))
+                if found_lead and referral_agent and not found_lead.get('referral_agent_id'):
+                    found_lead['referral_agent_id'] = _agent_id(referral_agent)
+                if found_lead:
                     save_leads(leads_list)
 
         return {
@@ -1568,6 +1697,28 @@ def create_app() -> Flask:
     def _send_to_nanny(nanny_id, text: str, buttons: list[list[dict]] | None = None) -> bool:
         return _safe_send_message(_nanny_chat_id_by_id(nanny_id), text, buttons)
 
+    def _agent_value(agent_obj, key, default=None):
+        if agent_obj is None:
+            return default
+        if isinstance(agent_obj, dict):
+            return agent_obj.get(key, default)
+        return getattr(agent_obj, key, default)
+
+    def _agent_portal_url(agent_obj) -> str:
+        token = _agent_value(agent_obj, 'portal_token') or ''
+        return f"{_site_url()}/agent/{token}" if token else _site_url()
+
+    def _agent_referral_url(agent_obj) -> str:
+        code = _agent_value(agent_obj, 'referral_code') or ''
+        return f"{_site_url()}/r/{code}" if code else _site_url()
+
+    def _send_to_agent(agent_obj, text: str) -> bool:
+        return _safe_send_message(
+            _agent_value(agent_obj, 'telegram_user_id'),
+            text,
+            [[_url_button('Открыть кабинет агента', _agent_portal_url(agent_obj))]],
+        )
+
     def _date_time_text(date_str: str, slot: dict | None = None) -> str:
         slot = slot or {}
         return f"{date_str} {slot.get('time') or ''}".strip()
@@ -1752,6 +1903,149 @@ def create_app() -> Flask:
                 _client_buttons(lead_obj),
             )
 
+    def _date_plus_days(date_str: str | None, days: int) -> str | None:
+        if not date_str:
+            return None
+        try:
+            value = datetime.date.fromisoformat(date_str)
+            return (value + datetime.timedelta(days=int(days or 0))).isoformat()
+        except Exception:
+            return None
+
+    def _agent_client_payload(agent_obj) -> dict:
+        agent = _agent_to_dict(agent_obj)
+        agent_id = str(agent.get('id') or '')
+        commission_percent = int(agent.get('commission_percent') or 10)
+        payout_delay_days = int(agent.get('payout_delay_days') or 3)
+        rows = []
+        events = []
+        total_commission = 0
+        clients_with_dates = 0
+
+        for lead in load_leads():
+            if str(lead.get('referral_agent_id') or '') != agent_id:
+                continue
+            work_dates = lead.get('work_dates') or {}
+            active_dates = []
+            for d, raw_slot in sorted(work_dates.items()):
+                slot = raw_slot if isinstance(raw_slot, dict) else {}
+                if slot.get('status') == 'cancelled':
+                    continue
+                active_dates.append((d, slot))
+
+            first_date = active_dates[0][0] if active_dates else None
+            first_slot = active_dates[0][1] if active_dates else {}
+            finance = _lead_slot_finance(lead, first_date, first_slot) if first_date else {}
+            margin = finance.get('margin_vnd')
+            commission = round(max(int(margin or 0), 0) * commission_percent / 100) if margin is not None else 0
+            payout_date = _date_plus_days(first_date, payout_delay_days) if first_date else None
+            total_commission += commission
+            if first_date:
+                clients_with_dates += 1
+
+            for d, slot in active_dates:
+                fin = _lead_slot_finance(lead, d, slot)
+                events.append({
+                    'date': d,
+                    'type': 'work',
+                    'client': lead.get('parent_name') or 'Клиент',
+                    'child': lead.get('child_name') or '',
+                    'time': slot.get('time') or '',
+                    'first': d == first_date,
+                    'client_total_vnd': fin.get('client_total_vnd'),
+                    'margin_vnd': fin.get('margin_vnd'),
+                })
+            if payout_date:
+                events.append({
+                    'date': payout_date,
+                    'type': 'payout',
+                    'client': lead.get('parent_name') or 'Клиент',
+                    'amount_vnd': commission,
+                    'source_date': first_date,
+                })
+
+            rows.append({
+                'token': lead.get('token'),
+                'parent_name': lead.get('parent_name') or '—',
+                'telegram': lead.get('telegram') or '—',
+                'child_name': lead.get('child_name') or '',
+                'child_age': lead.get('child_age') or '',
+                'submitted_at': lead.get('submitted_at') or '',
+                'dates_count': len(active_dates),
+                'first_work_date': first_date,
+                'first_work_time': first_slot.get('time') if first_slot else '',
+                'payout_date': payout_date,
+                'commission_vnd': commission,
+                'client_total_vnd': finance.get('client_total_vnd'),
+                'margin_vnd': margin,
+            })
+
+        rows.sort(key=lambda x: x.get('submitted_at') or '', reverse=True)
+        events.sort(key=lambda x: x.get('date') or '')
+        return {
+            'clients': rows,
+            'events': events,
+            'summary': {
+                'clients_total': len(rows),
+                'clients_with_dates': clients_with_dates,
+                'expected_commission_vnd': total_commission,
+                'commission_percent': commission_percent,
+                'payout_delay_days': payout_delay_days,
+            },
+        }
+
+    @app.route('/r/<referral_code>')
+    def referral_entry(referral_code: str):
+        agent = _agent_by_referral_code(referral_code)
+        if not agent:
+            return render_template('404.html'), 404
+        session.permanent = True
+        session['referral_agent_code'] = _agent_value(agent, 'referral_code')
+        session['referral_agent_id'] = _agent_id(agent)
+        return redirect(f"/?ref={_agent_value(agent, 'referral_code')}#leadForm")
+
+    @app.route('/agent')
+    def agent_home():
+        return redirect(url_for('agent_app'))
+
+    @app.route('/agent/app')
+    def agent_app():
+        token = request.args.get('_t', '')
+        if token:
+            entry = _validate_auth_token(token)
+            if entry and entry.get('role') in ('agent', 'admin'):
+                session.permanent = True
+                session['telegram_user_id'] = entry.get('telegram_user_id')
+                session['role'] = entry.get('role')
+        tid = session.get('telegram_user_id')
+        if not tid:
+            return redirect(url_for('tg_entry'))
+        agent = _agent_by_telegram_id(tid)
+        if not agent:
+            if session.get('role') == 'admin':
+                return redirect(url_for('admin'))
+            return render_template('404.html'), 404
+        return redirect(url_for('agent_portal', portal_token=_agent_value(agent, 'portal_token')))
+
+    @app.route('/agent/<portal_token>')
+    def agent_portal(portal_token: str):
+        agent = _agent_by_portal_token(portal_token)
+        if not agent:
+            return render_template('404.html'), 404
+        session.permanent = True
+        session['agent_portal_token'] = portal_token
+        payload = _agent_client_payload(agent)
+        return render_template(
+            'agent_portal.html',
+            agent=_agent_to_dict(agent),
+            referral_url=_agent_referral_url(agent),
+            portal_url=_agent_portal_url(agent),
+            clients=payload['clients'],
+            events=payload['events'],
+            summary=payload['summary'],
+            articles=_articles_published()[:6],
+        )
+
     # Simple in-memory rate limiter for /api/lead (max 5 per IP per 10 minutes)
     _lead_rate: dict = {}
 
@@ -1802,6 +2096,7 @@ def create_app() -> Flask:
         notes         = _clean_user_text(data.get('notes'), 1000)
         meeting_date_raw = data.get('meeting_date')
         work_dates_raw   = data.get('work_dates') or {}
+        referral_code = _clean_user_text(data.get('referral_code'), 80) or session.get('referral_agent_code')
 
         # ── Verify Telegram identity ──────────────────────────
         verified_tg_user_id: int | None = None
@@ -1870,6 +2165,8 @@ def create_app() -> Flask:
 
         work_dates = _val_work_dates(work_dates_raw)
         token = secrets.token_urlsafe(16)
+        referral_agent = _agent_by_referral_code(referral_code)
+        referral_agent_id = _agent_id(referral_agent)
 
         if use_sql:
             db.session.add(
@@ -1886,6 +2183,7 @@ def create_app() -> Flask:
                     documents={'receipts': {}},
                     client_rate_per_hour=DEFAULT_CLIENT_RATE_VND,
                     nanny_rate_per_hour=DEFAULT_NANNY_RATE_VND,
+                    referral_agent_id=int(referral_agent_id) if referral_agent_id else None,
                 )
             )
             db.session.commit()
@@ -1904,6 +2202,7 @@ def create_app() -> Flask:
                 'assigned_nanny_id': None,
                 'client_rate_per_hour': DEFAULT_CLIENT_RATE_VND,
                 'nanny_rate_per_hour': DEFAULT_NANNY_RATE_VND,
+                'referral_agent_id': referral_agent_id,
                 'submitted_at': datetime.datetime.utcnow().isoformat(),
                 'documents': {'receipts': {}},
             }
@@ -1921,10 +2220,19 @@ def create_app() -> Flask:
             f"Родитель: {parent_name}\n"
             f"Telegram: {tg_display}\n"
             f"Ребёнок: {child_name}, {child_age}\n"
+            f"Агент: {_agent_value(referral_agent, 'name', '—') if referral_agent else '—'}\n"
             f"ЛК: {lk_url}"
             ,
             [[_url_button('Открыть заявку', lk_url)]]
         )
+        if referral_agent:
+            _send_to_agent(
+                referral_agent,
+                "🆕 Новый клиент по вашей рекомендации\n"
+                f"Клиент: {parent_name}\n"
+                f"Ребёнок: {child_name}, {child_age}\n"
+                "Клиент закреплён за вами. Первая рабочая дата появится в календаре после выбора/назначения.",
+            )
 
         # ── Send LK link directly to client in Telegram ───────
         client_chat_id = verified_tg_user_id or _extract_chat_id(telegram)
@@ -3392,6 +3700,7 @@ def create_app() -> Flask:
         # Admin panel (protected)
         leads = load_leads()
         nannies = load_nannies()
+        agents = load_agents()
         # Build enriched calendar events for admin
         # type: 'open' | 'assigned' | 'confirmed' | 'waiting_fact' | 'cancelled'
         nanny_map = {str(n['id']): n for n in nannies} if isinstance(nannies, list) else {}
@@ -3559,11 +3868,17 @@ def create_app() -> Flask:
             'reviews_total': len(reviews),
             'shifts_total': len(shift_rows),
         }
+        agent_stats = {}
+        for agent in agents:
+            aid = str(agent.get('id') or '')
+            agent_stats[aid] = len([lead for lead in leads if str(lead.get('referral_agent_id') or '') == aid])
 
         return render_template(
             'admin_simple.html',
             leads=leads,
             nannies=nannies,
+            agents=agents,
+            agent_stats=agent_stats,
             events=events,
             nanny_dayoffs=nanny_dayoffs,
             clients=clients,
@@ -3733,6 +4048,107 @@ def create_app() -> Flask:
         db.session.add(c)
         db.session.commit()
         flash('Клиент создан', 'success')
+        return redirect(url_for('admin'))
+
+    @app.route('/admin/agent/save', methods=['POST'])
+    @require_admin
+    def admin_agent_save():
+        agent_id_raw = (request.form.get('id') or '').strip() or None
+        name = _clean_user_text(request.form.get('name'), 120)
+        tid_raw = (request.form.get('telegram_user_id') or '').strip() or None
+        referral_code = _clean_user_text(request.form.get('referral_code'), 80)
+        referral_code = re.sub(r'[^A-Za-z0-9_-]+', '-', referral_code or '').strip('-').lower()
+        notes = _clean_user_text(request.form.get('notes'), 1000)
+        is_active = request.form.get('is_active') != '0'
+        try:
+            commission_percent = max(0, min(100, int((request.form.get('commission_percent') or '10').strip())))
+            payout_delay_days = max(0, min(90, int((request.form.get('payout_delay_days') or '3').strip())))
+        except Exception:
+            flash('Процент комиссии и задержка выплаты должны быть числами', 'error')
+            return redirect(url_for('admin'))
+        telegram_user_id = None
+        if tid_raw:
+            try:
+                telegram_user_id = int(tid_raw)
+            except Exception:
+                flash('Telegram ID агента должен быть числом', 'error')
+                return redirect(url_for('admin'))
+        if not name:
+            flash('Имя агента обязательно', 'error')
+            return redirect(url_for('admin'))
+
+        if use_sql:
+            agent = ReferralAgent.query.get(int(agent_id_raw)) if agent_id_raw else None
+            if not agent:
+                agent = ReferralAgent(
+                    name=name,
+                    portal_token=secrets.token_urlsafe(18),
+                    referral_code=referral_code or _new_agent_code(name),
+                )
+                db.session.add(agent)
+            agent.name = name
+            agent.telegram_user_id = telegram_user_id
+            agent.referral_code = referral_code or agent.referral_code or _new_agent_code(name)
+            agent.commission_percent = commission_percent
+            agent.payout_delay_days = payout_delay_days
+            agent.notes = notes
+            agent.is_active = is_active
+            try:
+                db.session.commit()
+                flash('Агент сохранён', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Не удалось сохранить агента: {e}', 'error')
+            return redirect(url_for('admin'))
+
+        agents = load_agents()
+        if agent_id_raw:
+            agent = next((a for a in agents if str(a.get('id')) == str(agent_id_raw)), None)
+        else:
+            agent = None
+        if not agent:
+            next_id = str(max([int(a.get('id') or 0) for a in agents] or [0]) + 1)
+            agent = {
+                'id': next_id,
+                'portal_token': secrets.token_urlsafe(18),
+                'referral_code': referral_code or _new_agent_code(name),
+                'created_at': datetime.datetime.utcnow().isoformat(),
+            }
+            agents.append(agent)
+        agent.update({
+            'name': name,
+            'telegram_user_id': telegram_user_id or '',
+            'referral_code': referral_code or agent.get('referral_code') or _new_agent_code(name),
+            'commission_percent': commission_percent,
+            'payout_delay_days': payout_delay_days,
+            'notes': notes,
+            'is_active': is_active,
+        })
+        save_agents(agents)
+        flash('Агент сохранён', 'success')
+        return redirect(url_for('admin'))
+
+    @app.route('/admin/agent/delete', methods=['POST'])
+    @require_admin
+    def admin_agent_delete():
+        agent_id_raw = (request.form.get('id') or '').strip()
+        if not agent_id_raw:
+            flash('agent id missing', 'error')
+            return redirect(url_for('admin'))
+        if use_sql:
+            agent = ReferralAgent.query.get(int(agent_id_raw))
+            if agent:
+                agent.is_active = False
+                db.session.commit()
+                flash('Агент отключён', 'success')
+            return redirect(url_for('admin'))
+        agents = load_agents()
+        for agent in agents:
+            if str(agent.get('id')) == agent_id_raw:
+                agent['is_active'] = False
+                break
+        save_agents(agents)
+        flash('Агент отключён', 'success')
         return redirect(url_for('admin'))
 
     @app.route('/admin/shift/create', methods=['POST'])
@@ -4329,6 +4745,8 @@ def create_app() -> Flask:
             "Disallow: /nanny/login",
             "Disallow: /nanny/portal",
             "Disallow: /client",
+            "Disallow: /agent",
+            "Disallow: /r/",
             "Disallow: /api/",
             "Sitemap: " + _site_base() + "/sitemap.xml",
         ]

@@ -64,6 +64,9 @@
         } else if (role === 'nanny') {
           dest = '/nanny/app';
           if (authToken) dest += '?_t=' + encodeURIComponent(authToken);
+        } else if (role === 'agent') {
+          dest = '/agent/app';
+          if (authToken) dest += '?_t=' + encodeURIComponent(authToken);
         } else {
           dest = lkUrl || '/';
         }
