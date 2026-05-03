@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block head_meta %}
+<meta name="robots" content="noindex, nofollow">
+{% endblock %}
+{% block title %}Журнал уведомлений — Няня на час{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+  <div class="container">
+    <h1>Журнал уведомлений</h1>
+    <p>Telegram-отправки: кому, когда, что отправлено и статус доставки.</p>
+  </div>
+</div>
+
+<div class="container" style="padding-bottom:60px;">
+  <div class="admin-tools-nav">
+    <a href="/admin">Админ-панель</a>
+    <a href="/admin/monitoring">Мониторинг ошибок</a>
+  </div>
+
+  <div class="kpi-grid" style="margin-top:var(--s4);">
+    <div class="kpi-card"><div class="kpi-value">{{ stats.total }}</div><div class="kpi-label">Всего записей</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{ stats.delivered }}</div><div class="kpi-label">Доставлено</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{ stats.failed }}</div><div class="kpi-label">Ошибки</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{ stats.skipped }}</div><div class="kpi-label">Пропущено</div></div>
+  </div>
+
+  <div class="panel" style="margin-top:var(--s4);">
+    <form method="GET" style="display:grid;grid-template-columns:1fr 180px auto;gap:10px;align-items:end;">
+      <div>
+        <label>Поиск</label>
+        <input name="q" value="{{ q }}" placeholder="Telegram ID, текст, ошибка">
+      </div>
+      <div>
+        <label>Статус</label>
+        <select name="status">
+          <option value="">Все</option>
+          <option value="delivered" {% if status == 'delivered' %}selected{% endif %}>Доставлено</option>
+          <option value="failed" {% if status == 'failed' %}selected{% endif %}>Ошибка</option>
+          <option value="skipped" {% if status == 'skipped' %}selected{% endif %}>Пропущено</option>
+        </select>
+      </div>
+      <button type="submit" class="btn primary" style="width:auto;margin-top:0;">Фильтр</button>
+    </form>
+  </div>
+
+  <div class="panel" style="margin-top:var(--s4);">
+    <div class="overflow-x-auto">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Время</th>
+            <th>Кому</th>
+            <th>Статус</th>
+            <th>Сообщение</th>
+            <th>Ошибка</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for item in logs %}
+          <tr>
+            <td style="white-space:nowrap;font-size:12px;color:var(--c-text-muted);">{{ (item.created_at or '')[:19].replace('T',' ') }}</td>
+            <td style="font-family:monospace;font-size:12px;">{{ item.recipient or '—' }}</td>
+            <td>
+              <span class="badge {% if item.status == 'delivered' %}badge--success{% elif item.status == 'failed' %}badge--danger{% else %}badge--warning{% endif %}">
+                {{ item.status or '—' }}
+              </span>
+            </td>
+            <td style="min-width:360px;white-space:pre-wrap;font-size:12px;">{{ item.text }}</td>
+            <td style="min-width:180px;color:var(--c-danger);font-size:12px;">{{ item.error or '—' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" style="padding:24px;text-align:center;color:var(--c-text-muted);">Записей пока нет</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -2217,3 +2217,28 @@ body.page-private .tg-topbar { display: none; }
   to   { opacity: 1; }
 }
 .tg-topbar--hidden { display: none !important; }
+
+.admin-tools-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: var(--s4) 0;
+}
+.admin-tools-nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-teal-dk);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+.admin-tools-nav a:hover {
+  border-color: rgba(1,107,130,.35);
+  background: var(--c-teal-lt);
+}

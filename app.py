@@ -9,7 +9,7 @@ import base64
 import io
 from urllib.parse import urlparse
 
-from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, Response, jsonify
+from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, Response, jsonify, has_request_context
 from werkzeug.utils import secure_filename
 try:
     import bleach
@@ -233,8 +233,8 @@ def create_app() -> Flask:
     DEFAULT_CLIENT_RATE_VND = 130_000
     DEFAULT_NANNY_RATE_VND  = 110_000
 
-    app.config['DATA_DIR'] = os.path.join(BASE_DIR, 'data')
-    app.config['UPLOAD_DIR'] = os.path.join(BASE_DIR, 'uploads')
+    app.config['DATA_DIR'] = os.environ.get('DATA_DIR') or os.path.join(BASE_DIR, 'data')
+    app.config['UPLOAD_DIR'] = os.environ.get('UPLOAD_DIR') or os.path.join(BASE_DIR, 'uploads')
     app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024  # 64MB — articles + gallery base64
 
     os.makedirs(app.config['DATA_DIR'], exist_ok=True)
@@ -362,6 +362,8 @@ def create_app() -> Flask:
     RECEIPTS_FILE = os.path.join(app.config['DATA_DIR'], 'receipts.json')
     NANNY_BLOCKS_FILE = os.path.join(app.config['DATA_DIR'], 'nanny_blocks.json')
     NOTIFICATION_STATE_FILE = os.path.join(app.config['DATA_DIR'], 'notification_state.json')
+    NOTIFICATION_LOG_FILE = os.path.join(app.config['DATA_DIR'], 'notification_log.json')
+    APP_EVENTS_FILE = os.path.join(app.config['DATA_DIR'], 'app_events.json')
 
     def _legacy_token(prefix: str, raw: str) -> str:
         digest = hashlib.sha1((raw or '').encode('utf-8')).hexdigest()[:12]
@@ -413,18 +415,90 @@ def create_app() -> Flask:
             state = dict(items)
         _write_json(NOTIFICATION_STATE_FILE, state)
 
+    def _append_json_log(path: str, entry: dict, limit: int = 700):
+        try:
+            rows = _read_json(path, [])
+            if not isinstance(rows, list):
+                rows = []
+            entry.setdefault('id', secrets.token_urlsafe(8))
+            entry.setdefault('created_at', datetime.datetime.utcnow().isoformat())
+            rows.insert(0, entry)
+            _write_json(path, rows[:limit])
+        except Exception:
+            try:
+                app.logger.warning("failed to append log %s", path, exc_info=True)
+            except Exception:
+                pass
+
+    def _append_app_event(kind: str, message: str, level: str = 'warning', meta: dict | None = None):
+        entry = {
+            'level': level,
+            'kind': kind,
+            'message': str(message or '')[:1200],
+            'meta': meta or {},
+        }
+        if has_request_context():
+            entry.update({
+                'method': request.method,
+                'path': request.path,
+                'endpoint': request.endpoint or '',
+                'remote_addr': request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip(),
+            })
+        _append_json_log(APP_EVENTS_FILE, entry)
+
+    def _append_notification_log(chat_id, text: str, status: str, ok: bool, error: str = ''):
+        _append_json_log(NOTIFICATION_LOG_FILE, {
+            'channel': 'telegram',
+            'recipient': str(chat_id or ''),
+            'status': status,
+            'ok': bool(ok),
+            'error': str(error or '')[:500],
+            'text': str(text or '')[:4000],
+            'text_preview': str(text or '').replace('\n', ' ')[:180],
+        })
+
     def _safe_send_message(chat_id: int | str | None, text: str, buttons: list[list[dict]] | None = None) -> bool:
         if not chat_id:
+            _append_notification_log('', text, 'skipped', False, 'missing chat_id')
+            return False
+        if not os.environ.get('TELEGRAM_BOT_TOKEN'):
+            _append_notification_log(chat_id, text, 'skipped', False, 'TELEGRAM_BOT_TOKEN not set')
+            _append_app_event('telegram_skipped', 'TELEGRAM_BOT_TOKEN not set', 'warning', {'recipient': str(chat_id)})
             return False
         try:
-            send_message(chat_id, text, reply_markup=_tg_keyboard(buttons))
+            result = send_message(chat_id, text, reply_markup=_tg_keyboard(buttons))
+            ok = bool(result.get('ok', True)) if isinstance(result, dict) else True
+            _append_notification_log(chat_id, text, 'delivered' if ok else 'failed', ok, '' if ok else 'Telegram returned ok=false')
+            if not ok:
+                _append_app_event('telegram_failed', 'Telegram returned ok=false', 'error', {'recipient': str(chat_id), 'result': result})
+                return False
             return True
         except Exception as e:
+            _append_notification_log(chat_id, text, 'failed', False, str(e))
+            _append_app_event('telegram_failed', str(e), 'error', {'recipient': str(chat_id)})
             try:
                 app.logger.warning("Telegram notify failed for %s: %s", chat_id, e)
             except Exception:
                 pass
             return False
+
+    @app.after_request
+    def _monitor_problem_responses(resp):
+        try:
+            should_log = (
+                resp.status_code >= 500
+                or (resp.status_code >= 400 and (request.method != 'GET' or request.path.startswith('/api/')))
+            )
+            if should_log and request.path not in ('/healthz',):
+                _append_app_event(
+                    'http_problem',
+                    f"{request.method} {request.path} -> {resp.status_code}",
+                    'error' if resp.status_code >= 500 else 'warning',
+                    {'status_code': resp.status_code},
+                )
+        except Exception:
+            pass
+        return resp
 
     def _normalize_work_dates(legacy_slots) -> dict:
         out: dict[str, dict] = {}
@@ -1438,7 +1512,7 @@ def create_app() -> Flask:
         client = Client.query.get(s.client_id) if s.client_id else None
         if client and client.telegram_user_id:
             try:
-                send_message(
+                _safe_send_message(
                     int(client.telegram_user_id),
                     f"✅ Няня отправила факт по смене {s.date} {s.planned_start or ''}-{s.planned_end or ''}.\nПожалуйста, подтвердите в приложении."
                 )
@@ -1560,7 +1634,7 @@ def create_app() -> Flask:
         nanny = Nanny.query.get(s.nanny_id) if s.nanny_id else None
         if nanny and nanny.telegram_user_id:
             try:
-                send_message(int(nanny.telegram_user_id), f"📝 Клиент отправил факт по смене {s.date}. Итог зафиксирует админ.")
+                _safe_send_message(int(nanny.telegram_user_id), f"📝 Клиент отправил факт по смене {s.date}. Итог зафиксирует админ.")
             except Exception:
                 pass
 
@@ -3892,6 +3966,79 @@ def create_app() -> Flask:
             crm=crm,
         )
 
+    @app.route('/admin/notifications')
+    @require_admin
+    def admin_notifications():
+        logs = _read_json(NOTIFICATION_LOG_FILE, [])
+        if not isinstance(logs, list):
+            logs = []
+        status = (request.args.get('status') or '').strip().lower()
+        q = (request.args.get('q') or '').strip().lower()
+        filtered = []
+        for item in logs:
+            if not isinstance(item, dict):
+                continue
+            if status and str(item.get('status') or '').lower() != status:
+                continue
+            hay = ' '.join([
+                str(item.get('recipient') or ''),
+                str(item.get('status') or ''),
+                str(item.get('error') or ''),
+                str(item.get('text') or ''),
+            ]).lower()
+            if q and q not in hay:
+                continue
+            filtered.append(item)
+        return render_template(
+            'admin_notifications.html',
+            logs=filtered[:300],
+            status=status,
+            q=q,
+            stats={
+                'total': len(logs),
+                'delivered': len([x for x in logs if isinstance(x, dict) and x.get('status') == 'delivered']),
+                'failed': len([x for x in logs if isinstance(x, dict) and x.get('status') == 'failed']),
+                'skipped': len([x for x in logs if isinstance(x, dict) and x.get('status') == 'skipped']),
+            },
+        )
+
+    @app.route('/admin/monitoring')
+    @require_admin
+    def admin_monitoring():
+        events = _read_json(APP_EVENTS_FILE, [])
+        if not isinstance(events, list):
+            events = []
+        level = (request.args.get('level') or '').strip().lower()
+        kind = (request.args.get('kind') or '').strip().lower()
+        filtered = []
+        for item in events:
+            if not isinstance(item, dict):
+                continue
+            if level and str(item.get('level') or '').lower() != level:
+                continue
+            if kind and str(item.get('kind') or '').lower() != kind:
+                continue
+            filtered.append(item)
+        site = _site_url()
+        return render_template(
+            'admin_monitoring.html',
+            events=filtered[:300],
+            level=level,
+            kind=kind,
+            site_url=site,
+            stats={
+                'total': len(events),
+                'errors': len([x for x in events if isinstance(x, dict) and x.get('level') == 'error']),
+                'warnings': len([x for x in events if isinstance(x, dict) and x.get('level') == 'warning']),
+            },
+            checks={
+                'telegram_token': bool(os.environ.get('TELEGRAM_BOT_TOKEN')),
+                'admin_ids': bool(admin_ids()),
+                'cron_secret': bool(os.environ.get('CRON_SECRET')),
+                'site_url': site,
+            },
+        )
+
     @app.route('/admin/nanny/save', methods=['POST'])
     @require_admin
     def admin_nanny_save():
@@ -4704,6 +4851,7 @@ def create_app() -> Flask:
 
     @app.errorhandler(500)
     def server_error(e):
+        _append_app_event('server_error', repr(e), 'error')
         if request.path.startswith('/api/'):
             return jsonify({'error': 'internal server error'}), 500
         return render_template('404.html'), 500
@@ -4716,6 +4864,7 @@ def create_app() -> Flask:
 
     @app.errorhandler(413)
     def request_entity_too_large(e):
+        _append_app_event('upload_too_large', repr(e), 'warning')
         if request.path.startswith('/api/'):
             return jsonify({'error': 'Файл слишком большой. Максимум 16 МБ.'}), 413
         return render_template('404.html'), 413

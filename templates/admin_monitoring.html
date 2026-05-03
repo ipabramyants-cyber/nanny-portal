@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block head_meta %}
+<meta name="robots" content="noindex, nofollow">
+{% endblock %}
+{% block title %}Мониторинг ошибок — Няня на час{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+  <div class="container">
+    <h1>Мониторинг ошибок</h1>
+    <p>Проблемные запросы, ошибки Telegram, загрузки файлов и форма заявки.</p>
+  </div>
+</div>
+
+<div class="container" style="padding-bottom:60px;">
+  <div class="admin-tools-nav">
+    <a href="/admin">Админ-панель</a>
+    <a href="/admin/notifications">Журнал уведомлений</a>
+  </div>
+
+  <div class="kpi-grid" style="margin-top:var(--s4);">
+    <div class="kpi-card"><div class="kpi-value">{{ stats.total }}</div><div class="kpi-label">Событий</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{ stats.errors }}</div><div class="kpi-label">Ошибок</div></div>
+    <div class="kpi-card"><div class="kpi-value">{{ stats.warnings }}</div><div class="kpi-label">Предупреждений</div></div>
+  </div>
+
+  <div class="panel" style="margin-top:var(--s4);">
+    <h2 style="margin-top:0;">Проверка окружения</h2>
+    <div class="monitor-check-grid">
+      <div><strong>SITE_URL</strong><span>{{ checks.site_url }}</span></div>
+      <div><strong>Telegram bot</strong><span>{% if checks.telegram_token %}OK{% else %}Нет TELEGRAM_BOT_TOKEN{% endif %}</span></div>
+      <div><strong>ADMIN_IDS</strong><span>{% if checks.admin_ids %}OK{% else %}Не заданы{% endif %}</span></div>
+      <div><strong>CRON_SECRET</strong><span>{% if checks.cron_secret %}OK{% else %}Не задан{% endif %}</span></div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-top:var(--s4);">
+    <form method="GET" style="display:grid;grid-template-columns:180px 220px auto;gap:10px;align-items:end;">
+      <div>
+        <label>Уровень</label>
+        <select name="level">
+          <option value="">Все</option>
+          <option value="error" {% if level == 'error' %}selected{% endif %}>error</option>
+          <option value="warning" {% if level == 'warning' %}selected{% endif %}>warning</option>
+        </select>
+      </div>
+      <div>
+        <label>Тип</label>
+        <input name="kind" value="{{ kind }}" placeholder="telegram_failed, http_problem">
+      </div>
+      <button type="submit" class="btn primary" style="width:auto;margin-top:0;">Фильтр</button>
+    </form>
+  </div>
+
+  <div class="panel" style="margin-top:var(--s4);">
+    <div class="overflow-x-auto">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Время</th>
+            <th>Уровень</th>
+            <th>Тип</th>
+            <th>Маршрут</th>
+            <th>Сообщение</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for item in events %}
+          <tr>
+            <td style="white-space:nowrap;font-size:12px;color:var(--c-text-muted);">{{ (item.created_at or '')[:19].replace('T',' ') }}</td>
+            <td><span class="badge {% if item.level == 'error' %}badge--danger{% else %}badge--warning{% endif %}">{{ item.level }}</span></td>
+            <td style="font-family:monospace;font-size:12px;">{{ item.kind }}</td>
+            <td style="font-size:12px;">{{ item.method or '' }} {{ item.path or '—' }}</td>
+            <td style="min-width:360px;white-space:pre-wrap;font-size:12px;">{{ item.message }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" style="padding:24px;text-align:center;color:var(--c-text-muted);">Событий пока нет</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<style>
+.monitor-check-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
+.monitor-check-grid>div{padding:12px;border:1px solid var(--c-border);border-radius:8px;background:var(--c-surface-2);display:grid;gap:4px;}
+.monitor-check-grid strong{font-size:12px;color:var(--c-text-muted);}
+.monitor-check-grid span{font-size:13px;font-weight:800;color:var(--c-text-1);word-break:break-word;}
+@media(max-width:760px){
+  .monitor-check-grid{grid-template-columns:1fr;}
+  form[method="GET"]{grid-template-columns:1fr!important;}
+}
+</style>
+{% endblock %}
