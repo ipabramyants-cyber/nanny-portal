@@ -421,10 +421,10 @@
                   </select>
                 </div>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 140px 150px;gap:12px;">
-                <div><label>Реферальный код</label><input name="referral_code" value="{{ agent.referral_code }}" required></div>
-                <div><label>Комиссия, %</label><input name="commission_percent" type="number" min="0" max="100" value="{{ agent.commission_percent }}"></div>
-                <div><label>Выплата через дней</label><input name="payout_delay_days" type="number" min="0" max="90" value="{{ agent.payout_delay_days }}"></div>
+              <div style="display:grid;grid-template-columns:1fr 160px 150px;gap:12px;">
+                <div><label>Реферальный код</label><div class="agent-code-readonly">{{ agent.referral_code }}</div></div>
+                <div><label>Комиссия, VND</label><input name="commission_vnd" type="number" min="0" step="1000" value="{{ agent.commission_vnd or 200000 }}"></div>
+                <div><label>Выплата через дней</label><input name="payout_delay_days" type="number" min="0" max="180" value="{{ agent.payout_delay_days or 14 }}"></div>
               </div>
               <div><label>Заметки</label><textarea name="notes" rows="2">{{ agent.notes or '' }}</textarea></div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
@@ -449,10 +449,9 @@
             <div><label>Имя агента</label><input name="name" required placeholder="Анна / отель / партнёр"></div>
             <div><label>Telegram ID</label><input name="telegram_user_id" placeholder="числовой ID"></div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 140px 150px;gap:12px;">
-            <div><label>Реферальный код</label><input name="referral_code" placeholder="можно оставить пустым"></div>
-            <div><label>Комиссия, %</label><input name="commission_percent" type="number" min="0" max="100" value="10"></div>
-            <div><label>Выплата через дней</label><input name="payout_delay_days" type="number" min="0" max="90" value="3"></div>
+          <div style="display:grid;grid-template-columns:1fr 150px;gap:12px;">
+            <div><label>Комиссия, VND</label><input name="commission_vnd" type="number" min="0" step="1000" value="200000"></div>
+            <div><label>Выплата через дней</label><input name="payout_delay_days" type="number" min="0" max="180" value="14"></div>
           </div>
           <div><label>Заметки</label><textarea name="notes" rows="2" placeholder="Источник, договорённости, контакты"></textarea></div>
           <div><button type="submit" class="btn primary" style="width:auto;margin-top:0;">Добавить агента</button></div>
@@ -1441,6 +1440,7 @@
 /* Period tabs */
 .earn-tab{padding:6px 12px;border-radius:var(--r-pill);border:1px solid var(--c-border);background:var(--c-surface);font-size:12px;font-weight:600;cursor:pointer;color:var(--c-text-muted);transition:all .15s;}
 .earn-tab.active{background:var(--c-teal);color:#fff;border-color:var(--c-teal);}
+.agent-code-readonly{padding:9px 10px;border-radius:var(--r-sm);border:1.5px solid var(--c-border);background:var(--c-surface);font-size:13px;font-weight:800;color:var(--c-teal-dk);word-break:break-all;}
 @media(max-width:760px){
   .admin-header{padding:var(--s4) 0;}
   .admin-header h1{font-size:1.55rem;}

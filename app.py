@@ -202,6 +202,9 @@ def create_app() -> Flask:
                         "ALTER TABLE leads ADD COLUMN IF NOT EXISTS referral_agent_id INTEGER"
                     ))
                     _conn.execute(db.text(
+                        "ALTER TABLE referral_agents ADD COLUMN IF NOT EXISTS commission_vnd INTEGER DEFAULT 200000"
+                    ))
+                    _conn.execute(db.text(
                         "ALTER TABLE shifts ADD COLUMN IF NOT EXISTS post_reminder_sent_at TIMESTAMP"
                     ))
                     _conn.execute(db.text(
@@ -713,7 +716,8 @@ def create_app() -> Flask:
                 'portal_token': agent.get('portal_token') or '',
                 'referral_code': agent.get('referral_code') or '',
                 'commission_percent': int(agent.get('commission_percent') or 10),
-                'payout_delay_days': int(agent.get('payout_delay_days') or 3),
+                'commission_vnd': int(agent.get('commission_vnd') or 200000),
+                'payout_delay_days': int(agent.get('payout_delay_days') or 14),
                 'notes': agent.get('notes') or '',
                 'is_active': bool(agent.get('is_active', True)),
                 'created_at': agent.get('created_at') or '',
@@ -725,7 +729,8 @@ def create_app() -> Flask:
             'portal_token': agent.portal_token or '',
             'referral_code': agent.referral_code or '',
             'commission_percent': int(agent.commission_percent or 10),
-            'payout_delay_days': int(agent.payout_delay_days or 3),
+            'commission_vnd': int(getattr(agent, 'commission_vnd', None) or 200000),
+            'payout_delay_days': int(agent.payout_delay_days or 14),
             'notes': agent.notes or '',
             'is_active': bool(agent.is_active),
             'created_at': agent.created_at.isoformat() if agent.created_at else '',
@@ -1915,8 +1920,8 @@ def create_app() -> Flask:
     def _agent_client_payload(agent_obj) -> dict:
         agent = _agent_to_dict(agent_obj)
         agent_id = str(agent.get('id') or '')
-        commission_percent = int(agent.get('commission_percent') or 10)
-        payout_delay_days = int(agent.get('payout_delay_days') or 3)
+        commission_vnd = int(agent.get('commission_vnd') or 200000)
+        payout_delay_days = int(agent.get('payout_delay_days') or 14)
         rows = []
         events = []
         total_commission = 0
@@ -1937,7 +1942,7 @@ def create_app() -> Flask:
             first_slot = active_dates[0][1] if active_dates else {}
             finance = _lead_slot_finance(lead, first_date, first_slot) if first_date else {}
             margin = finance.get('margin_vnd')
-            commission = round(max(int(margin or 0), 0) * commission_percent / 100) if margin is not None else 0
+            commission = commission_vnd if first_date else 0
             payout_date = _date_plus_days(first_date, payout_delay_days) if first_date else None
             total_commission += commission
             if first_date:
@@ -1989,7 +1994,7 @@ def create_app() -> Flask:
                 'clients_total': len(rows),
                 'clients_with_dates': clients_with_dates,
                 'expected_commission_vnd': total_commission,
-                'commission_percent': commission_percent,
+                'commission_vnd': commission_vnd,
                 'payout_delay_days': payout_delay_days,
             },
         }
@@ -4056,13 +4061,12 @@ def create_app() -> Flask:
         agent_id_raw = (request.form.get('id') or '').strip() or None
         name = _clean_user_text(request.form.get('name'), 120)
         tid_raw = (request.form.get('telegram_user_id') or '').strip() or None
-        referral_code = _clean_user_text(request.form.get('referral_code'), 80)
-        referral_code = re.sub(r'[^A-Za-z0-9_-]+', '-', referral_code or '').strip('-').lower()
         notes = _clean_user_text(request.form.get('notes'), 1000)
         is_active = request.form.get('is_active') != '0'
         try:
-            commission_percent = max(0, min(100, int((request.form.get('commission_percent') or '10').strip())))
-            payout_delay_days = max(0, min(90, int((request.form.get('payout_delay_days') or '3').strip())))
+            commission_raw = (request.form.get('commission_vnd') or '200000').strip().replace(' ', '').replace(',', '')
+            commission_vnd = max(0, int(commission_raw))
+            payout_delay_days = max(0, min(180, int((request.form.get('payout_delay_days') or '14').strip())))
         except Exception:
             flash('Процент комиссии и задержка выплаты должны быть числами', 'error')
             return redirect(url_for('admin'))
@@ -4083,13 +4087,13 @@ def create_app() -> Flask:
                 agent = ReferralAgent(
                     name=name,
                     portal_token=secrets.token_urlsafe(18),
-                    referral_code=referral_code or _new_agent_code(name),
+                    referral_code=_new_agent_code(name),
                 )
                 db.session.add(agent)
             agent.name = name
             agent.telegram_user_id = telegram_user_id
-            agent.referral_code = referral_code or agent.referral_code or _new_agent_code(name)
-            agent.commission_percent = commission_percent
+            agent.referral_code = agent.referral_code or _new_agent_code(name)
+            agent.commission_vnd = commission_vnd
             agent.payout_delay_days = payout_delay_days
             agent.notes = notes
             agent.is_active = is_active
@@ -4111,15 +4115,15 @@ def create_app() -> Flask:
             agent = {
                 'id': next_id,
                 'portal_token': secrets.token_urlsafe(18),
-                'referral_code': referral_code or _new_agent_code(name),
+                'referral_code': _new_agent_code(name),
                 'created_at': datetime.datetime.utcnow().isoformat(),
             }
             agents.append(agent)
         agent.update({
             'name': name,
             'telegram_user_id': telegram_user_id or '',
-            'referral_code': referral_code or agent.get('referral_code') or _new_agent_code(name),
-            'commission_percent': commission_percent,
+            'referral_code': agent.get('referral_code') or _new_agent_code(name),
+            'commission_vnd': commission_vnd,
             'payout_delay_days': payout_delay_days,
             'notes': notes,
             'is_active': is_active,

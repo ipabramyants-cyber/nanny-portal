@@ -5,7 +5,7 @@
 <div class="admin-header">
   <div class="container">
     <h1>Кабинет реферального агента</h1>
-    <p>{{ agent.name }} · комиссия {{ summary.commission_percent }}% · выплата через {{ summary.payout_delay_days }} дн.</p>
+    <p>{{ agent.name }} · комиссия {{ '{:,}'.format(summary.commission_vnd).replace(',', ' ') }} VND · выплата через {{ summary.payout_delay_days }} дн.</p>
   </div>
 </div>
 
@@ -131,7 +131,7 @@
 (function(){
   const REF_URL = {{ referral_url | tojson }};
   const EVENTS = {{ events | tojson }};
-  const COMMISSION_PERCENT = Number({{ summary.commission_percent | tojson }}) || 10;
+  const COMMISSION_VND = Number({{ summary.commission_vnd | tojson }}) || 200000;
   const qr = document.getElementById('agentQr');
   if (window.QRCode && qr) {
     QRCode.toCanvas(qr, REF_URL, { width: 220, margin: 1, color: { dark: '#016b82', light: '#ffffff' } });
@@ -225,7 +225,7 @@
     const clientRate = Number(document.getElementById('calcClientRate').value) || 0;
     const nannyRate = Number(document.getElementById('calcNannyRate').value) || 0;
     const margin = Math.max(0, (clientRate - nannyRate) * hours * shifts * clients);
-    const agentProfit = Math.round(margin * COMMISSION_PERCENT / 100);
+    const agentProfit = Math.round(clients * COMMISSION_VND);
     out.innerHTML = `<span>Маржа агентства: <strong>${money(margin)}</strong></span><span>Доход агента: <strong>${money(agentProfit)}</strong></span>`;
   }
   calcIds.forEach(id => document.getElementById(id).addEventListener('input', recalc));
