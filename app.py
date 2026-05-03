@@ -245,8 +245,23 @@ def create_app() -> Flask:
     _static_ver = os.environ.get('APP_VERSION') or str(int(time.time() // 86400))
     app.jinja_env.globals['static_ver'] = _static_ver
     # Canonical site URL for templates (sitemap, OG tags, canonical links)
-    _canonical = (os.environ.get('SITE_URL') or 'https://web-production-2ebe9.up.railway.app').rstrip('/')
-    app.jinja_env.globals['site_url'] = _canonical
+    DEFAULT_SITE_URL = 'https://web-production-2ebe9.up.railway.app'
+
+    def _public_site_url() -> str:
+        env_url = (os.environ.get('SITE_URL') or '').rstrip('/')
+        if env_url:
+            return env_url
+        if has_request_context():
+            host = (request.host or '').split(':', 1)[0].lower()
+            if host and host not in {'localhost', '127.0.0.1'} and not host.endswith('railway.app'):
+                return request.url_root.rstrip('/')
+        return DEFAULT_SITE_URL
+
+    app.jinja_env.globals['site_url'] = _public_site_url()
+
+    @app.context_processor
+    def _inject_public_site_url():
+        return {'site_url': _public_site_url()}
 
     def nanny_photo_src(photo: str | None) -> str:
         if not photo:
@@ -1690,7 +1705,7 @@ def create_app() -> Flask:
             )
 
     def _site_url() -> str:
-        return os.environ.get('SITE_URL', 'https://web-production-2ebe9.up.railway.app').rstrip('/')
+        return _public_site_url()
 
     def _lead_value(lead_obj, key, default=None):
         if lead_obj is None:
@@ -4881,10 +4896,7 @@ def create_app() -> Flask:
     def _site_base() -> str:
         """Return canonical site base URL.
         Priority: SITE_URL env > PRODUCTION_URL constant > request.url_root (dev fallback)."""
-        site_url = os.environ.get('SITE_URL', '').rstrip('/')
-        if site_url:
-            return site_url
-        return PRODUCTION_URL
+        return _public_site_url()
 
     @app.route('/robots.txt')
     def robots_txt():
