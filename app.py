@@ -7,6 +7,7 @@ import re
 import hashlib
 import base64
 import io
+from collections import Counter
 from urllib.parse import urlparse
 
 from flask import Flask, render_template, request, send_from_directory, redirect, url_for, flash, session, Response, jsonify, has_request_context
@@ -257,11 +258,40 @@ def create_app() -> Flask:
                 return request.url_root.rstrip('/')
         return DEFAULT_SITE_URL
 
+    def _public_analytics_allowed_path(path: str) -> bool:
+        path = path or '/'
+        blocked_prefixes = (
+            '/admin', '/api/', '/client', '/agent', '/r/', '/nanny/app',
+            '/nanny/login', '/nanny/portal', '/uploads/', '/static/',
+        )
+        blocked_exact = {
+            '/healthz', '/sw.js', '/offline.html', '/robots.txt', '/sitemap.xml',
+            '/favicon.ico',
+        }
+        if path in blocked_exact:
+            return False
+        return not any(path.startswith(prefix) for prefix in blocked_prefixes)
+
+    def _analytics_ids() -> dict:
+        google_id = (os.environ.get('GOOGLE_ANALYTICS_ID') or '').strip()
+        yandex_id = (os.environ.get('YANDEX_METRIKA_ID') or os.environ.get('YANDEX_METRICA_ID') or '').strip()
+        if google_id and not re.fullmatch(r'[A-Z]{1,4}-[A-Z0-9_-]{4,40}', google_id):
+            google_id = ''
+        if yandex_id and not re.fullmatch(r'\d{4,20}', yandex_id):
+            yandex_id = ''
+        return {'google_analytics_id': google_id, 'yandex_metrika_id': yandex_id}
+
     app.jinja_env.globals['site_url'] = _public_site_url()
 
     @app.context_processor
     def _inject_public_site_url():
-        return {'site_url': _public_site_url()}
+        ids = _analytics_ids()
+        analytics_enabled = has_request_context() and _public_analytics_allowed_path(request.path)
+        return {
+            'site_url': _public_site_url(),
+            'google_analytics_id': ids['google_analytics_id'] if analytics_enabled else '',
+            'yandex_metrika_id': ids['yandex_metrika_id'] if analytics_enabled else '',
+        }
 
     def nanny_photo_src(photo: str | None) -> str:
         if not photo:
@@ -379,6 +409,7 @@ def create_app() -> Flask:
     NOTIFICATION_STATE_FILE = os.path.join(app.config['DATA_DIR'], 'notification_state.json')
     NOTIFICATION_LOG_FILE = os.path.join(app.config['DATA_DIR'], 'notification_log.json')
     APP_EVENTS_FILE = os.path.join(app.config['DATA_DIR'], 'app_events.json')
+    VISIT_LOG_FILE = os.path.join(app.config['DATA_DIR'], 'visit_log.json')
 
     def _legacy_token(prefix: str, raw: str) -> str:
         digest = hashlib.sha1((raw or '').encode('utf-8')).hexdigest()[:12]
@@ -444,6 +475,110 @@ def create_app() -> Flask:
                 app.logger.warning("failed to append log %s", path, exc_info=True)
             except Exception:
                 pass
+
+    def _visit_is_bot(user_agent: str) -> bool:
+        ua = (user_agent or '').lower()
+        markers = ('bot', 'crawl', 'spider', 'slurp', 'preview', 'telegrambot', 'whatsapp', 'facebookexternalhit')
+        return any(marker in ua for marker in markers)
+
+    def _record_site_visit():
+        try:
+            if request.method != 'GET' or not _public_analytics_allowed_path(request.path):
+                return
+            ua = (request.headers.get('User-Agent') or '')[:300]
+            ip = request.headers.get('X-Forwarded-For', request.remote_addr or '').split(',')[0].strip()
+            day = datetime.datetime.utcnow().date().isoformat()
+            visitor_key = hashlib.sha256(
+                f"{day}|{app.secret_key}|{ip}|{ua}".encode('utf-8', 'ignore')
+            ).hexdigest()[:18]
+            ref = (request.headers.get('Referer') or '')[:500]
+            ref_host = ''
+            if ref:
+                try:
+                    ref_host = urlparse(ref).netloc.lower()[:160]
+                except Exception:
+                    ref_host = ''
+            _append_json_log(VISIT_LOG_FILE, {
+                'path': request.path,
+                'query': request.query_string.decode('utf-8', 'ignore')[:250],
+                'referrer': ref,
+                'referrer_host': ref_host,
+                'user_agent': ua,
+                'visitor': visitor_key,
+                'is_bot': _visit_is_bot(ua),
+            }, limit=5000)
+        except Exception:
+            pass
+
+    @app.before_request
+    def _track_public_visit():
+        _record_site_visit()
+
+    def _parse_visit_dt(item: dict):
+        raw = str(item.get('created_at') or '')
+        try:
+            return datetime.datetime.fromisoformat(raw)
+        except Exception:
+            return None
+
+    def _site_visit_stats(days: int = 30) -> dict:
+        visits = _read_json(VISIT_LOG_FILE, [])
+        if not isinstance(visits, list):
+            visits = []
+        today = datetime.datetime.utcnow().date()
+        start = today - datetime.timedelta(days=max(1, days) - 1)
+        filtered = []
+        bot_count = 0
+        for item in visits:
+            if not isinstance(item, dict):
+                continue
+            dt = _parse_visit_dt(item)
+            if not dt:
+                continue
+            if dt.date() < start:
+                continue
+            if item.get('is_bot'):
+                bot_count += 1
+                continue
+            filtered.append((item, dt))
+
+        by_day = []
+        for offset in range(max(1, days)):
+            day = start + datetime.timedelta(days=offset)
+            day_items = [item for item, dt in filtered if dt.date() == day]
+            by_day.append({
+                'date': day.isoformat(),
+                'views': len(day_items),
+                'unique': len({item.get('visitor') for item in day_items if item.get('visitor')}),
+            })
+
+        page_counter = Counter((item.get('path') or '/') for item, _dt in filtered)
+        ref_counter = Counter(
+            (item.get('referrer_host') or 'direct')
+            for item, _dt in filtered
+            if (item.get('referrer_host') or 'direct')
+        )
+        visitors = {item.get('visitor') for item, _dt in filtered if item.get('visitor')}
+        recent = []
+        for item, dt in filtered[:25]:
+            recent.append({
+                'created_at': item.get('created_at') or '',
+                'path': item.get('path') or '/',
+                'referrer_host': item.get('referrer_host') or 'direct',
+                'is_bot': bool(item.get('is_bot')),
+            })
+        return {
+            'days': days,
+            'total_views': len(filtered),
+            'unique_visitors': len(visitors),
+            'today_views': by_day[-1]['views'] if by_day else 0,
+            'today_unique': by_day[-1]['unique'] if by_day else 0,
+            'bot_hits': bot_count,
+            'by_day': by_day,
+            'top_pages': [{'path': k, 'views': v} for k, v in page_counter.most_common(8)],
+            'top_referrers': [{'host': k, 'views': v} for k, v in ref_counter.most_common(8)],
+            'recent': recent,
+        }
 
     def _append_app_event(kind: str, message: str, level: str = 'warning', meta: dict | None = None):
         entry = {
@@ -4251,6 +4386,15 @@ def create_app() -> Flask:
         for agent in agents:
             aid = str(agent.get('id') or '')
             agent_stats[aid] = len([lead for lead in leads if str(lead.get('referral_agent_id') or '') == aid])
+        analytics_ids = _analytics_ids()
+        seo_status = {
+            'site_url': _site_url(),
+            'robots_url': f"{_site_url()}/robots.txt",
+            'sitemap_url': f"{_site_url()}/sitemap.xml",
+            'google_analytics_id': analytics_ids['google_analytics_id'],
+            'yandex_metrika_id': analytics_ids['yandex_metrika_id'],
+            'public_pages': 4 + len([a for a in _articles_published() if a.get('slug')]) + len([n for n in nannies if n.get('portal_token')]),
+        }
 
         return render_template(
             'admin_simple.html',
@@ -4264,6 +4408,8 @@ def create_app() -> Flask:
             shifts=shift_rows,
             reviews=reviews,
             crm=crm,
+            visit_stats=_site_visit_stats(30),
+            seo_status=seo_status,
         )
 
     @app.route('/admin/notifications')

@@ -23,6 +23,9 @@ class FullScenarioTest(unittest.TestCase):
         os.environ['ADMIN_IDS'] = '999999999'
         os.environ['TELEGRAM_BOT_TOKEN'] = 'test-bot-token'
         os.environ['SITE_URL'] = 'https://example.test'
+        os.environ.pop('GOOGLE_ANALYTICS_ID', None)
+        os.environ.pop('YANDEX_METRIKA_ID', None)
+        os.environ.pop('YANDEX_METRICA_ID', None)
 
         import app as app_module
 
@@ -224,6 +227,34 @@ class FullScenarioTest(unittest.TestCase):
         agent_resp = self.client.get('/agent/app', base_url=self.base_url)
         self.assertEqual(agent_resp.status_code, 302)
         self.assertIn('/agent/', agent_resp.headers.get('Location', ''))
+
+    def test_public_visit_stats_and_tracking_tags(self):
+        os.environ['GOOGLE_ANALYTICS_ID'] = 'G-TEST12345'
+        os.environ['YANDEX_METRIKA_ID'] = '12345678'
+
+        home_resp = self.client.get('/', base_url=self.base_url, headers={
+            'User-Agent': 'Mozilla/5.0 Test Browser',
+            'Referer': 'https://t.me/nanny_nya_trang',
+        })
+        self.assertEqual(home_resp.status_code, 200, home_resp.get_data(as_text=True))
+        home_html = home_resp.get_data(as_text=True)
+        self.assertIn('googletagmanager.com/gtag/js?id=G-TEST12345', home_html)
+        self.assertIn('mc.yandex.ru/metrika/tag.js', home_html)
+
+        tariffs_resp = self.client.get('/tariffs', base_url=self.base_url, headers={'User-Agent': 'Mozilla/5.0 Test Browser'})
+        self.assertEqual(tariffs_resp.status_code, 200, tariffs_resp.get_data(as_text=True))
+
+        admin_resp = self.client.get('/admin', headers=self.admin_headers, base_url=self.base_url)
+        self.assertEqual(admin_resp.status_code, 200, admin_resp.get_data(as_text=True))
+        admin_html = admin_resp.get_data(as_text=True)
+        self.assertIn('SEO и посещения сайта', admin_html)
+        self.assertIn('G-TEST12345', admin_html)
+        self.assertIn('12345678', admin_html)
+
+        visits = self.read_json('visit_log.json', [])
+        self.assertGreaterEqual(len(visits), 2)
+        self.assertTrue(any(v.get('path') == '/' for v in visits))
+        self.assertTrue(all('remote_addr' not in v for v in visits))
 
 
 if __name__ == '__main__':

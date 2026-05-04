@@ -87,6 +87,105 @@
     </div>
   </div>
 
+  <!-- SITE ANALYTICS / SEO -->
+  <div class="admin-section">
+    <div class="panel" style="padding:var(--s5);">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s4);">
+        <div>
+          <h2 style="margin:0;font-size:1.2rem;">📈 SEO и посещения сайта</h2>
+          <p class="hint" style="margin-top:6px;">Внутренняя статистика считает только публичные страницы. Кабинеты, админка, API и загрузки не попадают в счетчик.</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <a class="action-link" href="{{ seo_status.robots_url }}" target="_blank">robots.txt</a>
+          <a class="action-link" href="{{ seo_status.sitemap_url }}" target="_blank">sitemap.xml</a>
+        </div>
+      </div>
+
+      <div class="profit-kpi-grid" style="margin-bottom:var(--s4);">
+        <div class="profit-kpi">
+          <div class="profit-kpi__icon">👁</div>
+          <div class="profit-kpi__label">Просмотры за 30 дней</div>
+          <div class="profit-kpi__val">{{ visit_stats.total_views }}</div>
+        </div>
+        <div class="profit-kpi">
+          <div class="profit-kpi__icon">👤</div>
+          <div class="profit-kpi__label">Уникальные за 30 дней</div>
+          <div class="profit-kpi__val">{{ visit_stats.unique_visitors }}</div>
+        </div>
+        <div class="profit-kpi">
+          <div class="profit-kpi__icon">📍</div>
+          <div class="profit-kpi__label">Сегодня</div>
+          <div class="profit-kpi__val">{{ visit_stats.today_views }}</div>
+        </div>
+        <div class="profit-kpi">
+          <div class="profit-kpi__icon">🤖</div>
+          <div class="profit-kpi__label">Боты / превью</div>
+          <div class="profit-kpi__val">{{ visit_stats.bot_hits }}</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--s4);align-items:start;">
+        <div>
+          <h3 style="margin:0 0 var(--s3);font-size:14px;color:var(--c-teal-dk);">Динамика за 30 дней</h3>
+          <div style="display:flex;align-items:flex-end;gap:4px;height:104px;overflow-x:auto;padding-bottom:4px;">
+            {% set max_views = (visit_stats.by_day | map(attribute='views') | max) if visit_stats.by_day else 1 %}
+            {% for day in visit_stats.by_day %}
+              {% set bar_h = 8 + ((day.views / (max_views if max_views else 1)) * 78) %}
+              <div title="{{ day.date }}: {{ day.views }} просмотров, {{ day.unique }} уник."
+                   style="min-width:18px;height:{{ '%.0f'|format(bar_h) }}px;background:var(--c-teal);border-radius:4px 4px 0 0;opacity:.86;"></div>
+            {% endfor %}
+          </div>
+          <div class="hint" style="font-size:11px;margin-top:4px;">Пики помогают увидеть дни, когда сработала реклама, Telegram, Instagram или поисковая выдача.</div>
+        </div>
+
+        <div>
+          <h3 style="margin:0 0 var(--s3);font-size:14px;color:var(--c-teal-dk);">Топ страниц</h3>
+          <div style="display:grid;gap:7px;font-size:12px;">
+            {% for row in visit_stats.top_pages %}
+              <div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--c-border);padding-bottom:5px;">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.path }}</span>
+                <strong>{{ row.views }}</strong>
+              </div>
+            {% else %}
+              <p class="hint">Пока нет данных.</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div>
+          <h3 style="margin:0 0 var(--s3);font-size:14px;color:var(--c-teal-dk);">Источники</h3>
+          <div style="display:grid;gap:7px;font-size:12px;">
+            {% for row in visit_stats.top_referrers %}
+              <div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--c-border);padding-bottom:5px;">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ row.host }}</span>
+                <strong>{{ row.views }}</strong>
+              </div>
+            {% else %}
+              <p class="hint">Пока нет данных.</p>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:var(--s4);font-size:12px;">
+        <div style="padding:10px;border:1px solid var(--c-border);border-radius:8px;background:var(--c-surface-2);">
+          <strong>SITE_URL</strong><br><span class="hint">{{ seo_status.site_url }}</span>
+        </div>
+        <div style="padding:10px;border:1px solid var(--c-border);border-radius:8px;background:var(--c-surface-2);">
+          <strong>Публичных URL</strong><br><span class="hint">{{ seo_status.public_pages }} в sitemap</span>
+        </div>
+        <div style="padding:10px;border:1px solid var(--c-border);border-radius:8px;background:var(--c-surface-2);">
+          <strong>Google Analytics</strong><br>
+          <span class="badge {% if seo_status.google_analytics_id %}badge--success{% else %}badge--neutral{% endif %}">{{ seo_status.google_analytics_id or 'не подключен' }}</span>
+        </div>
+        <div style="padding:10px;border:1px solid var(--c-border);border-radius:8px;background:var(--c-surface-2);">
+          <strong>Яндекс Метрика</strong><br>
+          <span class="badge {% if seo_status.yandex_metrika_id %}badge--success{% else %}badge--neutral{% endif %}">{{ seo_status.yandex_metrika_id or 'не подключена' }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════ PROFIT DASHBOARD ══════════ -->
   <div class="admin-section">
     <div class="panel" style="padding:var(--s5);">
