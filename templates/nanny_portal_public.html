@@ -31,6 +31,17 @@
   </div>
 </div>
 
+{% if partner_portal_url %}
+<div class="container portal-switch-wrap">
+  <div class="portal-switch">
+    <span>Реферальный кабинет няни уже активен</span>
+    <div>
+      <a class="btn secondary" href="{{ partner_portal_url }}" style="width:auto;margin-top:0;text-decoration:none;">Кабинет партнера</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <section class="container cabinet-calendar-top" style="margin-top:var(--s5);">
   <div class="panel">
     <div class="calendar-head">

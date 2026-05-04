@@ -13,6 +13,17 @@
   </div>
 </div>
 
+<div class="container portal-switch-wrap">
+  <div id="roleSwitchBox" class="portal-switch" {% if not switch_portals %}style="display:none;"{% endif %}>
+    <span>Доступны другие кабинеты</span>
+    <div id="roleSwitchLinks">
+      {% for portal in switch_portals %}
+        <a class="btn secondary" href="{{ portal.url }}" style="width:auto;margin-top:0;text-decoration:none;">{{ portal.label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
 <div class="container" style="padding: var(--s5) 0 var(--s16);">
 
   <!-- Auth error state -->
@@ -114,6 +125,26 @@
 
   const fmtMoney = v => v == null ? '—' : Number(v).toLocaleString('ru-RU') + ' ₫';
   const fmtDate = ymd => { if(!ymd||ymd.length!==10)return ymd; const[y,m,d]=ymd.split('-'); return `${d}.${m}.${y}`; };
+
+  function renderPortalSwitch(portals) {
+    const box = document.getElementById('roleSwitchBox');
+    const links = document.getElementById('roleSwitchLinks');
+    if (!box || !links || !Array.isArray(portals)) return;
+    const other = portals.filter(p => p && p.role !== 'nanny' && p.url);
+    if (!other.length) return;
+    links.innerHTML = '';
+    other.forEach(portal => {
+      const a = document.createElement('a');
+      a.className = 'btn secondary';
+      a.href = portal.url;
+      a.textContent = portal.label || 'Открыть кабинет';
+      a.style.width = 'auto';
+      a.style.marginTop = '0';
+      a.style.textDecoration = 'none';
+      links.appendChild(a);
+    });
+    box.style.display = 'flex';
+  }
 
   const STATUS_LABELS = {
     assigned: { label: 'Назначена', cls: 'badge--info' },
@@ -313,7 +344,8 @@
 
   (async function() {
     try {
-      await ensureAuth();
+      const authData = await ensureAuth();
+      renderPortalSwitch(authData && authData.available_portals);
       await loadShifts();
     } catch(e) {
       console.error(e);

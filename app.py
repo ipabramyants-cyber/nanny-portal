@@ -900,6 +900,106 @@ def create_app() -> Flask:
             return None
         return str(agent.get('id') if isinstance(agent, dict) else agent.id)
 
+    def _nanny_value(nanny_obj, key, default=None):
+        if nanny_obj is None:
+            return default
+        if isinstance(nanny_obj, dict):
+            return nanny_obj.get(key, default)
+        return getattr(nanny_obj, key, default)
+
+    def _ensure_agent_for_nanny(nanny_obj):
+        """Every Telegram-linked nanny is also a referral partner by default."""
+        if not nanny_obj:
+            return None
+        telegram_user_id = _nanny_value(nanny_obj, 'telegram_user_id')
+        if not telegram_user_id:
+            return None
+        try:
+            telegram_user_id = int(telegram_user_id)
+        except Exception:
+            return None
+
+        nanny_name = _nanny_value(nanny_obj, 'name') or 'Няня'
+        nanny_id = _nanny_value(nanny_obj, 'id') or ''
+        default_notes = (
+            f"Автоматически создано для няни {nanny_name}"
+            f"{' #' + str(nanny_id) if nanny_id else ''}. "
+            "Доступ к реферальному кабинету включен по умолчанию."
+        )
+
+        if use_sql:
+            agent = ReferralAgent.query.filter_by(telegram_user_id=telegram_user_id).first()
+            if agent:
+                changed = False
+                if not agent.is_active:
+                    agent.is_active = True
+                    changed = True
+                if not agent.commission_vnd:
+                    agent.commission_vnd = 200000
+                    changed = True
+                if not agent.payout_delay_days:
+                    agent.payout_delay_days = 14
+                    changed = True
+                if not agent.portal_token:
+                    agent.portal_token = secrets.token_urlsafe(18)
+                    changed = True
+                if not agent.referral_code:
+                    agent.referral_code = _new_agent_code(nanny_name)
+                    changed = True
+                if changed:
+                    db.session.commit()
+                return agent
+
+            agent = ReferralAgent(
+                name=nanny_name,
+                telegram_user_id=telegram_user_id,
+                portal_token=secrets.token_urlsafe(18),
+                referral_code=_new_agent_code(nanny_name),
+                commission_vnd=200000,
+                payout_delay_days=14,
+                notes=default_notes,
+                is_active=True,
+            )
+            db.session.add(agent)
+            db.session.commit()
+            return agent
+
+        agents = load_agents()
+        agent = next((a for a in agents if str(a.get('telegram_user_id') or '') == str(telegram_user_id)), None)
+        if agent:
+            changed = False
+            defaults = {
+                'is_active': True,
+                'commission_vnd': agent.get('commission_vnd') or 200000,
+                'payout_delay_days': agent.get('payout_delay_days') or 14,
+                'portal_token': agent.get('portal_token') or secrets.token_urlsafe(18),
+                'referral_code': agent.get('referral_code') or _new_agent_code(nanny_name),
+            }
+            for key, value in defaults.items():
+                if agent.get(key) != value:
+                    agent[key] = value
+                    changed = True
+            if changed:
+                save_agents(agents)
+            return agent
+
+        next_id = str(max([int(a.get('id') or 0) for a in agents] or [0]) + 1)
+        agent = {
+            'id': next_id,
+            'name': nanny_name,
+            'telegram_user_id': telegram_user_id,
+            'portal_token': secrets.token_urlsafe(18),
+            'referral_code': _new_agent_code(nanny_name),
+            'commission_vnd': 200000,
+            'payout_delay_days': 14,
+            'notes': default_notes,
+            'is_active': True,
+            'created_at': datetime.datetime.utcnow().isoformat(),
+        }
+        agents.append(agent)
+        save_agents(agents)
+        return agent
+
     def _client_portal_for_telegram(telegram_user_id, telegram_username: str | None = None, attach: bool = False) -> dict | None:
         if not telegram_user_id:
             return None
@@ -975,20 +1075,23 @@ def create_app() -> Flask:
         if tid in admin_ids():
             portals.append({'role': 'admin', 'label': 'Кабинет админа', 'url': '/admin'})
 
+        default_agent = None
         if use_sql:
             nanny = Nanny.query.filter_by(telegram_user_id=tid).first()
             if nanny:
                 portals.append({'role': 'nanny', 'label': 'Кабинет няни', 'url': '/nanny/app'})
+                default_agent = _ensure_agent_for_nanny(nanny)
         else:
             nanny = next((n for n in _read_json(NANNIES_FILE, []) if str(n.get('telegram_user_id') or '') == str(tid)), None)
             if nanny:
                 portals.append({'role': 'nanny', 'label': 'Кабинет няни', 'url': '/nanny/app'})
+                default_agent = _ensure_agent_for_nanny(nanny)
 
         client_portal = _client_portal_for_telegram(tid, telegram_username, attach=attach_client)
         if client_portal:
             portals.append(client_portal)
 
-        agent = _agent_by_telegram_id(tid)
+        agent = default_agent or _agent_by_telegram_id(tid)
         if agent:
             portals.append({'role': 'agent', 'label': 'Кабинет агента', 'url': '/agent/app'})
 
@@ -1297,12 +1400,12 @@ def create_app() -> Flask:
     @app.route('/nanny/app')
     @require_nanny
     def nanny_app():
-        return render_template('nanny_app.html')
+        return render_template('nanny_app.html', switch_portals=_portal_switch_options_for_session('nanny'))
 
     @app.route('/nanny')
     @require_nanny
     def nanny_home():
-        return render_template('nanny_app.html')
+        return render_template('nanny_app.html', switch_portals=_portal_switch_options_for_session('nanny'))
 
 
     @app.route('/client/app')
@@ -2263,6 +2366,12 @@ def create_app() -> Flask:
         if not tid:
             return redirect(url_for('tg_entry'))
         agent = _agent_by_telegram_id(tid)
+        if not agent:
+            if use_sql:
+                nanny = Nanny.query.filter_by(telegram_user_id=int(tid)).first()
+            else:
+                nanny = next((n for n in load_nannies() if str(n.get('telegram_user_id') or '') == str(tid)), None)
+            agent = _ensure_agent_for_nanny(nanny)
         if not agent:
             if session.get('role') == 'admin':
                 return redirect(url_for('admin'))
@@ -3577,6 +3686,8 @@ def create_app() -> Flask:
         # Set session so blocks API can verify identity
         session['nanny_portal_token'] = portal_token
         session.permanent = True
+        partner_agent = _ensure_agent_for_nanny(nanny)
+        partner_portal_url = _agent_portal_url(partner_agent) if partner_agent else ''
         leads = load_leads()
         # Clients assigned to this nanny
         clients = [l for l in leads if l.get('assigned_nanny_id') == nanny.get('id')]
@@ -3640,7 +3751,8 @@ def create_app() -> Flask:
         return render_template('nanny_portal_public.html', nanny=nanny, clients=clients,
                                events=events_with_rate, today=today,
                                default_nanny_rate=DEFAULT_NANNY_RATE_VND,
-                               nanny_dayoffs=nanny_dayoffs_list)
+                               nanny_dayoffs=nanny_dayoffs_list,
+                               partner_portal_url=partner_portal_url)
 
     @app.route('/nanny/<portal_token>')
     def nanny_profile(portal_token: str):

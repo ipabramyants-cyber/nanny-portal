@@ -189,6 +189,42 @@ class FullScenarioTest(unittest.TestCase):
         self.assertEqual(client_resp.status_code, 200)
         self.assertIn(b'/agent/app', client_resp.data)
 
+    def test_nanny_gets_referral_agent_portal_by_default(self):
+        tg_id = 444444444
+        admin_page = self.client.get('/admin', headers=self.admin_headers, base_url=self.base_url)
+        self.assertEqual(admin_page.status_code, 200)
+
+        nannies = self.read_json('nannies.json', [])
+        self.assertTrue(nannies)
+        nannies[0]['telegram_user_id'] = tg_id
+        self.write_json('nannies.json', nannies)
+
+        old_validate = self.app_module.validate_webapp_init_data
+        self.app_module.validate_webapp_init_data = lambda init_data, bot_token: {
+            'user': json.dumps({'id': tg_id, 'username': 'defaultpartner', 'first_name': 'Nanny'})
+        }
+        try:
+            auth_resp = self.client.post('/api/auth/telegram', json={'init_data': 'valid'}, base_url=self.base_url)
+        finally:
+            self.app_module.validate_webapp_init_data = old_validate
+
+        self.assertEqual(auth_resp.status_code, 200, auth_resp.get_data(as_text=True))
+        data = auth_resp.get_json()
+        roles = {p.get('role') for p in data.get('available_portals', [])}
+        self.assertIn('nanny', roles)
+        self.assertIn('agent', roles)
+
+        agents = self.read_json('referral_agents.json', [])
+        agent = next((a for a in agents if str(a.get('telegram_user_id')) == str(tg_id)), None)
+        self.assertIsNotNone(agent)
+        self.assertTrue(agent.get('is_active'))
+        self.assertEqual(agent.get('commission_vnd'), 200000)
+        self.assertEqual(agent.get('payout_delay_days'), 14)
+
+        agent_resp = self.client.get('/agent/app', base_url=self.base_url)
+        self.assertEqual(agent_resp.status_code, 302)
+        self.assertIn('/agent/', agent_resp.headers.get('Location', ''))
+
 
 if __name__ == '__main__':
     unittest.main()
