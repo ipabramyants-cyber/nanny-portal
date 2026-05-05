@@ -250,6 +250,10 @@ class FullScenarioTest(unittest.TestCase):
         self.assertIn('SEO и посещения сайта', admin_html)
         self.assertIn('G-TEST12345', admin_html)
         self.assertIn('12345678', admin_html)
+        self.assertIn('Google Analytics', admin_html)
+        self.assertIn('Tag Assistant', admin_html)
+        self.assertIn('https://metrica.yandex.com/stat/dashboard?counter_id=12345678', admin_html)
+        self.assertIn('https://metrica.yandex.com/stat/visor?counter_id=12345678', admin_html)
 
         visits = self.read_json('visit_log.json', [])
         self.assertGreaterEqual(len(visits), 2)

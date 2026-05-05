@@ -5,6 +5,20 @@
 {% block head_extra %}
 <link rel="stylesheet" href="https://unpkg.com/easymde/dist/easymde.min.css">
 <script src="https://unpkg.com/easymde/dist/easymde.min.js"></script>
+<style>
+  .analytics-widget-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:var(--s4);margin:var(--s4) 0;}
+  .analytics-widget{padding:16px;border:1px solid var(--c-border);border-radius:12px;background:linear-gradient(180deg,#fff,var(--c-surface-2));box-shadow:0 10px 24px rgba(2,31,46,.06);}
+  .analytics-widget__head{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+  .analytics-widget__mark{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;flex-shrink:0;}
+  .analytics-widget--ga .analytics-widget__mark{background:#e8f0fe;color:#1a73e8;}
+  .analytics-widget--ym .analytics-widget__mark{background:#fff3d9;color:#d97706;}
+  .analytics-widget h3{margin:0 0 4px;font-size:15px;color:var(--c-text);}
+  .analytics-widget__meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;}
+  .analytics-widget__actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+  .analytics-widget__actions .action-link,.analytics-widget__actions button.action-link{border:1px solid var(--c-border);background:#fff;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:800;text-decoration:none;color:var(--c-teal-dk);cursor:pointer;}
+  .analytics-widget__actions .action-link:hover,.analytics-widget__actions button.action-link:hover{border-color:var(--c-teal);background:var(--c-teal-lt);}
+  .analytics-widget__note{margin-top:10px;padding:9px 10px;border-radius:8px;background:rgba(1,107,130,.07);font-size:12px;line-height:1.4;color:var(--c-text-2);}
+</style>
 {% endblock %}
 {% block title %}Админ-панель — Няня на час{% endblock %}
 
@@ -123,6 +137,76 @@
           <div class="profit-kpi__val">{{ visit_stats.bot_hits }}</div>
         </div>
       </div>
+
+      {% set ga_id = seo_status.google_analytics_id %}
+      {% set ym_id = seo_status.yandex_metrika_id %}
+      <div class="analytics-widget-grid" aria-label="Внешняя аналитика">
+        <div class="analytics-widget analytics-widget--ga">
+          <div class="analytics-widget__head">
+            <div class="analytics-widget__mark">G</div>
+            <div>
+              <h3>Google Analytics</h3>
+              <div class="analytics-widget__meta">
+                <span class="badge {% if ga_id %}badge--success{% else %}badge--neutral{% endif %}">{{ ga_id or 'не подключен' }}</span>
+                <span class="hint">GA4, отчеты и realtime</span>
+              </div>
+            </div>
+          </div>
+          <p class="hint" style="margin:0;">Основной счетчик для рекламной и поисковой аналитики Google. Проверяйте realtime сразу после тестового визита на сайт.</p>
+          <div class="analytics-widget__actions">
+            <a class="action-link" href="https://analytics.google.com/analytics/web/" target="_blank" rel="noopener">Открыть GA</a>
+            <a class="action-link" href="https://tagassistant.google.com/" target="_blank" rel="noopener">Tag Assistant</a>
+            {% if ga_id %}
+              <button type="button" class="action-link analytics-copy" data-copy="{{ ga_id }}">Скопировать ID</button>
+            {% else %}
+              <a class="action-link" href="https://railway.com/project/d505a2e4-b7de-47bb-a6cd-9675c0f87450" target="_blank" rel="noopener">Добавить в Railway</a>
+            {% endif %}
+          </div>
+          <div class="analytics-widget__note">Внешний счетчик включается только на публичных страницах. Кабинеты и админка не отправляют приватные события в GA.</div>
+        </div>
+
+        <div class="analytics-widget analytics-widget--ym">
+          <div class="analytics-widget__head">
+            <div class="analytics-widget__mark">Я</div>
+            <div>
+              <h3>Яндекс Метрика</h3>
+              <div class="analytics-widget__meta">
+                <span class="badge {% if ym_id %}badge--success{% else %}badge--neutral{% endif %}">{{ ym_id or 'не подключена' }}</span>
+                <span class="hint">Вебвизор, карты кликов, источники</span>
+              </div>
+            </div>
+          </div>
+          <p class="hint" style="margin:0;">Счетчик Метрики установлен с вебвизором, картой кликов, отслеживанием ссылок и точным отказом.</p>
+          <div class="analytics-widget__actions">
+            {% if ym_id %}
+              <a class="action-link" href="https://metrica.yandex.com/stat/dashboard?counter_id={{ ym_id }}" target="_blank" rel="noopener">Дашборд</a>
+              <a class="action-link" href="https://metrica.yandex.com/stat/sources?counter_id={{ ym_id }}" target="_blank" rel="noopener">Источники</a>
+              <a class="action-link" href="https://metrica.yandex.com/stat/visor?counter_id={{ ym_id }}" target="_blank" rel="noopener">Вебвизор</a>
+              <a class="action-link" href="https://metrica.yandex.com/stat/maps?counter_id={{ ym_id }}" target="_blank" rel="noopener">Карты</a>
+              <button type="button" class="action-link analytics-copy" data-copy="{{ ym_id }}">Скопировать ID</button>
+            {% else %}
+              <a class="action-link" href="https://metrica.yandex.com/" target="_blank" rel="noopener">Создать счетчик</a>
+              <a class="action-link" href="https://railway.com/project/d505a2e4-b7de-47bb-a6cd-9675c0f87450" target="_blank" rel="noopener">Добавить в Railway</a>
+            {% endif %}
+          </div>
+          <div class="analytics-widget__note">Если Метрика пишет, что счетчик не найден, откройте главную страницу без блокировщика и проверьте этот ID в настройках счетчика.</div>
+        </div>
+      </div>
+      <script>
+      (function(){
+        document.addEventListener('click', function(e){
+          var btn = e.target.closest('.analytics-copy');
+          if (!btn) return;
+          var value = btn.getAttribute('data-copy') || '';
+          if (!value || !navigator.clipboard) return;
+          navigator.clipboard.writeText(value).then(function(){
+            var oldText = btn.textContent;
+            btn.textContent = 'Скопировано';
+            setTimeout(function(){ btn.textContent = oldText; }, 1200);
+          }).catch(function(){});
+        });
+      })();
+      </script>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--s4);align-items:start;">
         <div>
