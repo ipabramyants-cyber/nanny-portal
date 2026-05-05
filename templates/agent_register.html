@@ -2,6 +2,7 @@
 {% block head_meta %}
 <meta name="robots" content="noindex, nofollow">
 {% endblock %}
+{% block scripts_pre %}<script src="https://telegram.org/js/telegram-web-app.js"></script>{% endblock %}
 {% block title %}Регистрация партнера — Няня на час{% endblock %}
 
 {% block content %}
@@ -32,18 +33,15 @@
         <div class="form-error" style="margin-bottom:var(--s3);">{{ error }}</div>
       {% endif %}
       <form method="POST" action="/agent/register" style="display:grid;gap:14px;">
+        <input type="hidden" id="agentTgInitData" name="tg_init_data" value="">
         <div>
           <label>Имя или название партнера</label>
-          <input name="name" required maxlength="120" placeholder="Имя, отель, агентство, блог">
+          <input id="agentName" name="name" required maxlength="120" placeholder="Имя, отель, агентство, блог">
         </div>
         <div>
           <label>Telegram ID или @username</label>
-          <input name="telegram" maxlength="120" placeholder="Например 123456789 или @partner">
-          <p class="hint" style="margin-top:4px;">Если знаете числовой Telegram ID, кабинет сможет открываться через Telegram Mini App.</p>
-        </div>
-        <div>
-          <label>Дополнительный контакт</label>
-          <input name="contact" maxlength="200" placeholder="Телефон, WhatsApp, email">
+          <input id="agentTelegram" name="telegram" maxlength="120" placeholder="Например 123456789 или @partner">
+          <p class="hint" id="agentTgHint" style="margin-top:4px;">Если открыть форму через Telegram Mini App, ID и имя заполнятся автоматически.</p>
         </div>
         <div>
           <label>Комментарий</label>
@@ -54,4 +52,43 @@
     {% endif %}
   </div>
 </div>
+<script>
+(function(){
+  var initInput = document.getElementById('agentTgInitData');
+  var nameInput = document.getElementById('agentName');
+  var telegramInput = document.getElementById('agentTelegram');
+  var hint = document.getElementById('agentTgHint');
+  if (!initInput || !nameInput || !telegramInput) return;
+
+  function applyTelegramData(tg) {
+    if (!tg || !tg.initData) return false;
+    tg.ready();
+    tg.expand();
+    initInput.value = tg.initData || '';
+    var user = tg.initDataUnsafe && tg.initDataUnsafe.user;
+    if (!user) return true;
+
+    var fullName = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+    var username = user.username ? '@' + user.username : '';
+    if (!nameInput.value) nameInput.value = fullName || username || ('Telegram ' + user.id);
+    if (user.id) {
+      telegramInput.value = String(user.id);
+      telegramInput.readOnly = true;
+    } else if (username && !telegramInput.value) {
+      telegramInput.value = username;
+    }
+    if (hint) {
+      hint.textContent = 'Telegram данные заполнены автоматически. Администратор увидит заявку и активирует кабинет.';
+    }
+    return true;
+  }
+
+  var tries = 0;
+  var timer = setInterval(function(){
+    tries++;
+    var tg = window.Telegram && window.Telegram.WebApp;
+    if (applyTelegramData(tg) || tries > 50) clearInterval(timer);
+  }, 100);
+})();
+</script>
 {% endblock %}

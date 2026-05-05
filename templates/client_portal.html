@@ -240,9 +240,14 @@
 
         <div style="margin-top:var(--s4);">
           <h3 style="margin-bottom:var(--s2);">🤝 Партнёрская программа</h3>
+          <p class="hint" style="margin-bottom:var(--s2);">Можно рекомендовать сервис друзьям, отелям и туристическим партнёрам. В Telegram форма заполнит ваше имя и ID автоматически.</p>
+          <div class="partner-mini-actions">
+            <a class="btn primary" href="/agent/register" onclick="openTgLink('/agent/register'); return false;">Стать партнёром</a>
+            <a class="btn secondary" href="#" onclick="openTgLink('/static/contracts/photo_doc_2.jpg'); return false;">Открыть условия</a>
+          </div>
           <a href="#" onclick="openTgLink('/static/contracts/photo_doc_2.jpg'); return false;">
             <img src="/static/contracts/photo_doc_2.jpg" alt="Партнёрская реферальная программа"
-                 style="width:100%; border-radius:var(--r-md); box-shadow:0 2px 12px rgba(0,0,0,.12);" />
+                 class="partner-info-image" />
           </a>
         </div>
 

@@ -663,7 +663,7 @@
               <div><label>Заметки</label><textarea name="notes" rows="2">{{ agent.notes or '' }}</textarea></div>
               <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 <button type="submit" class="btn primary" style="width:auto;margin-top:0;">Сохранить</button>
-                <a class="action-link" href="{{ site_url }}/agent/{{ agent.portal_token }}" target="_blank">Кабинет агента →</a>
+                <a class="action-link" href="{{ site_url }}/agent/{{ agent.portal_token }}" target="_blank">Кабинет партнёра →</a>
                 <a class="action-link" href="{{ site_url }}/r/{{ agent.referral_code }}" target="_blank">Реферальная ссылка →</a>
               </div>
             </form>

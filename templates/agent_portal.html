@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Кабинет агента — Няня на час{% endblock %}
+{% block title %}Кабинет партнёра — Няня на час{% endblock %}
 
 {% block content %}
 <div class="admin-header">
   <div class="container">
-    <h1>Кабинет реферального агента</h1>
+    <h1>Кабинет реферального партнёра</h1>
     <p>{{ agent.name }} · комиссия {{ '{:,}'.format(summary.commission_vnd).replace(',', ' ') }} VND · выплата через {{ summary.payout_delay_days }} дн.</p>
   </div>
 </div>

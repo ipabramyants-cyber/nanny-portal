@@ -2263,6 +2263,78 @@ body.page-private .tg-topbar { display: none; }
 #leadsPanel:not(.show-resolved-leads) #leadsTable tr[data-resolved="1"] {
   display: none !important;
 }
+.partner-program {
+  padding: var(--s6) var(--s3) var(--s8);
+}
+.partner-program__content {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(260px,.7fr) minmax(360px,1.3fr);
+  gap: var(--s5);
+  align-items: center;
+  padding: var(--s5);
+  border: 1px solid rgba(1,107,130,.16);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(245,253,255,.96), rgba(255,255,255,.98));
+  box-shadow: 0 12px 30px rgba(1,107,130,.08);
+}
+.partner-program__eyebrow {
+  display: inline-flex;
+  margin-bottom: var(--s2);
+  color: var(--c-coral);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.partner-program h2 {
+  margin: 0 0 var(--s3);
+  color: var(--c-teal-dk);
+  font-size: 1.75rem;
+  line-height: 1.1;
+}
+.partner-program p {
+  margin: 0;
+  color: var(--c-text-2);
+  line-height: 1.55;
+}
+.partner-program__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: var(--s4);
+}
+.partner-program__actions .btn {
+  width: auto;
+  margin-top: 0;
+  text-decoration: none;
+}
+.partner-program__image-link {
+  display: block;
+  line-height: 0;
+}
+.partner-program__image-link img,
+.partner-info-image {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.12);
+}
+.partner-mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: var(--s3) 0;
+}
+.partner-mini-actions .btn {
+  width: auto;
+  margin-top: 0;
+  text-decoration: none;
+}
+.nanny-partner-shortcut {
+  margin-top: 10px;
+}
 .agent-register-link {
   display: grid;
   grid-template-columns: minmax(220px,1fr) minmax(260px,1.2fr) auto;
@@ -2290,6 +2362,20 @@ body.page-private .tg-topbar { display: none; }
   font-size: 12px;
 }
 @media(max-width:760px) {
+  .partner-program {
+    padding: var(--s4) var(--s3) var(--s6);
+  }
+  .partner-program__content {
+    grid-template-columns: 1fr;
+    padding: var(--s4);
+  }
+  .partner-program h2 {
+    font-size: 1.35rem;
+  }
+  .partner-program__actions .btn,
+  .partner-mini-actions .btn {
+    width: 100%;
+  }
   .agent-register-link {
     grid-template-columns: 1fr;
   }

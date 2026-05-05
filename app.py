@@ -1250,7 +1250,7 @@ def create_app() -> Flask:
 
         agent = default_agent or _agent_by_telegram_id(tid)
         if agent:
-            portals.append({'role': 'agent', 'label': 'Кабинет агента', 'url': '/agent/app'})
+            portals.append({'role': 'agent', 'label': 'Кабинет партнёра', 'url': '/agent/app'})
 
         seen = set()
         unique = []
@@ -2132,7 +2132,7 @@ def create_app() -> Flask:
         return _safe_send_message(
             _agent_value(agent_obj, 'telegram_user_id'),
             text,
-            [[_url_button('Открыть кабинет агента', _agent_portal_url(agent_obj))]],
+            [[_url_button('Открыть кабинет партнёра', _agent_portal_url(agent_obj))]],
         )
 
     def _date_time_text(date_str: str, slot: dict | None = None) -> str:
@@ -2437,20 +2437,46 @@ def create_app() -> Flask:
 
         name = _clean_user_text(request.form.get('name'), 120)
         telegram_raw = _clean_user_text(request.form.get('telegram'), 120)
-        contact = _clean_user_text(request.form.get('contact'), 200)
         notes = _clean_user_text(request.form.get('notes'), 800)
+        telegram_user_id = None
+        verified_username = ''
+        init_data = (request.form.get('tg_init_data') or '').strip()
+        if init_data:
+            bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+            if bot_token:
+                try:
+                    pairs = validate_webapp_init_data(init_data, bot_token)
+                    user_raw = pairs.get('user') or ''
+                    user_obj = json.loads(user_raw) if user_raw else {}
+                    verified_id = int(user_obj.get('id') or 0)
+                    if verified_id:
+                        telegram_user_id = verified_id
+                        telegram_raw = str(verified_id)
+                        verified_username = _clean_user_text(user_obj.get('username'), 80)
+                        tg_name = _clean_user_text(' '.join(filter(None, [
+                            user_obj.get('first_name'),
+                            user_obj.get('last_name'),
+                        ])), 120)
+                        if not name:
+                            name = tg_name or (('@' + verified_username) if verified_username else '')
+                except TelegramAuthError:
+                    return render_template('agent_register.html', error='Не удалось подтвердить Telegram. Откройте ссылку заново через приложение.'), 403
+                except Exception:
+                    return render_template('agent_register.html', error='Не удалось прочитать Telegram данные. Откройте ссылку заново через приложение.'), 400
+
         if not name:
             return render_template('agent_register.html', error='Укажите имя или название партнера.'), 400
 
-        telegram_user_id = None
-        if telegram_raw and re.fullmatch(r'-?\d{5,20}', telegram_raw.strip()):
+        if telegram_user_id is None and telegram_raw and re.fullmatch(r'-?\d{5,20}', telegram_raw.strip()):
             try:
                 telegram_user_id = int(telegram_raw.strip())
             except Exception:
                 telegram_user_id = None
+        telegram_label = telegram_raw or ''
+        if verified_username:
+            telegram_label = f"{telegram_label} (@{verified_username})" if telegram_label else f"@{verified_username}"
         final_notes = '\n'.join(filter(None, [
-            f"Telegram/contact: {telegram_raw}" if telegram_raw else '',
-            f"Контакт: {contact}" if contact else '',
+            f"Telegram: {telegram_label}" if telegram_label else '',
             notes,
             "Самостоятельная регистрация партнера. Требуется проверка и активация админом.",
         ]))
@@ -2496,7 +2522,7 @@ def create_app() -> Flask:
         _notify_admins(
             "🤝 Новая заявка реферального агента\n"
             f"Партнер: {name}\n"
-            f"Telegram/contact: {telegram_raw or contact or '—'}\n"
+            f"Telegram: {telegram_label or '—'}\n"
             "Статус: ожидает проверки и активации в админке.",
             [[_url_button('Открыть админку', f"{_site_url()}/admin")]],
         )

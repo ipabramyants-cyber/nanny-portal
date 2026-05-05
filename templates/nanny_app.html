@@ -13,13 +13,20 @@
   </div>
 </div>
 
+{% set other_switch_portals = (switch_portals or []) | rejectattr('role', 'equalto', 'agent') | list %}
 <div class="container portal-switch-wrap">
-  <div id="roleSwitchBox" class="portal-switch" {% if not switch_portals %}style="display:none;"{% endif %}>
+  <div id="roleSwitchBox" class="portal-switch" {% if not other_switch_portals %}style="display:none;"{% endif %}>
     <span>Доступны другие кабинеты</span>
     <div id="roleSwitchLinks">
-      {% for portal in switch_portals %}
+      {% for portal in other_switch_portals %}
         <a class="btn secondary" href="{{ portal.url }}" style="width:auto;margin-top:0;text-decoration:none;">{{ portal.label }}</a>
       {% endfor %}
+    </div>
+  </div>
+  <div class="portal-switch nanny-partner-shortcut">
+    <span>Партнёрский кабинет доступен каждой няне</span>
+    <div>
+      <a class="btn primary" href="/agent/app" style="width:auto;margin-top:0;text-decoration:none;">Кабинет партнёра</a>
     </div>
   </div>
 </div>
@@ -141,7 +148,7 @@
     const box = document.getElementById('roleSwitchBox');
     const links = document.getElementById('roleSwitchLinks');
     if (!box || !links || !Array.isArray(portals)) return;
-    const other = portals.filter(p => p && p.role !== 'nanny' && p.url);
+    const other = portals.filter(p => p && p.role !== 'nanny' && p.role !== 'agent' && p.url);
     if (!other.length) return;
     links.innerHTML = '';
     other.forEach(portal => {

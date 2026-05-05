@@ -228,6 +228,42 @@ class FullScenarioTest(unittest.TestCase):
         self.assertEqual(agent_resp.status_code, 302)
         self.assertIn('/agent/', agent_resp.headers.get('Location', ''))
 
+        nanny_resp = self.client.get('/nanny/app', base_url=self.base_url)
+        self.assertEqual(nanny_resp.status_code, 200, nanny_resp.get_data(as_text=True))
+        nanny_html = nanny_resp.get_data(as_text=True)
+        self.assertIn('/agent/app', nanny_html)
+        self.assertIn('Кабинет партнёра', nanny_html)
+
+    def test_agent_registration_autofills_from_telegram_init_data(self):
+        tg_id = 555555555
+        old_validate = self.app_module.validate_webapp_init_data
+        self.app_module.validate_webapp_init_data = lambda init_data, bot_token: {
+            'user': json.dumps({
+                'id': tg_id,
+                'username': 'autopartner',
+                'first_name': 'Auto',
+                'last_name': 'Partner',
+            })
+        }
+        try:
+            resp = self.client.post('/agent/register', data={
+                'name': '',
+                'telegram': '',
+                'tg_init_data': 'valid',
+                'notes': 'Партнер из Telegram Mini App',
+            }, base_url=self.base_url)
+        finally:
+            self.app_module.validate_webapp_init_data = old_validate
+
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        agents = self.read_json('referral_agents.json', [])
+        agent = next((a for a in agents if str(a.get('telegram_user_id')) == str(tg_id)), None)
+        self.assertIsNotNone(agent)
+        self.assertEqual(agent.get('name'), 'Auto Partner')
+        self.assertFalse(agent.get('is_active'))
+        self.assertIn('Telegram: 555555555 (@autopartner)', agent.get('notes', ''))
+        self.assertTrue(any('Новая заявка реферального агента' in m.get('text', '') for m in self.sent_messages))
+
     def test_public_visit_stats_and_tracking_tags(self):
         os.environ['GOOGLE_ANALYTICS_ID'] = 'G-TEST12345'
         os.environ['YANDEX_METRIKA_ID'] = '12345678'
@@ -240,6 +276,16 @@ class FullScenarioTest(unittest.TestCase):
         home_html = home_resp.get_data(as_text=True)
         self.assertIn('googletagmanager.com/gtag/js?id=G-TEST12345', home_html)
         self.assertIn('mc.yandex.ru/metrika/tag.js', home_html)
+        self.assertIn('/agent/register', home_html)
+        self.assertIn('/static/contracts/photo_doc_2.jpg', home_html)
+        self.assertIn('Партнёрская программа', home_html)
+
+        register_resp = self.client.get('/agent/register', base_url=self.base_url)
+        self.assertEqual(register_resp.status_code, 200, register_resp.get_data(as_text=True))
+        register_html = register_resp.get_data(as_text=True)
+        self.assertIn('agentTgInitData', register_html)
+        self.assertNotIn('Дополнительный контакт', register_html)
+        self.assertNotIn('name="contact"', register_html)
 
         tariffs_resp = self.client.get('/tariffs', base_url=self.base_url, headers={'User-Agent': 'Mozilla/5.0 Test Browser'})
         self.assertEqual(tariffs_resp.status_code, 200, tariffs_resp.get_data(as_text=True))
