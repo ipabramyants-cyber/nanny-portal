@@ -31,7 +31,7 @@
   <div class="t-hero__dots"></div>
   <div class="container t-hero__inner">
     <span class="t-badge">💰 Прозрачные цены</span>
-    <h1 class="t-hero__title">Тарифы на&nbsp;услуги&nbsp;няни</h1>
+    <h1 class="t-hero__title">Тарифы на услуги няни</h1>
     <p class="t-hero__sub">Никаких скрытых платежей. Оплата по факту отработанных часов.</p>
     <div class="t-hero__pills">
       <span class="t-pill t-pill--teal">✓ Оплата после смены</span>
@@ -310,6 +310,11 @@
 .t-section-title{font-size:1.4rem;font-weight:900;color:var(--c-text);}
 
 @media(max-width:640px){
+  .t-hero{padding:var(--s8) 0 var(--s8);}
+  .t-hero__title{font-size:clamp(1.55rem,8vw,2rem);overflow-wrap:anywhere;text-wrap:balance;}
+  .t-hero__sub{font-size:14px;}
+  .t-hero__pills{padding:0 4px;}
+  .t-pill{max-width:100%;text-align:center;line-height:1.25;}
   .t-cards{grid-template-columns:1fr;}
   .t-card--featured{transform:none;}
   .t-calc__grid{grid-template-columns:1fr;}

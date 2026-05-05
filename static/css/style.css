@@ -9,7 +9,12 @@
 
 /* ── RESET ────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; text-size-adjust: 100%; }
+html {
+  scroll-behavior: smooth;
+  text-size-adjust: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
 
 /* ── DESIGN TOKENS ────────────────────────────────────────── */
 :root {
@@ -97,6 +102,10 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+}
+
+img, video, iframe {
+  max-width: 100%;
 }
 
 /* ── TYPOGRAPHY ───────────────────────────────────────────── */
@@ -625,16 +634,23 @@ textarea { resize: vertical; }
   letter-spacing: .02em;
 }
 
-.calendar { user-select: none; }
+.calendar {
+  user-select: none;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
 
 .cal-row {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 3px;
   margin-bottom: 3px;
+  min-width: 0;
 }
 
 .cal-cell {
+  min-width: 0;
   min-height: 52px;
   border-radius: var(--r-xs);
   border: 1.5px solid var(--c-border);
@@ -644,6 +660,7 @@ textarea { resize: vertical; }
   background: var(--c-surface);
   transition: all var(--tr-fast);
   font-size: 13px;
+  overflow: hidden;
 }
 
 .cal-cell:hover:not(.muted):not(.dow) {
@@ -1263,7 +1280,15 @@ textarea { resize: vertical; }
   pointer-events: none;
 }
 .admin-header h1 { color: #fff; position: relative; z-index: 1; }
-.admin-header p  { color: rgba(255,255,255,.78); font-size: 14px; margin-top: 4px; position: relative; z-index: 1; }
+.admin-header p  {
+  color: rgba(255,255,255,.78);
+  font-size: 14px;
+  margin-top: 4px;
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
 
 /* ── KPI CARDS ────────────────────────────────────────────── */
 .kpi-grid {
@@ -1562,6 +1587,42 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
   .features, .reviews-grid { grid-template-columns: 1fr; }
   .data-table { font-size: 11px; }
   .data-table thead th, .data-table tbody td { padding: 7px 6px; }
+  .admin-header h1,
+  .hero-banner h1,
+  .section-title h2 {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+  .admin-header h1 {
+    font-size: clamp(1.45rem, 8vw, 2rem);
+  }
+  .calendar-head {
+    gap: 8px;
+  }
+  .calendar-head button {
+    width: 40px;
+    height: 40px;
+  }
+  .cal-row {
+    gap: 2px;
+  }
+  .cal-cell {
+    min-height: 46px;
+    padding: 4px 2px;
+    font-size: 12px;
+  }
+  .cal-cell.dow {
+    min-height: 26px;
+    font-size: 9px;
+  }
+  .cal-num {
+    font-size: 11px;
+  }
+  .cal-time {
+    font-size: 9px;
+    line-height: 1.15;
+  }
 }
 
 /* ── TELEGRAM MINI-APP OVERRIDES ──────────────────────────── */
@@ -1947,6 +2008,9 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
     text-decoration: none;
     box-shadow: 0 2px 12px rgba(1,107,130,.35);
     letter-spacing: .01em;
+    min-width: 0;
+    line-height: 1.25;
+    text-align: center;
   }
   .tg-topbar svg { flex-shrink: 0; }
   .tg-topbar .tg-topbar__dot {
@@ -1957,6 +2021,13 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
     flex-shrink: 0;
   }
   .tg-app .tg-topbar { display: none; }
+}
+@media (max-width: 420px) {
+  .tg-topbar {
+    gap: 6px;
+    padding: 9px 10px;
+    font-size: 12px;
+  }
 }
 
 /* ── SITE NAV (inner pages) ──────────────────────────────── */
