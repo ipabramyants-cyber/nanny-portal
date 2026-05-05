@@ -1603,7 +1603,10 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
     overflow-wrap: anywhere;
   }
   .cabinet-calendar-top {
-    max-width: 370px;
+    width: calc(100% - 40px);
+    max-width: 350px;
+    margin-left: 20px;
+    margin-right: auto;
   }
   .cabinet-calendar-top .panel,
   .panel.calendar-panel {
