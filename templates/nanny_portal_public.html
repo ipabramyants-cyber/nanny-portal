@@ -69,13 +69,24 @@
   </div>
 </div>
 
+<style>
+.nanny-panel-collapse{padding:0;overflow:hidden;}
+.nanny-panel-collapse>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:var(--s4);cursor:pointer;font-weight:900;color:var(--c-teal-dk);}
+.nanny-panel-collapse>summary::-webkit-details-marker{display:none;}
+.nanny-panel-collapse>summary::after{content:'⌄';color:var(--c-text-muted);font-size:18px;transition:transform .18s ease;}
+.nanny-panel-collapse[open]>summary::after{transform:rotate(180deg);}
+.nanny-panel-collapse__body{padding:0 var(--s4) var(--s4);}
+.nanny-panel-collapse__body h3:first-child{margin-top:0;}
+</style>
+
 <section class="container" style="padding-bottom:60px;position:relative;">
   <img src="/static/img/sticker2.png" class="page-sticker page-sticker--left" aria-hidden="true" alt="" width="110" height="110">
   <div class="hero-grid" style="margin-top:var(--s5);">
 
     <!-- Profile panel -->
-    <div class="panel">
-      <h3>Профиль</h3>
+    <details class="panel nanny-panel-collapse">
+      <summary>Профиль</summary>
+      <div class="nanny-panel-collapse__body">
       {% if nanny.bio %}
         <div style="font-size:13px; color:var(--c-text-2); line-height:1.6; white-space:pre-line;">{{ nanny.bio }}</div>
       {% endif %}
@@ -83,22 +94,26 @@
       <hr class="divider" />
       <h3 style="font-size:14px; color:var(--c-text-muted); margin-bottom:8px;">Назначенные клиенты</h3>
       <div id="clientList" style="display:flex; flex-direction:column; gap:8px;"></div>
-    </div>
+      </div>
+    </details>
 
     <!-- Earnings calculator (nanny view) -->
-    <div class="panel" id="earningsPanel" style="display:none;">
-      <h3>💵 Мой заработок</h3>
+    <details class="panel nanny-panel-collapse" id="earningsPanel" style="display:none;">
+      <summary>💵 Мой заработок</summary>
+      <div class="nanny-panel-collapse__body">
       <div id="earningsRows" style="font-size:13px; display:flex; flex-direction:column; gap:6px; margin-bottom:var(--s3);"></div>
       <div style="display:flex; justify-content:space-between; align-items:center; padding-top:var(--s2); border-top:1px solid rgba(17,138,138,.2);">
         <strong style="font-size:14px;">Итого:</strong>
         <strong id="earningsTotal" style="font-size:18px; color:var(--c-teal-dk);"></strong>
       </div>
       <p class="hint" style="margin-top:var(--s2); font-size:11px;">Предварительный расчёт на основе запланированного времени</p>
-    </div>
+      </div>
+    </details>
 
     <!-- Documents for nanny -->
-    <div class="panel">
-      <h3>📄 Мои документы</h3>
+    <details class="panel nanny-panel-collapse">
+      <summary>📄 Мои документы</summary>
+      <div class="nanny-panel-collapse__body">
       <p class="hint" style="margin-bottom:var(--s3);">Скачайте и подпишите нужные документы. При вопросах обратитесь к администратору.</p>
 
       <div style="display:flex; flex-direction:column; gap:var(--s2);">
@@ -202,7 +217,8 @@
         </div>
 
       </div>
-    </div>
+      </div>
+    </details>
 
     <!-- Articles -->
     <div class="panel" id="articlesPanel">

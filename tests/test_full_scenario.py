@@ -234,6 +234,40 @@ class FullScenarioTest(unittest.TestCase):
         self.assertIn('/agent/app', nanny_html)
         self.assertIn('Кабинет партнёра', nanny_html)
 
+    def test_deleted_seeded_nanny_review_stays_deleted(self):
+        admin_page = self.client.get('/admin', headers=self.admin_headers, base_url=self.base_url)
+        self.assertEqual(admin_page.status_code, 200)
+
+        nannies = self.read_json('nannies.json', [])
+        self.assertTrue(nannies)
+        portal_token = nannies[0]['portal_token']
+
+        profile_resp = self.client.get(f'/nanny/{portal_token}', base_url=self.base_url)
+        self.assertEqual(profile_resp.status_code, 200, profile_resp.get_data(as_text=True))
+
+        reviews = self.read_json('reviews.json', [])
+        seeded = next((r for r in reviews if r.get('nanny_id') == portal_token and r.get('id', '').startswith('nannyrev-')), None)
+        self.assertIsNotNone(seeded)
+
+        delete_resp = self.client.post('/admin/review/delete', headers=self.admin_headers, data={
+            'id': seeded['id'],
+        }, base_url=self.base_url)
+        self.assertEqual(delete_resp.status_code, 302)
+
+        profile_resp = self.client.get(f'/nanny/{portal_token}', base_url=self.base_url)
+        self.assertEqual(profile_resp.status_code, 200, profile_resp.get_data(as_text=True))
+
+        reviews_after = self.read_json('reviews.json', [])
+        deleted = next((r for r in reviews_after if r.get('id') == seeded['id']), None)
+        self.assertIsNotNone(deleted)
+        self.assertFalse(deleted.get('is_visible', True))
+        visible_for_nanny = [
+            r for r in reviews_after
+            if r.get('nanny_id') == portal_token and r.get('is_visible', True)
+        ]
+        self.assertEqual(len(visible_for_nanny), 4)
+        self.assertNotIn(seeded['id'], {r.get('id') for r in visible_for_nanny})
+
     def test_agent_registration_autofills_from_telegram_init_data(self):
         tg_id = 555555555
         old_validate = self.app_module.validate_webapp_init_data
@@ -303,8 +337,11 @@ class FullScenarioTest(unittest.TestCase):
         self.assertIn('class="analytics-filter"', admin_html)
         self.assertIn('id="siteAnalyticsSection"', admin_html)
         self.assertIn('id="adminFinanceSection"', admin_html)
+        self.assertIn('id="adminLeadsSection"', admin_html)
+        self.assertIn('id="adminAgentsSection"', admin_html)
         self.assertIn('id="adminNanniesSection"', admin_html)
         self.assertIn('id="adminReviewsSection"', admin_html)
+        self.assertIn('id="adminArticlesSection"', admin_html)
 
         tg_entry_resp = self.client.get('/app', base_url=self.base_url)
         self.assertEqual(tg_entry_resp.status_code, 200, tg_entry_resp.get_data(as_text=True))

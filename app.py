@@ -796,9 +796,12 @@ def create_app() -> Flask:
             {'id':'rev-timur',    'author':'Тимур',      'role':'Папа Ксюши, 5 лет',      'stars':5, 'created_at':_d(2025,5,2),   'text':'Удобнее, чем любые другие варианты. Заявка, подтверждение, приход няни — всё как часы. Дочка довольна, мы спокойны. Давно пользуемся и планируем продолжать.'},
         ]
 
-    def load_reviews():
+    def load_reviews(include_hidden: bool = False):
         if use_sql:
-            rows = Review.query.filter_by(is_visible=True).order_by(Review.created_at.desc()).all()
+            query = Review.query
+            if not include_hidden:
+                query = query.filter_by(is_visible=True)
+            rows = query.order_by(Review.created_at.desc()).all()
             if not rows:
                 # Seed default reviews into DB (only once — if table is truly empty)
                 if Review.query.count() == 0:
@@ -817,11 +820,15 @@ def create_app() -> Flask:
                         db.session.commit()
                     except Exception:
                         db.session.rollback()
-                    rows = Review.query.filter_by(is_visible=True).order_by(Review.created_at.desc()).all()
+                    query = Review.query
+                    if not include_hidden:
+                        query = query.filter_by(is_visible=True)
+                    rows = query.order_by(Review.created_at.desc()).all()
             return [{'id': r.id, 'author': r.author, 'role': r.role, 'stars': r.stars,
                      'text': r.text, 'created_at': r.created_at.isoformat() if r.created_at else '',
                      'nanny_id': getattr(r, 'nanny_id', None),
-                     'pinned': bool(getattr(r, 'pinned', False))} for r in rows]
+                     'pinned': bool(getattr(r, 'pinned', False)),
+                     'is_visible': bool(getattr(r, 'is_visible', True))} for r in rows]
 
         # JSON fallback
         raw = _read_json(REVIEWS_FILE, [])
@@ -853,18 +860,40 @@ def create_app() -> Flask:
                 'created_at': item.get('created_at') or item.get('submitted_at') or datetime.datetime.utcnow().isoformat(),
                 'nanny_id': item.get('nanny_id') or None,
                 'pinned': bool(item.get('pinned', False)),
+                'is_visible': bool(item.get('is_visible', True)),
             }
-            if review['id'] != item.get('id') or review['author'] != item.get('author') or review['role'] != item.get('role') or review['stars'] != item.get('stars'):
+            if review['id'] != item.get('id') or review['author'] != item.get('author') or review['role'] != item.get('role') or review['stars'] != item.get('stars') or review['is_visible'] != item.get('is_visible', True):
                 changed = True
             reviews.append(review)
 
         reviews.sort(key=lambda x: x.get('created_at') or '', reverse=True)
         if changed:
             _write_json(REVIEWS_FILE, reviews)
-        return reviews
+        if include_hidden:
+            return reviews
+        return [r for r in reviews if r.get('is_visible', True)]
 
     def save_reviews(reviews: list[dict]):
-        _write_json(REVIEWS_FILE, reviews)
+        hidden = []
+        try:
+            current = load_reviews(include_hidden=True)
+            visible_ids = {str(r.get('id') or '') for r in reviews if isinstance(r, dict)}
+            hidden = [
+                r for r in current
+                if isinstance(r, dict)
+                and not r.get('is_visible', True)
+                and str(r.get('id') or '') not in visible_ids
+            ]
+        except Exception:
+            hidden = []
+        normalized = []
+        for item in reviews:
+            if not isinstance(item, dict):
+                continue
+            row = dict(item)
+            row['is_visible'] = bool(row.get('is_visible', True))
+            normalized.append(row)
+        _write_json(REVIEWS_FILE, normalized + hidden)
 
     def ensure_seed_nannies():
         seed = [
@@ -1346,7 +1375,9 @@ def create_app() -> Flask:
                 portal_token = str(nanny.get('portal_token') or '').strip()
                 if not portal_token:
                     continue
-                existing_count = Review.query.filter_by(is_visible=True, nanny_id=portal_token).count()
+                existing_count = Review.query.filter_by(nanny_id=portal_token).count()
+                if existing_count > 0:
+                    continue
                 idx = 0
                 while existing_count < min_count and idx < min_count + len(_NANNY_REVIEW_TEMPLATES):
                     review = _default_nanny_review(nanny, idx)
@@ -1373,7 +1404,7 @@ def create_app() -> Flask:
                     db.session.rollback()
             return
 
-        reviews = load_reviews()
+        reviews = load_reviews(include_hidden=True)
         used_ids = {str(r.get('id')) for r in reviews if isinstance(r, dict)}
         changed = False
         for nanny in nannies:
@@ -1381,6 +1412,8 @@ def create_app() -> Flask:
             if not portal_token:
                 continue
             existing_count = len([r for r in reviews if r.get('nanny_id') == portal_token])
+            if existing_count > 0:
+                continue
             idx = 0
             while existing_count < min_count and idx < min_count + len(_NANNY_REVIEW_TEMPLATES):
                 review = _default_nanny_review(nanny, idx)
@@ -5097,16 +5130,17 @@ def create_app() -> Flask:
             if not r:
                 flash('Отзыв не найден', 'error')
             else:
-                db.session.delete(r)
+                r.is_visible = False
                 db.session.commit()
                 flash('Отзыв удалён', 'success')
         else:
-            reviews = load_reviews()
-            new_reviews = [r for r in reviews if r.get('id') != review_id]
-            if len(new_reviews) == len(reviews):
+            reviews = load_reviews(include_hidden=True)
+            target = next((r for r in reviews if r.get('id') == review_id), None)
+            if not target:
                 flash('Отзыв не найден', 'error')
             else:
-                save_reviews(new_reviews)
+                target['is_visible'] = False
+                _write_json(REVIEWS_FILE, reviews)
                 flash('Отзыв удалён', 'success')
         return redirect(url_for('admin'))
 

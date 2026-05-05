@@ -363,8 +363,16 @@
   </details>
 
   <!-- LEADS -->
-  <div class="admin-section">
-    <div class="panel" id="leadsPanel">
+  <details class="admin-section admin-collapse" id="adminLeadsSection">
+    <summary>
+      <span class="admin-collapse__title">📋 Заявки</span>
+      <span class="admin-collapse__meta">
+        <span class="badge badge--warning">{{ crm.attention_leads_total }} требуют внимания</span>
+        <span class="badge badge--info">{{ leads|length }} всего</span>
+        <span class="admin-collapse__chevron">⌄</span>
+      </span>
+    </summary>
+    <div class="panel admin-collapse__body" id="leadsPanel">
       <h2>📋 Заявки ({{ crm.attention_leads_total }} требуют внимания / {{ leads|length }} всего)</h2>
 
       <div class="search-bar">
@@ -475,7 +483,7 @@
         </table>
       </div>
     </div>
-  </div>
+  </details>
 
   <!-- SHIFTS (SQL mode only) -->
   {% if shifts %}
@@ -620,8 +628,15 @@
   {% endif %}
 
   <!-- REFERRAL AGENTS -->
-  <div class="admin-section">
-    <div class="panel">
+  <details class="admin-section admin-collapse" id="adminAgentsSection">
+    <summary>
+      <span class="admin-collapse__title">🤝 Реферальные агенты</span>
+      <span class="admin-collapse__meta">
+        <span class="badge badge--info">{{ agents|length }}</span>
+        <span class="admin-collapse__chevron">⌄</span>
+      </span>
+    </summary>
+    <div class="panel admin-collapse__body">
       <h2>🤝 Реферальные агенты ({{ agents|length }})</h2>
       <div class="agent-register-link">
         <div>
@@ -692,7 +707,7 @@
         </form>
       </details>
     </div>
-  </div>
+  </details>
 
   <!-- NANNIES -->
   <details class="admin-section admin-collapse" id="adminNanniesSection">
@@ -863,8 +878,15 @@
   </details>
 
   <!-- ═══ ARTICLES ══════════════════════════════════════════ -->
-  <div class="section-block" style="margin-top:var(--s6);">
-    <div class="section-inner">
+  <details class="admin-section admin-collapse" id="adminArticlesSection">
+    <summary>
+      <span class="admin-collapse__title">📝 Статьи</span>
+      <span class="admin-collapse__meta">
+        <span class="badge badge--info"><span id="artCountSummary">…</span></span>
+        <span class="admin-collapse__chevron">⌄</span>
+      </span>
+    </summary>
+    <div class="panel admin-collapse__body">
       <h2>📝 Статьи (<span id="artCount">…</span>)</h2>
       <p class="hint" style="margin-bottom:var(--s4);">Создавайте статьи с SEO, фото и видео. Публикуются на <a href="/blog" target="_blank">/blog</a></p>
 
@@ -958,7 +980,7 @@
         </div>
       </details>
     </div>
-  </div>
+  </details>
 
 </div><!-- /container -->
 
@@ -978,6 +1000,8 @@
       .then(r=>r.json())
       .then(function(arts){
         document.getElementById('artCount').textContent = arts.length;
+        var artCountSummary = document.getElementById('artCountSummary');
+        if (artCountSummary) artCountSummary.textContent = arts.length;
         var list = document.getElementById('artList');
         if(!arts.length){
           list.innerHTML='<p class="hint">Статей пока нет. Создайте первую!</p>';
