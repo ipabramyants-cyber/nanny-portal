@@ -756,74 +756,50 @@ def create_app() -> Flask:
                 return n.get('id')
         return None
 
-    def _seed_reviews() -> list[dict]:
-        import datetime as _dt
-        def _d(y, m, d): return _dt.datetime(y, m, d, 10, 0, 0).isoformat()
-        return [
-            {'id':'rev-anna',     'author':'Анна',       'role':'Мама Миши, 3 года',       'stars':5, 'created_at':_d(2020,3,14),  'text':'Нужно было срочно на пару часов — оформила заявку, и уже через 10 минут подтвердили няню. Очень бережно с ребёнком, будем обращаться ещё.'},
-            {'id':'rev-igor',     'author':'Игорь',      'role':'Папа Софии, 4 года',      'stars':5, 'created_at':_d(2020,6,22),  'text':'Понравилось, что можно выбрать даты прямо в календаре. Админ быстро всё согласовал, няня приехала вовремя — всё спокойно и аккуратно.'},
-            {'id':'rev-marina',   'author':'Марина',     'role':'Мама Лёвы, 1 год',        'stars':5, 'created_at':_d(2020,9,5),   'text':'Малышу 1 год, переживали сильно. Няня сразу нашла подход, помогла с режимом, поиграла и уложила спать без слёз. Спасибо за сервис!'},
-            {'id':'rev-olga',     'author':'Ольга',      'role':'Мама Даши, 2 года',       'stars':5, 'created_at':_d(2020,11,18), 'text':'Пользуемся уже третий месяц. Няня — настоящий профессионал: знает, чем занять двухлетнюю непоседу. Дочка встречает её с радостью каждый раз.'},
-            {'id':'rev-dmitry',   'author':'Дмитрий',    'role':'Папа Артёма, 5 лет',      'stars':5, 'created_at':_d(2021,1,9),   'text':'Сервис удобный, всё через телефон. Сына оставляли на полный день — вернулись домой, он доволен, сыт и спокоен. Рекомендую всем родителям.'},
-            {'id':'rev-svetlana', 'author':'Светлана',   'role':'Мама близнецов, 3 года',  'stars':5, 'created_at':_d(2021,3,27),  'text':'Двое детей — это двойная ответственность. Няня справилась на отлично: успевала следить за обоими, не теряя спокойствия. Очень благодарны.'},
-            {'id':'rev-elena',    'author':'Елена',      'role':'Мама Кирилла, 6 лет',     'stars':5, 'created_at':_d(2021,5,14),  'text':'Попросили помочь с домашними заданиями и прогулкой. Няня пришла вовремя, с Кириллом быстро нашла общий язык. Будем звать снова.'},
-            {'id':'rev-alexey',   'author':'Алексей',    'role':'Папа Вики, 2 года',       'stars':5, 'created_at':_d(2021,7,3),   'text':'Жена вышла на работу, нужна была помощь на несколько дней в неделю. Нашли через этот сервис — ни разу не пожалели. Всё чётко и по делу.'},
-            {'id':'rev-natasha',  'author':'Наташа',     'role':'Мама Егора, 4 года',      'stars':5, 'created_at':_d(2021,9,20),  'text':'Егор — активный мальчик, с ним не всегда просто. Няня придумывала игры, читала книжки, гуляла. После её визитов сын был спокойным и счастливым.'},
-            {'id':'rev-roman',    'author':'Роман',      'role':'Папа Маши, 3 года',       'stars':5, 'created_at':_d(2021,11,8),  'text':'Первый раз оставляли дочку с незнакомым человеком — волновались. Но всё прошло отлично. Маша даже расплакалась, когда няня уходила. Лучшая рекомендация!'},
-            {'id':'rev-kate',     'author':'Катерина',   'role':'Мама Тимура, 1.5 года',   'stars':5, 'created_at':_d(2022,1,17),  'text':'Малышу полтора года, он очень привязан к маме. Думала, будет сложно. Няня действовала мягко, терпеливо — через полчаса сын уже сам играл с ней.'},
-            {'id':'rev-andrew',   'author':'Андрей',     'role':'Папа Нины, 7 лет',        'stars':5, 'created_at':_d(2022,3,6),   'text':'Нине 7 лет, ей нужен был взрослый после школы. Няня встречала её, кормила, проверяла уроки. Спокойно оставляли на несколько часов каждый день.'},
-            {'id':'rev-polina',   'author':'Полина',     'role':'Мама Саши, 8 месяцев',    'stars':5, 'created_at':_d(2022,4,29),  'text':'Малышу 8 месяцев — это особый возраст. Няня с опытом работы с грудничками. Знала и режим, и как успокоить. Нам очень повезло.'},
-            {'id':'rev-sergey',   'author':'Сергей',     'role':'Папа Кости, 5 лет',       'stars':5, 'created_at':_d(2022,6,12),  'text':'Выбирал долго, читал отзывы. В итоге решился — и не зря. Всё прозрачно: цены, расписание, подтверждение. Ребёнок в надёжных руках.'},
-            {'id':'rev-yulia',    'author':'Юлия',       'role':'Мама Сони, 2 года',       'stars':5, 'created_at':_d(2022,8,3),   'text':'Соня капризничает с незнакомыми. Няня нашла подход буквально за 20 минут — принесла мыльные пузыри и растопила лёд. Теперь Соня ждёт её с нетерпением.'},
-            {'id':'rev-ivan',     'author':'Иван',       'role':'Папа Ани, 4 года',        'stars':5, 'created_at':_d(2022,9,25),  'text':'Пользуемся уже полгода. Стабильно, надёжно, без сюрпризов. Аня привыкла, всегда знает, что в такой-то день придёт её любимая тётя.'},
-            {'id':'rev-kristina', 'author':'Кристина',   'role':'Мама Льва, 3 года',       'stars':5, 'created_at':_d(2022,11,14), 'text':'Лёва после садика — уставший и капризный. Няня умеет переключить: тихие игры, лепка, книжки. Возвращаюсь домой — сын доволен и спокоен.'},
-            {'id':'rev-max',      'author':'Максим',     'role':'Папа Полины, 6 лет',      'stars':5, 'created_at':_d(2023,1,22),  'text':'Оставляли дочку на выходные, пока были на свадьбе у друзей. Она провела время с пользой: рисовала, лепила, гуляла. Вернулись — всё в порядке.'},
-            {'id':'rev-vika',     'author':'Виктория',   'role':'Мама Кирилла, 2 года',    'stars':5, 'created_at':_d(2023,3,7),   'text':'Мы с мужем первый раз с рождения сына пошли в кино вдвоём. Знали, что малыш в безопасности. Вернулись — он спал, счастливый. Это дорогого стоит.'},
-            {'id':'rev-nikita',   'author':'Никита',     'role':'Папа Алисы, 5 лет',       'stars':5, 'created_at':_d(2023,4,18),  'text':'Заявку оформил за 5 минут. Всё прозрачно: кто придёт, когда, сколько стоит. Дочка потом весь вечер рассказывала про нянечку.'},
-            {'id':'rev-tanya',    'author':'Татьяна',    'role':'Мама Ромы, 3.5 года',     'stars':5, 'created_at':_d(2023,6,9),   'text':'Рома поначалу плакал, когда я уходила. Прошло две недели — теперь сам открывает дверь и тянет няню играть. Привыкли оба. Рекомендую от всей души.'},
-            {'id':'rev-artem',    'author':'Артём',      'role':'Папа Насти, 4 года',      'stars':5, 'created_at':_d(2023,8,1),   'text':'Настя любит рисовать и петь. Няня поддерживала все её затеи, не гасила энергию. Пришла домой — дочка в отличном настроении.'},
-            {'id':'rev-masha',    'author':'Маша',       'role':'Мама Пети, 1 год',         'stars':5, 'created_at':_d(2023,9,19),  'text':'Петя ещё совсем маленький, но с няней они быстро подружились. Кормление, сон, прогулка — всё по расписанию. Я могла работать спокойно.'},
-            {'id':'rev-vadim',    'author':'Вадим',      'role':'Папа Даши, 7 лет',        'stars':5, 'created_at':_d(2023,10,30), 'text':'Даше нужен был кто-то после школы. Няня проверяла задания, готовила перекус, играла. Дочка стала сама просить, чтобы она приходила чаще.'},
-            {'id':'rev-oksana',   'author':'Оксана',     'role':'Мама Матвея, 2 года',      'stars':5, 'created_at':_d(2023,12,5),  'text':'Матвей — непоседа. Няня умеет занять его так, что он не скучает ни минуты. Уходим с мужем, возвращаемся — сын играет, доволен.'},
-            {'id':'rev-boris',    'author':'Борис',      'role':'Папа Юли, 3 года',        'stars':5, 'created_at':_d(2024,1,14),  'text':'Юля привязалась к няне за первые же два визита. Теперь сама напоминает: «Сегодня придёт тётя?» Это лучший показатель качества.'},
-            {'id':'rev-lena2',    'author':'Лена',       'role':'Мама Феди, 4 года',       'stars':5, 'created_at':_d(2024,3,3),   'text':'Федя — эмоциональный мальчик. Но с этой няней ни разу не было слёз или скандалов. Умеет выстраивать границы мягко. Продолжаем сотрудничество.'},
-            {'id':'rev-ilya',     'author':'Илья',       'role':'Папа Кати, 5 лет',        'stars':5, 'created_at':_d(2024,5,21),  'text':'Брал няню на летние месяцы, пока дочка не в садике. Всё лето прошло отлично: прогулки, творчество, купание в бассейне. Катя в восторге.'},
-            {'id':'rev-dasha',    'author':'Даша',       'role':'Мама Вани, 1.5 года',     'stars':5, 'created_at':_d(2024,7,8),   'text':'Ваня цеплялся за меня и не отпускал. Няня предложила поиграть вместе, пока я не ушла. Через пять минут сын уже смеялся. Это настоящий профессионализм.'},
-            {'id':'rev-evgeny',   'author':'Евгений',    'role':'Папа Лизы, 6 лет',       'stars':5, 'created_at':_d(2024,9,10),  'text':'Использую сервис больше года. Ни разу ничего не пошло не так. Чёткость, пунктуальность, забота — всё на высшем уровне.'},
-            {'id':'rev-inga',     'author':'Инга',       'role':'Мама Степана, 3 года',    'stars':5, 'created_at':_d(2024,11,22), 'text':'Степан боялся нянь до этого. Здесь подобрали именно того человека под его характер. Теперь расстаются с трудом.'},
-            {'id':'rev-pavel',    'author':'Павел',      'role':'Папа Нади, 4 года',       'stars':5, 'created_at':_d(2025,1,6),   'text':'Надя с первой встречи сказала: «Папа, она добрая». После этого никаких сомнений не осталось. Спасибо за такой сервис.'},
-            {'id':'rev-zoya',     'author':'Зоя',        'role':'Мама Глеба, 2 года',      'stars':5, 'created_at':_d(2025,3,18),  'text':'Глебу два года, он только начал говорить. Няня много с ним разговаривала, читала, пела. Через месяц его речь заметно улучшилась.'},
-            {'id':'rev-timur',    'author':'Тимур',      'role':'Папа Ксюши, 5 лет',      'stars':5, 'created_at':_d(2025,5,2),   'text':'Удобнее, чем любые другие варианты. Заявка, подтверждение, приход няни — всё как часы. Дочка довольна, мы спокойны. Давно пользуемся и планируем продолжать.'},
-        ]
+    _LEGACY_SEEDED_REVIEW_IDS = {
+        'rev-anna', 'rev-igor', 'rev-marina', 'rev-olga', 'rev-dmitry',
+        'rev-svetlana', 'rev-elena', 'rev-alexey', 'rev-natasha', 'rev-roman',
+        'rev-kate', 'rev-andrew', 'rev-polina', 'rev-sergey', 'rev-yulia',
+        'rev-ivan', 'rev-kristina', 'rev-max', 'rev-vika', 'rev-nikita',
+        'rev-tanya', 'rev-artem', 'rev-masha', 'rev-vadim', 'rev-oksana',
+        'rev-boris', 'rev-lena2', 'rev-ilya', 'rev-dasha', 'rev-evgeny',
+        'rev-inga', 'rev-pavel', 'rev-zoya', 'rev-timur',
+        'rev-001', 'rev-002', 'rev-003', 'rev-004', 'rev-005', 'rev-006',
+        'rev-007', 'rev-008', 'rev-009', 'rev-010', 'rev-011',
+        'rev-anna-01', 'rev-anna-02', 'rev-anna-03', 'rev-anna-04', 'rev-anna-05',
+        'rev-marina-01', 'rev-marina-02', 'rev-marina-03', 'rev-marina-04', 'rev-marina-05',
+        'rev-maria-01', 'rev-maria-02', 'rev-maria-03', 'rev-maria-04', 'rev-maria-05',
+        'rev-f9893bcf1b34', 'rev-44edcd35c4d9', 'rev-664c5ddd3e93',
+    }
+
+    def _is_legacy_seed_review_id(review_id) -> bool:
+        review_id = str(review_id or '')
+        return review_id in _LEGACY_SEEDED_REVIEW_IDS or review_id.startswith('nannyrev-')
+
+    def _hide_sql_seed_reviews():
+        if not use_sql:
+            return
+        try:
+            filters = [Review.id.like('nannyrev-%')]
+            if _LEGACY_SEEDED_REVIEW_IDS:
+                filters.append(Review.id.in_(list(_LEGACY_SEEDED_REVIEW_IDS)))
+            count = (
+                Review.query
+                .filter(Review.is_visible.is_(True), db.or_(*filters))
+                .update({'is_visible': False}, synchronize_session=False)
+            )
+            if count:
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
 
     def load_reviews(include_hidden: bool = False):
         if use_sql:
+            _hide_sql_seed_reviews()
             query = Review.query
             if not include_hidden:
                 query = query.filter_by(is_visible=True)
             rows = query.order_by(Review.created_at.desc()).all()
-            if not rows:
-                # Seed default reviews into DB (only once — if table is truly empty)
-                if Review.query.count() == 0:
-                    for s in _seed_reviews():
-                        r = Review(
-                            id=s['id'],
-                            author=s['author'],
-                            role=s.get('role', ''),
-                            stars=s.get('stars', 5),
-                            text=s.get('text', ''),
-                            created_at=datetime.datetime.utcnow(),
-                            is_visible=True,
-                        )
-                        db.session.add(r)
-                    try:
-                        db.session.commit()
-                    except Exception:
-                        db.session.rollback()
-                    query = Review.query
-                    if not include_hidden:
-                        query = query.filter_by(is_visible=True)
-                    rows = query.order_by(Review.created_at.desc()).all()
             return [{'id': r.id, 'author': r.author, 'role': r.role, 'stars': r.stars,
                      'text': r.text, 'created_at': r.created_at.isoformat() if r.created_at else '',
                      'nanny_id': getattr(r, 'nanny_id', None),
@@ -834,10 +810,11 @@ def create_app() -> Flask:
         raw = _read_json(REVIEWS_FILE, [])
         changed = False
         reviews = []
-        if not isinstance(raw, list) or not raw:
-            reviews = _seed_reviews()
-            _write_json(REVIEWS_FILE, reviews)
-            return reviews
+        if not isinstance(raw, list):
+            _write_json(REVIEWS_FILE, [])
+            return []
+        if not raw:
+            return []
 
         for idx, item in enumerate(raw):
             if not isinstance(item, dict):
@@ -862,6 +839,9 @@ def create_app() -> Flask:
                 'pinned': bool(item.get('pinned', False)),
                 'is_visible': bool(item.get('is_visible', True)),
             }
+            if _is_legacy_seed_review_id(review['id']) and review['is_visible']:
+                review['is_visible'] = False
+                changed = True
             if review['id'] != item.get('id') or review['author'] != item.get('author') or review['role'] != item.get('role') or review['stars'] != item.get('stars') or review['is_visible'] != item.get('is_visible', True):
                 changed = True
             reviews.append(review)
@@ -894,6 +874,76 @@ def create_app() -> Flask:
             row['is_visible'] = bool(row.get('is_visible', True))
             normalized.append(row)
         _write_json(REVIEWS_FILE, normalized + hidden)
+
+    def _publish_client_review(lead_obj, date_str: str, review_text: str, stars: int):
+        review_text = _clean_user_text(review_text, 1000)
+        if not review_text:
+            return
+        assigned_nanny_id = _lead_value(lead_obj, 'assigned_nanny_id')
+        if not assigned_nanny_id:
+            return
+        nanny = next((n for n in load_nannies() if str(n.get('id')) == str(assigned_nanny_id)), None)
+        if not nanny:
+            return
+        portal_token = str(nanny.get('portal_token') or assigned_nanny_id)
+        lead_token = str(_lead_value(lead_obj, 'token') or '')
+        review_id = _legacy_token('clientrev-', f"{lead_token}-{date_str}")
+        author = _clean_user_text(_lead_value(lead_obj, 'parent_name'), 120) or 'Клиент'
+        child_name = _clean_user_text(_lead_value(lead_obj, 'child_name'), 80)
+        child_age = _clean_user_text(_lead_value(lead_obj, 'child_age'), 40)
+        role = 'родитель'
+        if child_name:
+            role = f"родитель {child_name}"
+            if child_age:
+                role += f", {child_age}"
+        try:
+            stars = max(1, min(5, int(stars)))
+        except Exception:
+            stars = 5
+
+        if use_sql:
+            row = Review.query.get(review_id)
+            if not row:
+                row = Review(
+                    id=review_id,
+                    author=author,
+                    role=role,
+                    stars=stars,
+                    text=review_text,
+                    created_at=datetime.datetime.utcnow(),
+                    is_visible=True,
+                    nanny_id=portal_token,
+                    pinned=False,
+                )
+                db.session.add(row)
+            else:
+                row.author = author
+                row.role = role
+                row.stars = stars
+                row.text = review_text
+                row.nanny_id = portal_token
+                row.is_visible = True
+            db.session.commit()
+            return
+
+        reviews = load_reviews(include_hidden=True)
+        existing = next((r for r in reviews if r.get('id') == review_id), None)
+        payload = {
+            'id': review_id,
+            'author': author,
+            'role': role,
+            'stars': stars,
+            'text': review_text,
+            'created_at': datetime.datetime.utcnow().isoformat(),
+            'nanny_id': portal_token,
+            'pinned': False,
+            'is_visible': True,
+        }
+        if existing:
+            existing.update(payload)
+        else:
+            reviews.insert(0, payload)
+        save_reviews(reviews)
 
     def ensure_seed_nannies():
         seed = [
@@ -1305,128 +1355,10 @@ def create_app() -> Flask:
         sep = '&' if '?' in url else '?'
         return f"{url}{sep}_t={token}"
 
-    _NANNY_REVIEW_TEMPLATES = [
-        {
-            'author': 'Елена',
-            'role': 'мама Алисы, 4 года',
-            'text': '{nanny} очень спокойно вошла в контакт с дочкой. За вечер успели поиграть, поужинать и лечь спать без слез. После такого опыта оставлять ребенка намного спокойнее.',
-        },
-        {
-            'author': 'Мария',
-            'role': 'мама Тимура, 2 года',
-            'text': 'Понравилось, что {nanny} сразу уточнила режим, привычки и важные мелочи. Сын был занят, накормлен и в хорошем настроении, а мне присылали короткие понятные сообщения.',
-        },
-        {
-            'author': 'Андрей',
-            'role': 'папа Вики, 5 лет',
-            'text': '{nanny} приехала вовремя, быстро нашла общий язык с ребенком и спокойно провела весь день. Дочка потом рассказывала про игры и попросила позвать няню еще раз.',
-        },
-        {
-            'author': 'Ольга',
-            'role': 'мама Матвея, 3 года',
-            'text': 'Очень аккуратная и внимательная работа. {nanny} не просто присматривала, а занимала ребенка: рисовали, гуляли, читали. Вернулись домой к спокойному и довольному малышу.',
-        },
-        {
-            'author': 'Наталья',
-            'role': 'мама Сони, 6 лет',
-            'text': 'С {nanny} было легко договориться по времени и деталям. Видно, что человек с опытом: без суеты, мягко, но уверенно. Соня осталась довольна, мы тоже.',
-        },
-        {
-            'author': 'Ирина',
-            'role': 'мама Льва, 1 год',
-            'text': '{nanny} очень бережно отнеслась к малышу и нашему режиму. Все было по расписанию: кормление, сон, прогулка. Для нас это прямое попадание в ожидания.',
-        },
-        {
-            'author': 'Дмитрий',
-            'role': 'папа Кирилла, 7 лет',
-            'text': 'Нужно было помочь после школы и с уроками. {nanny} спокойно разобрала задания, приготовила перекус и заняла ребенка до нашего возвращения. Все четко и надежно.',
-        },
-    ]
-
-    def _seeded_nanny_review_id(portal_token: str, idx: int) -> str:
-        digest = hashlib.sha1(portal_token.encode('utf-8', 'ignore')).hexdigest()[:12]
-        return f"nannyrev-{digest}-{idx + 1}"
-
-    def _default_nanny_review(nanny: dict, idx: int) -> dict:
-        portal_token = str(nanny.get('portal_token') or nanny.get('id') or '').strip()
-        nanny_name = (nanny.get('name') or 'няня').strip()
-        nanny_first_name = nanny_name.split()[0] if nanny_name else 'Няня'
-        template = _NANNY_REVIEW_TEMPLATES[idx % len(_NANNY_REVIEW_TEMPLATES)]
-        created_at = (datetime.datetime(2025, 4, 1, 10, 0, 0) + datetime.timedelta(days=idx)).isoformat()
-        return {
-            'id': _seeded_nanny_review_id(portal_token, idx),
-            'author': template['author'],
-            'role': template['role'],
-            'stars': 5,
-            'text': template['text'].format(nanny=nanny_first_name),
-            'created_at': created_at,
-            'nanny_id': portal_token,
-            'pinned': idx == 0,
-        }
-
     def ensure_nanny_profile_reviews(nannies=None, min_count: int = 5):
-        nannies = nannies if nannies is not None else load_nannies()
-        if not nannies:
-            return
-
-        if use_sql:
-            changed = False
-            for nanny in nannies:
-                portal_token = str(nanny.get('portal_token') or '').strip()
-                if not portal_token:
-                    continue
-                existing_count = Review.query.filter_by(nanny_id=portal_token).count()
-                if existing_count > 0:
-                    continue
-                idx = 0
-                while existing_count < min_count and idx < min_count + len(_NANNY_REVIEW_TEMPLATES):
-                    review = _default_nanny_review(nanny, idx)
-                    idx += 1
-                    if Review.query.get(review['id']):
-                        continue
-                    db.session.add(Review(
-                        id=review['id'],
-                        author=review['author'],
-                        role=review['role'],
-                        stars=review['stars'],
-                        text=review['text'],
-                        created_at=datetime.datetime.fromisoformat(review['created_at']),
-                        is_visible=True,
-                        nanny_id=review['nanny_id'],
-                        pinned=review['pinned'],
-                    ))
-                    existing_count += 1
-                    changed = True
-            if changed:
-                try:
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-            return
-
-        reviews = load_reviews(include_hidden=True)
-        used_ids = {str(r.get('id')) for r in reviews if isinstance(r, dict)}
-        changed = False
-        for nanny in nannies:
-            portal_token = str(nanny.get('portal_token') or '').strip()
-            if not portal_token:
-                continue
-            existing_count = len([r for r in reviews if r.get('nanny_id') == portal_token])
-            if existing_count > 0:
-                continue
-            idx = 0
-            while existing_count < min_count and idx < min_count + len(_NANNY_REVIEW_TEMPLATES):
-                review = _default_nanny_review(nanny, idx)
-                idx += 1
-                if review['id'] in used_ids:
-                    continue
-                reviews.insert(0, review)
-                used_ids.add(review['id'])
-                existing_count += 1
-                changed = True
-        if changed:
-            reviews.sort(key=lambda x: x.get('created_at') or '', reverse=True)
-            save_reviews(reviews)
+        # Public testimonials must come from real clients/admin entries only.
+        # Legacy sample reviews are hidden in load_reviews() and no longer re-created.
+        return
 
     def load_leads():
         if use_sql:
@@ -3363,6 +3295,8 @@ def create_app() -> Flask:
         assigned_nanny_id = _lead_value(lead_for_notify, 'assigned_nanny_id')
         client_name = _lead_value(lead_for_notify, 'parent_name') or '—'
         client_link = f"{_site_url()}/client/{token}"
+        if review_text:
+            _publish_client_review(lead_for_notify, date_str, review_text, review_stars)
         if comment:
             _notify_sensitive_admin_comment('Клиент', lead_for_notify, date_str, comment)
             _notify_admins(

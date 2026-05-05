@@ -1,5 +1,6 @@
 import base64
 import datetime
+import hashlib
 import io
 import json
 import os
@@ -118,6 +119,13 @@ class FullScenarioTest(unittest.TestCase):
         }, base_url=self.base_url)
         self.assertEqual(client_fact_resp.status_code, 200, client_fact_resp.get_data(as_text=True))
 
+        reviews = self.read_json('reviews.json', [])
+        public_review = next((r for r in reviews if r.get('id', '').startswith('clientrev-')), None)
+        self.assertIsNotNone(public_review)
+        self.assertTrue(public_review.get('is_visible', True))
+        self.assertEqual(public_review.get('text'), 'Все прошло хорошо, няня приехала вовремя.')
+        self.assertEqual(public_review.get('nanny_id'), nannies[0]['portal_token'])
+
         upload_resp = self.client.post(
             f'/api/client/{lead_token}/upload_receipt?date={work_date}',
             data={'file': (io.BytesIO(b'%PDF-1.4 test receipt'), 'receipt.pdf', 'application/pdf')},
@@ -234,39 +242,48 @@ class FullScenarioTest(unittest.TestCase):
         self.assertIn('/agent/app', nanny_html)
         self.assertIn('Кабинет партнёра', nanny_html)
 
-    def test_deleted_seeded_nanny_review_stays_deleted(self):
+    def test_legacy_seed_reviews_are_hidden_and_not_recreated(self):
         admin_page = self.client.get('/admin', headers=self.admin_headers, base_url=self.base_url)
         self.assertEqual(admin_page.status_code, 200)
 
         nannies = self.read_json('nannies.json', [])
         self.assertTrue(nannies)
         portal_token = nannies[0]['portal_token']
+        seeded_nanny_id = f"nannyrev-{hashlib.sha1(portal_token.encode('utf-8')).hexdigest()[:12]}-1"
+        self.write_json('reviews.json', [
+            {
+                'id': 'rev-anna',
+                'author': 'Анна',
+                'role': 'старый отзыв',
+                'stars': 5,
+                'text': 'Старый общий автосозданный отзыв.',
+                'created_at': datetime.datetime.utcnow().isoformat(),
+                'is_visible': True,
+            },
+            {
+                'id': seeded_nanny_id,
+                'author': 'Елена',
+                'role': 'старый отзыв няни',
+                'stars': 5,
+                'text': 'Старый автосозданный отзыв няни.',
+                'created_at': datetime.datetime.utcnow().isoformat(),
+                'nanny_id': portal_token,
+                'is_visible': True,
+            },
+        ])
 
         profile_resp = self.client.get(f'/nanny/{portal_token}', base_url=self.base_url)
         self.assertEqual(profile_resp.status_code, 200, profile_resp.get_data(as_text=True))
+        self.assertNotIn('Старый автосозданный отзыв няни.', profile_resp.get_data(as_text=True))
 
         reviews = self.read_json('reviews.json', [])
-        seeded = next((r for r in reviews if r.get('nanny_id') == portal_token and r.get('id', '').startswith('nannyrev-')), None)
-        self.assertIsNotNone(seeded)
-
-        delete_resp = self.client.post('/admin/review/delete', headers=self.admin_headers, data={
-            'id': seeded['id'],
-        }, base_url=self.base_url)
-        self.assertEqual(delete_resp.status_code, 302)
+        self.assertTrue(all(not r.get('is_visible', True) for r in reviews))
 
         profile_resp = self.client.get(f'/nanny/{portal_token}', base_url=self.base_url)
         self.assertEqual(profile_resp.status_code, 200, profile_resp.get_data(as_text=True))
-
         reviews_after = self.read_json('reviews.json', [])
-        deleted = next((r for r in reviews_after if r.get('id') == seeded['id']), None)
-        self.assertIsNotNone(deleted)
-        self.assertFalse(deleted.get('is_visible', True))
-        visible_for_nanny = [
-            r for r in reviews_after
-            if r.get('nanny_id') == portal_token and r.get('is_visible', True)
-        ]
-        self.assertEqual(len(visible_for_nanny), 4)
-        self.assertNotIn(seeded['id'], {r.get('id') for r in visible_for_nanny})
+        visible_for_nanny = [r for r in reviews_after if r.get('nanny_id') == portal_token and r.get('is_visible', True)]
+        self.assertEqual(visible_for_nanny, [])
 
     def test_agent_registration_autofills_from_telegram_init_data(self):
         tg_id = 555555555
