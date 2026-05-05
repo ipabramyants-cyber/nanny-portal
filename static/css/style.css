@@ -1575,10 +1575,10 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
 
 @media (max-width: 640px) {
   .hero-banner__content {
-    max-width: 350px;
+    max-width: 300px;
   }
   .hero-banner p {
-    max-width: 330px;
+    max-width: 280px;
     margin-left: auto;
     margin-right: auto;
     overflow-wrap: break-word;
@@ -2145,7 +2145,7 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
     display: block;
     flex: 0 1 auto;
     min-width: 0;
-    max-width: min(280px, calc(100vw - 58px));
+    max-width: min(240px, calc(100vw - 58px));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
