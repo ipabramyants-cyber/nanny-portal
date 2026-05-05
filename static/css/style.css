@@ -1578,7 +1578,15 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
   .panel { padding: var(--s4); }
   .ig-grid { grid-template-columns: 1fr 1fr; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
-  .hero-stats { gap: var(--s3); flex-wrap: wrap; }
+  .hero-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s3);
+    width: 100%;
+    max-width: 320px;
+    margin-left: auto;
+    margin-right: auto;
+  }
   .hero-stat__value { font-size: 1.4rem; }
   .hero-stat__label { font-size: 10px; }
   .hero-cta { flex-direction: column; align-items: center; }
@@ -1596,6 +1604,10 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
   }
   .admin-header h1 {
     font-size: clamp(1.45rem, 8vw, 2rem);
+    line-height: 1.15;
+  }
+  .admin-header .container {
+    min-width: 0;
   }
   .calendar-head {
     gap: 8px;
@@ -1622,6 +1634,45 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
   .cal-time {
     font-size: 9px;
     line-height: 1.15;
+  }
+  .cabinet-calendar-top .panel,
+  .panel.calendar-panel {
+    padding: 12px;
+  }
+  .cabinet-calendar-top .calendar,
+  .calendar-panel .calendar,
+  .panel .calendar {
+    overflow: hidden;
+  }
+  .cabinet-calendar-top .cal-row,
+  .calendar-panel .cal-row,
+  .panel .calendar .cal-row {
+    gap: 1px;
+  }
+  .cabinet-calendar-top .cal-cell,
+  .calendar-panel .cal-cell,
+  .panel .calendar .cal-cell {
+    min-height: 43px;
+    padding: 3px 1px;
+    border-width: 1px;
+    border-radius: 5px;
+  }
+  .cabinet-calendar-top .cal-cell.dow,
+  .calendar-panel .cal-cell.dow,
+  .panel .calendar .cal-cell.dow {
+    min-height: 24px;
+    font-size: 8px;
+    padding: 4px 0;
+    letter-spacing: 0;
+  }
+  .cabinet-calendar-top .cal-cell:hover:not(.muted):not(.dow),
+  .calendar-panel .cal-cell:hover:not(.muted):not(.dow),
+  .panel .calendar .cal-cell:hover:not(.muted):not(.dow) {
+    transform: none;
+  }
+  .cabinet-calendar-top .hint,
+  .calendar-panel .hint {
+    overflow-wrap: anywhere;
   }
 }
 
@@ -2013,6 +2064,12 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
     text-align: center;
   }
   .tg-topbar svg { flex-shrink: 0; }
+  .tg-topbar__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .tg-topbar .tg-topbar__dot {
     width: 8px; height: 8px;
     border-radius: 50%;
@@ -2188,11 +2245,16 @@ details.faq-item > div { animation: faq-open .25s ease-out both; }
 
 /* Responsive 375px iPhone SE */
 @media (max-width: 375px) {
-  .hero-stats { grid-template-columns: repeat(2, 1fr); gap: var(--s2); }
+  .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2); }
   .hero-badge { font-size: 12px; }
   h1 { font-size: 1.7rem; }
   .btn { font-size: 13px; padding: 12px 18px; }
-  .cal-cell { min-height: 44px; }
+  .cal-cell {
+    min-height: 40px;
+    padding-left: 1px;
+    padding-right: 1px;
+  }
+  .cal-time { font-size: 8px; }
   .container { padding-left: 14px; padding-right: 14px; }
 }
 
