@@ -64,6 +64,17 @@
   const shiftDetail = document.getElementById('shiftDetail');
   const shiftDetailContent = document.getElementById('shiftDetailContent');
   const backBtn = document.getElementById('backBtn');
+  const splash = document.getElementById('splash');
+
+  function setAuthSplash(active) {
+    if (!splash) return;
+    if (active) splash.dataset.keepVisible = '1';
+    else delete splash.dataset.keepVisible;
+    splash.style.display = active ? 'flex' : 'none';
+    splash.classList.toggle('hide', !active);
+    splash.setAttribute('aria-hidden', active ? 'false' : 'true');
+  }
+  setAuthSplash(true);
 
   const fmtMoney = v => v == null ? '—' : Number(v).toLocaleString('ru-RU') + ' ₫';
   const fmtDate = ymd => { if(!ymd||ymd.length!==10)return ymd; const[y,m,d]=ymd.split('-'); return `${d}.${m}.${y}`; };
@@ -121,8 +132,10 @@
     if (shiftSkeleton) shiftSkeleton.style.display = 'none';
     if (!resp.ok) {
       statusHeader.textContent = data?.error || 'Ошибка загрузки';
+      setAuthSplash(false);
       return;
     }
+    setAuthSplash(false);
     statusHeader.textContent = 'Всё актуально';
     shiftList.style.display = 'block';
     const items = data.items || [];
@@ -246,6 +259,7 @@
       await ensureAuth();
       await loadShifts();
     } catch(e) {
+      setAuthSplash(false);
       console.error(e);
     }
   })();

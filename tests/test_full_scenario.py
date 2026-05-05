@@ -254,6 +254,17 @@ class FullScenarioTest(unittest.TestCase):
         self.assertIn('Tag Assistant', admin_html)
         self.assertIn('https://metrica.yandex.com/stat/dashboard?counter_id=12345678', admin_html)
         self.assertIn('https://metrica.yandex.com/stat/visor?counter_id=12345678', admin_html)
+        self.assertIn('class="analytics-filter"', admin_html)
+        self.assertIn('id="siteAnalyticsSection"', admin_html)
+        self.assertIn('id="adminFinanceSection"', admin_html)
+        self.assertIn('id="adminNanniesSection"', admin_html)
+        self.assertIn('id="adminReviewsSection"', admin_html)
+
+        tg_entry_resp = self.client.get('/app', base_url=self.base_url)
+        self.assertEqual(tg_entry_resp.status_code, 200, tg_entry_resp.get_data(as_text=True))
+        tg_entry_html = tg_entry_resp.get_data(as_text=True)
+        self.assertIn('tg-entry-loader', tg_entry_html)
+        self.assertNotIn('Перейти →', tg_entry_html)
 
         visits = self.read_json('visit_log.json', [])
         self.assertGreaterEqual(len(visits), 2)

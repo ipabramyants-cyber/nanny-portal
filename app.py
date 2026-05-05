@@ -521,12 +521,27 @@ def create_app() -> Flask:
         except Exception:
             return None
 
-    def _site_visit_stats(days: int = 30) -> dict:
+    def _parse_visit_date(value: str | None):
+        value = (value or '').strip()
+        if not value:
+            return None
+        try:
+            return datetime.date.fromisoformat(value[:10])
+        except Exception:
+            return None
+
+    def _site_visit_stats(days: int = 30, start_date=None, end_date=None) -> dict:
         visits = _read_json(VISIT_LOG_FILE, [])
         if not isinstance(visits, list):
             visits = []
         today = datetime.datetime.utcnow().date()
-        start = today - datetime.timedelta(days=max(1, days) - 1)
+        end = end_date or today
+        start = start_date or (end - datetime.timedelta(days=max(1, days) - 1))
+        if start > end:
+            start, end = end, start
+        if (end - start).days > 365:
+            start = end - datetime.timedelta(days=365)
+        period_days = max(1, (end - start).days + 1)
         filtered = []
         bot_count = 0
         for item in visits:
@@ -535,7 +550,7 @@ def create_app() -> Flask:
             dt = _parse_visit_dt(item)
             if not dt:
                 continue
-            if dt.date() < start:
+            if dt.date() < start or dt.date() > end:
                 continue
             if item.get('is_bot'):
                 bot_count += 1
@@ -543,7 +558,7 @@ def create_app() -> Flask:
             filtered.append((item, dt))
 
         by_day = []
-        for offset in range(max(1, days)):
+        for offset in range(period_days):
             day = start + datetime.timedelta(days=offset)
             day_items = [item for item, dt in filtered if dt.date() == day]
             by_day.append({
@@ -567,8 +582,15 @@ def create_app() -> Flask:
                 'referrer_host': item.get('referrer_host') or 'direct',
                 'is_bot': bool(item.get('is_bot')),
             })
+        if start == end:
+            period_label = start.strftime('%d.%m.%Y')
+        else:
+            period_label = f"{start.strftime('%d.%m.%Y')} - {end.strftime('%d.%m.%Y')}"
         return {
-            'days': days,
+            'days': period_days,
+            'start_date': start.isoformat(),
+            'end_date': end.isoformat(),
+            'period_label': period_label,
             'total_views': len(filtered),
             'unique_visitors': len(visitors),
             'today_views': by_day[-1]['views'] if by_day else 0,
@@ -4395,6 +4417,8 @@ def create_app() -> Flask:
             'yandex_metrika_id': analytics_ids['yandex_metrika_id'],
             'public_pages': 4 + len([a for a in _articles_published() if a.get('slug')]) + len([n for n in nannies if n.get('portal_token')]),
         }
+        visit_start = _parse_visit_date(request.args.get('visit_start'))
+        visit_end = _parse_visit_date(request.args.get('visit_end'))
 
         return render_template(
             'admin_simple.html',
@@ -4408,7 +4432,7 @@ def create_app() -> Flask:
             shifts=shift_rows,
             reviews=reviews,
             crm=crm,
-            visit_stats=_site_visit_stats(30),
+            visit_stats=_site_visit_stats(30, visit_start, visit_end),
             seo_status=seo_status,
         )
 

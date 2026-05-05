@@ -90,7 +90,7 @@
     Telegram.WebApp.ready();
     const initData = Telegram.WebApp.initData;
 
-    setStatus('🔐', 'Авторизация…');
+    setStatus('⏳', 'Проверяем доступ…');
 
     const resp = await fetch('/api/auth/telegram', {
       method: 'POST',

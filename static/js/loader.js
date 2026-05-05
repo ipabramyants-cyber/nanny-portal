@@ -10,6 +10,10 @@
 
   function hideSplash() {
     if (hidden) return;
+    if (splash.dataset.keepVisible === '1') {
+      setTimeout(hideSplash, 300);
+      return;
+    }
     hidden = true;
     splash.classList.add('hide');
     setTimeout(function () {

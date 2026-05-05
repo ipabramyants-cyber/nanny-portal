@@ -18,6 +18,18 @@
   .analytics-widget__actions .action-link,.analytics-widget__actions button.action-link{border:1px solid var(--c-border);background:#fff;border-radius:8px;padding:7px 10px;font-size:12px;font-weight:800;text-decoration:none;color:var(--c-teal-dk);cursor:pointer;}
   .analytics-widget__actions .action-link:hover,.analytics-widget__actions button.action-link:hover{border-color:var(--c-teal);background:var(--c-teal-lt);}
   .analytics-widget__note{margin-top:10px;padding:9px 10px;border-radius:8px;background:rgba(1,107,130,.07);font-size:12px;line-height:1.4;color:var(--c-text-2);}
+  .admin-collapse{border:0;margin-top:var(--s5);}
+  .admin-collapse>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:16px 18px;border:1px solid var(--c-border);border-radius:12px;background:var(--c-surface);box-shadow:0 8px 22px rgba(2,31,46,.05);cursor:pointer;}
+  .admin-collapse>summary::-webkit-details-marker{display:none;}
+  .admin-collapse__title{display:flex;align-items:center;gap:10px;font-weight:900;color:var(--c-teal-dk);font-size:1.05rem;}
+  .admin-collapse__meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--c-text-muted);}
+  .admin-collapse__chevron{font-size:18px;color:var(--c-text-muted);transition:transform .18s ease;}
+  .admin-collapse[open] .admin-collapse__chevron{transform:rotate(180deg);}
+  .admin-collapse__body{margin-top:10px;}
+  .analytics-filter{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:0 0 var(--s4);padding:12px;border:1px solid var(--c-border);border-radius:10px;background:var(--c-surface-2);}
+  .analytics-filter label{font-size:11px;color:var(--c-text-muted);font-weight:800;text-transform:uppercase;letter-spacing:.03em;margin:0;}
+  .analytics-filter input{min-width:145px;padding:7px 9px;border:1.5px solid var(--c-border-str);border-radius:8px;background:#fff;}
+  .analytics-filter .btn{width:auto;margin-top:0;padding:8px 12px;font-size:12px;}
 </style>
 {% endblock %}
 {% block title %}Админ-панель — Няня на час{% endblock %}
@@ -102,12 +114,20 @@
   </div>
 
   <!-- SITE ANALYTICS / SEO -->
-  <div class="admin-section">
-    <div class="panel" style="padding:var(--s5);">
+  <details class="admin-section admin-collapse" id="siteAnalyticsSection">
+    <summary>
+      <span class="admin-collapse__title">📈 SEO и посещения сайта</span>
+      <span class="admin-collapse__meta">
+        <span class="badge badge--info">{{ visit_stats.total_views }} просмотров</span>
+        <span class="badge badge--neutral">{{ visit_stats.period_label }}</span>
+        <span class="admin-collapse__chevron">⌄</span>
+      </span>
+    </summary>
+    <div class="panel admin-collapse__body" style="padding:var(--s5);">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s4);flex-wrap:wrap;margin-bottom:var(--s4);">
         <div>
           <h2 style="margin:0;font-size:1.2rem;">📈 SEO и посещения сайта</h2>
-          <p class="hint" style="margin-top:6px;">Внутренняя статистика считает только публичные страницы. Кабинеты, админка, API и загрузки не попадают в счетчик.</p>
+          <p class="hint" style="margin-top:6px;">Публичные страницы, источники, топ URL и быстрый доступ к отчетам Google/Yandex. Кабинеты, админка, API и загрузки не попадают во внешний счетчик.</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <a class="action-link" href="{{ seo_status.robots_url }}" target="_blank">robots.txt</a>
@@ -115,20 +135,33 @@
         </div>
       </div>
 
+      <form class="analytics-filter" method="get" action="/admin#siteAnalyticsSection">
+        <div>
+          <label for="visit_start">С даты</label>
+          <input id="visit_start" type="date" name="visit_start" value="{{ visit_stats.start_date }}">
+        </div>
+        <div>
+          <label for="visit_end">По дату</label>
+          <input id="visit_end" type="date" name="visit_end" value="{{ visit_stats.end_date }}">
+        </div>
+        <button class="btn secondary" type="submit">Показать</button>
+        <a class="action-link" href="/admin#siteAnalyticsSection">Последние 30 дней</a>
+      </form>
+
       <div class="profit-kpi-grid" style="margin-bottom:var(--s4);">
         <div class="profit-kpi">
           <div class="profit-kpi__icon">👁</div>
-          <div class="profit-kpi__label">Просмотры за 30 дней</div>
+          <div class="profit-kpi__label">Просмотры за период</div>
           <div class="profit-kpi__val">{{ visit_stats.total_views }}</div>
         </div>
         <div class="profit-kpi">
           <div class="profit-kpi__icon">👤</div>
-          <div class="profit-kpi__label">Уникальные за 30 дней</div>
+          <div class="profit-kpi__label">Уникальные за период</div>
           <div class="profit-kpi__val">{{ visit_stats.unique_visitors }}</div>
         </div>
         <div class="profit-kpi">
           <div class="profit-kpi__icon">📍</div>
-          <div class="profit-kpi__label">Сегодня</div>
+          <div class="profit-kpi__label">Последний день</div>
           <div class="profit-kpi__val">{{ visit_stats.today_views }}</div>
         </div>
         <div class="profit-kpi">
@@ -152,7 +185,7 @@
               </div>
             </div>
           </div>
-          <p class="hint" style="margin:0;">Основной счетчик для рекламной и поисковой аналитики Google. Проверяйте realtime сразу после тестового визита на сайт.</p>
+          <p class="hint" style="margin:0;">Отчеты по аудитории, каналам и конверсиям. Числа открываются в кабинете GA, статус подключения виден здесь.</p>
           <div class="analytics-widget__actions">
             <a class="action-link" href="https://analytics.google.com/analytics/web/" target="_blank" rel="noopener">Открыть GA</a>
             <a class="action-link" href="https://tagassistant.google.com/" target="_blank" rel="noopener">Tag Assistant</a>
@@ -162,7 +195,7 @@
               <a class="action-link" href="https://railway.com/project/d505a2e4-b7de-47bb-a6cd-9675c0f87450" target="_blank" rel="noopener">Добавить в Railway</a>
             {% endif %}
           </div>
-          <div class="analytics-widget__note">Внешний счетчик включается только на публичных страницах. Кабинеты и админка не отправляют приватные события в GA.</div>
+          <div class="analytics-widget__note">Нужные отчеты: Realtime, Acquisition, Pages and screens, Traffic acquisition.</div>
         </div>
 
         <div class="analytics-widget analytics-widget--ym">
@@ -176,7 +209,7 @@
               </div>
             </div>
           </div>
-          <p class="hint" style="margin:0;">Счетчик Метрики установлен с вебвизором, картой кликов, отслеживанием ссылок и точным отказом.</p>
+          <p class="hint" style="margin:0;">Поведение посетителей: вебвизор, карты кликов, источники трафика и популярные страницы.</p>
           <div class="analytics-widget__actions">
             {% if ym_id %}
               <a class="action-link" href="https://metrica.yandex.com/stat/dashboard?counter_id={{ ym_id }}" target="_blank" rel="noopener">Дашборд</a>
@@ -189,11 +222,15 @@
               <a class="action-link" href="https://railway.com/project/d505a2e4-b7de-47bb-a6cd-9675c0f87450" target="_blank" rel="noopener">Добавить в Railway</a>
             {% endif %}
           </div>
-          <div class="analytics-widget__note">Если Метрика пишет, что счетчик не найден, откройте главную страницу без блокировщика и проверьте этот ID в настройках счетчика.</div>
+          <div class="analytics-widget__note">Нужные отчеты: Сводка, Источники, Вебвизор, Карты кликов.</div>
         </div>
       </div>
       <script>
       (function(){
+        if (window.location.hash) {
+          var target = document.querySelector(window.location.hash);
+          if (target && target.tagName === 'DETAILS') target.open = true;
+        }
         document.addEventListener('click', function(e){
           var btn = e.target.closest('.analytics-copy');
           if (!btn) return;
@@ -210,7 +247,7 @@
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--s4);align-items:start;">
         <div>
-          <h3 style="margin:0 0 var(--s3);font-size:14px;color:var(--c-teal-dk);">Динамика за 30 дней</h3>
+          <h3 style="margin:0 0 var(--s3);font-size:14px;color:var(--c-teal-dk);">Динамика за период</h3>
           <div style="display:flex;align-items:flex-end;gap:4px;height:104px;overflow-x:auto;padding-bottom:4px;">
             {% set max_views = (visit_stats.by_day | map(attribute='views') | max) if visit_stats.by_day else 1 %}
             {% for day in visit_stats.by_day %}
@@ -250,29 +287,19 @@
           </div>
         </div>
       </div>
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:var(--s4);font-size:12px;">
-        <div style="padding:10px;border:1px solid var(--c-border);border-radius:8px;background:var(--c-surface-2);">
-          <strong>SITE_URL</strong><br><span class="hint">{{ seo_status.site_url }}</span>
-        </div>
-        <div style="padding:10px;border:1px solid var(--c-border);border-radius:8px;background:var(--c-surface-2);">
-          <strong>Публичных URL</strong><br><span class="hint">{{ seo_status.public_pages }} в sitemap</span>
-        </div>
-        <div style="padding:10px;border:1px solid var(--c-border);border-radius:8px;background:var(--c-surface-2);">
-          <strong>Google Analytics</strong><br>
-          <span class="badge {% if seo_status.google_analytics_id %}badge--success{% else %}badge--neutral{% endif %}">{{ seo_status.google_analytics_id or 'не подключен' }}</span>
-        </div>
-        <div style="padding:10px;border:1px solid var(--c-border);border-radius:8px;background:var(--c-surface-2);">
-          <strong>Яндекс Метрика</strong><br>
-          <span class="badge {% if seo_status.yandex_metrika_id %}badge--success{% else %}badge--neutral{% endif %}">{{ seo_status.yandex_metrika_id or 'не подключена' }}</span>
-        </div>
-      </div>
     </div>
-  </div>
+  </details>
 
   <!-- ══════════ PROFIT DASHBOARD ══════════ -->
-  <div class="admin-section">
-    <div class="panel" style="padding:var(--s5);">
+  <details class="admin-section admin-collapse" id="adminFinanceSection">
+    <summary>
+      <span class="admin-collapse__title">💰 Финансовая аналитика</span>
+      <span class="admin-collapse__meta">
+        <span>выручка, выплаты, маржа</span>
+        <span class="admin-collapse__chevron">⌄</span>
+      </span>
+    </summary>
+    <div class="panel admin-collapse__body" style="padding:var(--s5);">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s3);margin-bottom:var(--s5);">
         <h2 style="margin:0;font-size:1.2rem;">💰 Финансовая аналитика</h2>
         <div style="display:flex;gap:6px;flex-wrap:wrap;" id="profitPeriodTabs">
@@ -333,7 +360,7 @@
         Завершённых смен за этот период нет
       </div>
     </div>
-  </div>
+  </details>
 
   <!-- LEADS -->
   <div class="admin-section">
@@ -668,8 +695,15 @@
   </div>
 
   <!-- NANNIES -->
-  <div class="admin-section">
-    <div class="panel">
+  <details class="admin-section admin-collapse" id="adminNanniesSection">
+    <summary>
+      <span class="admin-collapse__title">👩 Няни</span>
+      <span class="admin-collapse__meta">
+        <span class="badge badge--info">{{ nannies|length }}</span>
+        <span class="admin-collapse__chevron">⌄</span>
+      </span>
+    </summary>
+    <div class="panel admin-collapse__body">
       <h2>👩 Няни ({{ nannies|length }})</h2>
       <div style="display:grid; gap:10px;">
       {% for nanny in nannies %}
@@ -736,11 +770,18 @@
         </form>
       </details>
     </div>
-  </div>
+  </details>
 
   <!-- REVIEWS -->
-  <div class="admin-section" style="padding-bottom:40px;">
-    <div class="panel">
+  <details class="admin-section admin-collapse" id="adminReviewsSection" style="padding-bottom:40px;">
+    <summary>
+      <span class="admin-collapse__title">⭐ Отзывы</span>
+      <span class="admin-collapse__meta">
+        <span class="badge badge--info">{{ reviews|length }}</span>
+        <span class="admin-collapse__chevron">⌄</span>
+      </span>
+    </summary>
+    <div class="panel admin-collapse__body">
       <h2>⭐ Отзывы ({{ reviews|length }})</h2>
       <div style="display:grid; gap:10px;">
       {% for review in reviews %}
@@ -819,7 +860,7 @@
         </form>
       </details>
     </div>
-  </div>
+  </details>
 
   <!-- ═══ ARTICLES ══════════════════════════════════════════ -->
   <div class="section-block" style="margin-top:var(--s6);">

@@ -65,7 +65,7 @@
     Telegram.WebApp.ready();
     const initData = Telegram.WebApp.initData || '';
     if (!initData) return;
-    status.textContent = 'Авторизация через Telegram…';
+    status.textContent = 'Проверяем доступ через Telegram…';
     const resp = await fetch('/api/auth/telegram', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -73,7 +73,7 @@
     });
     const data = await resp.json().catch(()=>null);
     if (resp.ok) {
-      status.textContent = '✓ Авторизован. Переходим…';
+      status.textContent = '✓ Доступ подтверждён. Открываем админку…';
       window.location.href = '/admin';
     } else {
       status.textContent = 'Telegram: ' + (data && data.error ? data.error : 'ошибка');
