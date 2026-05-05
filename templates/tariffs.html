@@ -311,11 +311,27 @@
 
 @media(max-width:640px){
   .t-hero{padding:var(--s8) 0 var(--s8);}
-  .t-hero__inner{max-width:100%;min-width:0;}
+  .t-hero__inner{max-width:350px;min-width:0;}
   .t-hero__title{max-width:310px;margin-left:auto;margin-right:auto;font-size:clamp(1.35rem,7vw,1.8rem);line-height:1.12;white-space:normal;word-break:normal;overflow-wrap:break-word;text-wrap:balance;}
-  .t-hero__sub{font-size:14px;}
+  .t-hero__sub{max-width:320px;font-size:14px;overflow-wrap:break-word;}
   .t-hero__pills{max-width:310px;margin-left:auto;margin-right:auto;padding:0 4px;}
   .t-pill{max-width:100%;padding:6px 10px;text-align:center;font-size:12px;line-height:1.25;}
+  .t-cards,
+  .t-save-banner,
+  .t-calc__result,
+  .t-steps,
+  .t-table-wrap,
+  .t-faq,
+  .t-cta-box {
+    max-width: 350px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .t-card__desc,
+  .t-step__text,
+  .t-faq__item p {
+    overflow-wrap: anywhere;
+  }
   .t-cards{grid-template-columns:1fr;}
   .t-card--featured{transform:none;}
   .t-calc__grid{grid-template-columns:1fr;}

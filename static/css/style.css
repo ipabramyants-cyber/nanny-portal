@@ -1573,6 +1573,81 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
   .reviews-grid { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 640px) {
+  .hero-banner__content {
+    max-width: 350px;
+  }
+  .hero-banner p {
+    max-width: 330px;
+    margin-left: auto;
+    margin-right: auto;
+    overflow-wrap: break-word;
+  }
+  .hero-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s3);
+    width: 100%;
+    max-width: 320px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: var(--s6);
+  }
+  .hero-stat {
+    min-width: 0;
+  }
+  .hero-stat__label {
+    font-size: 10px;
+    line-height: 1.2;
+    letter-spacing: .02em;
+    overflow-wrap: anywhere;
+  }
+  .cabinet-calendar-top {
+    max-width: 370px;
+  }
+  .cabinet-calendar-top .panel,
+  .panel.calendar-panel {
+    padding: 12px;
+  }
+  .cabinet-calendar-top .calendar,
+  .calendar-panel .calendar,
+  .panel .calendar {
+    overflow: hidden;
+  }
+  .cabinet-calendar-top .cal-row,
+  .calendar-panel .cal-row,
+  .panel .calendar .cal-row {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 1px;
+  }
+  .cabinet-calendar-top .cal-cell,
+  .calendar-panel .cal-cell,
+  .panel .calendar .cal-cell {
+    min-width: 0;
+    min-height: 43px;
+    padding: 3px 1px;
+    border-width: 1px;
+    border-radius: 5px;
+  }
+  .cabinet-calendar-top .cal-cell.dow,
+  .calendar-panel .cal-cell.dow,
+  .panel .calendar .cal-cell.dow {
+    min-height: 24px;
+    font-size: 8px;
+    padding: 4px 0;
+    letter-spacing: 0;
+  }
+  .cabinet-calendar-top .cal-cell:hover:not(.muted):not(.dow),
+  .calendar-panel .cal-cell:hover:not(.muted):not(.dow),
+  .panel .calendar .cal-cell:hover:not(.muted):not(.dow) {
+    transform: none;
+  }
+  .cabinet-calendar-top .hint,
+  .calendar-panel .hint {
+    overflow-wrap: anywhere;
+  }
+}
+
 @media (max-width: 480px) {
   :root { --s6: 16px; --s8: 24px; }
   .panel { padding: var(--s4); }
@@ -2060,12 +2135,17 @@ input[type="file"] { padding: 8px; font-size: 13px; background: var(--c-surface-
     box-shadow: 0 2px 12px rgba(1,107,130,.35);
     letter-spacing: .01em;
     min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
     line-height: 1.25;
     text-align: center;
   }
   .tg-topbar svg { flex-shrink: 0; }
   .tg-topbar__text {
+    display: block;
+    flex: 0 1 auto;
     min-width: 0;
+    max-width: min(280px, calc(100vw - 58px));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
