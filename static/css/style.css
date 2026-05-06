@@ -4,9 +4,6 @@
    2026 trends: soft glassmorphism, fluid type, micro-animations, layered depth
    ============================================================ */
 
-/* ── GOOGLE FONTS ─────────────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap&font-display=swap');
-
 /* ── RESET ────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html {
@@ -1134,8 +1131,8 @@ textarea { resize: vertical; }
   background: rgba(255,255,255,.12);
   border: 1px solid rgba(255,255,255,.26);
   box-shadow: 0 24px 80px rgba(0,42,52,.24);
-  backdrop-filter: blur(14px);
-  animation: splash-card-in .62s cubic-bezier(.2,.8,.2,1) both;
+  backdrop-filter: blur(10px);
+  animation: splash-card-in .34s cubic-bezier(.2,.8,.2,1) both;
 }
 .splash-card::after {
   content: '';
@@ -1156,7 +1153,7 @@ textarea { resize: vertical; }
   border-radius: 99px;
   background: linear-gradient(90deg, rgba(255,255,255,0), #fff, rgba(255,255,255,0));
   transform-origin: left center;
-  animation: splash-progress .95s ease-out both;
+  animation: splash-progress .42s ease-out both;
 }
 
 .splash-media {
@@ -1167,7 +1164,7 @@ textarea { resize: vertical; }
   padding: 14px;
   background: rgba(255,255,255,.92);
   box-shadow: 0 18px 48px rgba(0,55,70,.22), 0 0 0 12px rgba(255,255,255,.12);
-  animation: splash-logo-in .68s cubic-bezier(.18,.9,.22,1.2) both, splash-float 3.2s .7s ease-in-out infinite;
+  animation: splash-logo-in .36s cubic-bezier(.18,.9,.22,1.2) both, splash-float 2.4s .4s ease-in-out infinite;
 }
 @keyframes splash-glow {
   from { box-shadow: 0 0 30px rgba(255,255,255,0.2), 0 8px 32px rgba(0,0,0,0.15); }
@@ -1222,7 +1219,7 @@ textarea { resize: vertical; }
   opacity: 0;
   pointer-events: none;
   transform: scale(1.015);
-  transition: opacity .42s var(--ease-std), transform .42s var(--ease-std);
+  transition: opacity .2s var(--ease-std), transform .2s var(--ease-std);
 }
 
 /* ── STATUS BADGES ────────────────────────────────────────── */

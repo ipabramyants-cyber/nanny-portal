@@ -27,30 +27,42 @@
   <meta property="og:image:height" content="512" />
   {% endblock %}
   <title>{% block title %}Няня на час — Нячанг{% endblock %}</title>
-  {% if google_analytics_id %}
-  <!-- Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id={{ google_analytics_id }}"></script>
+  {% if google_analytics_id or yandex_metrika_id %}
+  <!-- Analytics are loaded after first render so they do not delay the visible page. -->
   <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', {{ google_analytics_id|tojson }});
-  </script>
-  {% endif %}
-  {% if yandex_metrika_id %}
-  <!-- Yandex Metrika -->
-  <script>
-    (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-    m[i].l=1*new Date();
-    for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === r) { return; } }
-    k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
-    (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
-    ym({{ yandex_metrika_id }}, "init", {
-      clickmap:true,
-      trackLinks:true,
-      accurateTrackBounce:true,
-      webvisor:true
-    });
+    (function(){
+      function afterFirstPaint(fn) {
+        window.addEventListener('load', function(){
+          if ('requestIdleCallback' in window) requestIdleCallback(fn, { timeout: 2500 });
+          else setTimeout(fn, 900);
+        }, { once: true });
+      }
+      afterFirstPaint(function(){
+        {% if google_analytics_id %}
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = window.gtag || function(){ dataLayer.push(arguments); };
+        var ga = document.createElement('script');
+        ga.async = true;
+        ga.src = 'https://www.googletagmanager.com/gtag/js?id={{ google_analytics_id }}';
+        document.head.appendChild(ga);
+        gtag('js', new Date());
+        gtag('config', {{ google_analytics_id|tojson }});
+        {% endif %}
+        {% if yandex_metrika_id %}
+        (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();
+        for (var j = 0; j < document.scripts.length; j++) { if (document.scripts[j].src === r) { return; } }
+        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+        (window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js', 'ym');
+        ym({{ yandex_metrika_id }}, 'init', {
+          clickmap:true,
+          trackLinks:true,
+          accurateTrackBounce:true,
+          webvisor:false
+        });
+        {% endif %}
+      });
+    })();
   </script>
   {% endif %}
 </head>
@@ -77,7 +89,7 @@
       <div class="splash-ring"></div>
       <div class="splash-ring"></div>
       <div class="splash-ring"></div>
-      <img src="/static/img/logo.png" alt="" class="splash-media" decoding="async" loading="eager" />
+      <img src="/static/img/logo.webp" alt="" class="splash-media" width="160" height="160" decoding="async" loading="eager" />
       <div class="splash-text">Няня на час</div>
       <div class="splash-dots"><span></span><span></span><span></span></div>
     </div>
@@ -209,8 +221,13 @@
   <script src="/static/js/loader.js?v={{ static_ver }}"></script>
   {% block scripts_pre %}{% endblock %}
   {% block tg_webapp_script %}{% endblock %}
+  {% set needs_time_picker = request.path == '/' or request.path == '/admin' or request.path.startswith('/client') or request.path == '/nanny/app' or request.path.startswith('/nanny/portal') %}
+  {% if needs_time_picker %}
   <script src="/static/js/time_picker.js?v={{ static_ver }}"></script>
+  {% endif %}
+  {% if request.path == '/' %}
   <script src="/static/js/calendar.js?v={{ static_ver }}"></script>
+  {% endif %}
 
   <!-- Scroll reveal -->
   <script>
@@ -257,6 +274,10 @@
   (function(){
     var canvas = document.getElementById('particles-canvas');
     if (!canvas) return;
+    if (window.matchMedia && window.matchMedia('(max-width: 767px), (prefers-reduced-motion: reduce)').matches) {
+      canvas.remove();
+      return;
+    }
     var ctx = canvas.getContext('2d');
     var W, H, particles = [];
 
@@ -268,7 +289,7 @@
     window.addEventListener('resize', resize, { passive: true });
 
     var colors = ['rgba(10,181,212,', 'rgba(46,156,56,', 'rgba(255,255,255,'];
-    for (var i = 0; i < 38; i++) {
+    for (var i = 0; i < 20; i++) {
       particles.push({
         x: Math.random() * 1000,
         y: Math.random() * 1000,
@@ -282,7 +303,7 @@
 
     var rafId;
     function draw() {
-      if (document.hidden) { rafId = requestAnimationFrame(draw); return; }
+      if (document.hidden) { rafId = null; return; }
       ctx.clearRect(0, 0, W, H);
       particles.forEach(function(p) {
         p.x += p.dx;
@@ -297,6 +318,9 @@
       });
       rafId = requestAnimationFrame(draw);
     }
+    document.addEventListener('visibilitychange', function(){
+      if (!document.hidden && !rafId) draw();
+    });
     draw();
   })();
   </script>

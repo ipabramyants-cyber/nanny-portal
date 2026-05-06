@@ -5,13 +5,13 @@
 
   var hidden = false;
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var minDelay = reduceMotion ? 120 : 950;
-  var maxDelay = reduceMotion ? 800 : 2800;
+  var minDelay = reduceMotion ? 80 : 320;
+  var maxDelay = reduceMotion ? 420 : 1200;
 
   function hideSplash() {
     if (hidden) return;
     if (splash.dataset.keepVisible === '1') {
-      setTimeout(hideSplash, 300);
+      setTimeout(hideSplash, 180);
       return;
     }
     hidden = true;
@@ -19,14 +19,14 @@
     setTimeout(function () {
       splash.style.display = 'none';
       splash.setAttribute('aria-hidden', 'true');
-    }, reduceMotion ? 80 : 460);
+    }, reduceMotion ? 60 : 220);
   }
 
   setTimeout(function () {
-    if (document.readyState === 'complete') {
+    if (document.readyState !== 'loading') {
       hideSplash();
     } else {
-      window.addEventListener('load', hideSplash, { once: true });
+      document.addEventListener('DOMContentLoaded', hideSplash, { once: true });
     }
   }, minDelay);
 

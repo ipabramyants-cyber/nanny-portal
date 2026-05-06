@@ -1,13 +1,12 @@
 // Service Worker — Няня на час
 // Cache-first for static assets, network-first for HTML pages
 
-const CACHE = 'nanny-v1';
+const CACHE = 'nanny-v2';
 const STATIC = [
   '/static/css/style.css',
   '/static/js/calendar.js',
   '/static/js/loader.js',
   '/static/js/tg_webapp.js',
-  '/static/img/logo.png',
   '/static/img/logo.webp',
   '/static/img/nanny_placeholder.webp',
   '/static/site.webmanifest',

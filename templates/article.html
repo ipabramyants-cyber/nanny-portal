@@ -5,7 +5,7 @@
 {% if art.seo_keywords %}<meta name="keywords" content="{{ art.seo_keywords }}">{% endif %}
 <meta property="og:title" content="{{ art.seo_title or art.title }}">
 {% if art.seo_description %}<meta property="og:description" content="{{ art.seo_description }}">{% endif %}
-{% if art.cover_url %}<meta property="og:image" content="{{ art.cover_url }}">{% endif %}
+{% if art.cover_url %}<meta property="og:image" content="{{ data_image_src(art.cover_url) }}">{% endif %}
 <meta property="og:type" content="article">
 <link rel="canonical" href="{{ site_url }}/blog/{{ art.slug }}">
 {% endblock %}
@@ -14,7 +14,7 @@
 <!-- Hero with cover -->
 {% if art.cover_url %}
 <div style="position:relative;height:320px;overflow:hidden;background:#111;">
-  <img src="{{ art.cover_url }}" alt="{{ art.title }}"
+  <img src="{{ data_image_src(art.cover_url) }}" alt="{{ art.title }}"
        style="width:100%;height:100%;object-fit:cover;opacity:.75;display:block;">
   <div style="position:absolute;inset:0;background:linear-gradient(to bottom,transparent 30%,rgba(0,0,0,.7));"></div>
   <div style="position:absolute;bottom:0;left:0;right:0;padding:var(--s6);">
@@ -81,8 +81,8 @@
         <h3 style="margin-bottom:var(--s3);">📷 Фотогалерея</h3>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--s3);">
           {% for img_url in art.gallery %}
-          <a href="{{ img_url }}" target="_blank" style="display:block;overflow:hidden;border-radius:var(--r-md);">
-            <img src="{{ img_url }}" alt="Фото {{ loop.index }}"
+          <a href="{{ data_image_src(img_url) }}" target="_blank" style="display:block;overflow:hidden;border-radius:var(--r-md);">
+            <img src="{{ data_image_src(img_url) }}" alt="Фото {{ loop.index }}"
                  style="width:100%;height:160px;object-fit:cover;transition:transform .2s;"
                  onmouseover="this.style.transform='scale(1.04)'"
                  onmouseout="this.style.transform='scale(1)'"

@@ -25,6 +25,22 @@ from telegram_auth import validate_webapp_init_data, TelegramAuthError
 from models import db, Nanny, Lead, User, Shift, Client, NannyBlock, Review, Article, ReferralAgent
 
 _ARTICLE_COVER_CACHE: dict[str, str] = {}
+_DATA_IMAGE_RESPONSE_CACHE: dict[str, tuple[bytes, str]] = {}
+
+
+def _data_image_digest(value: str) -> str:
+    return hashlib.sha256((value or '').encode('utf-8', 'ignore')).hexdigest()[:32]
+
+
+def _decode_data_image(value: str) -> tuple[bytes, str] | None:
+    if not value or not value.startswith('data:image/') or ',' not in value:
+        return None
+    try:
+        header, payload = value.split(',', 1)
+        mimetype = header[5:].split(';', 1)[0] or 'image/jpeg'
+        return base64.b64decode(payload), mimetype
+    except Exception:
+        return None
 
 
 def _clean_user_text(value, limit: int | None = 500) -> str:
@@ -243,7 +259,11 @@ def create_app() -> Flask:
 
     app.jinja_env.globals['current_year'] = datetime.datetime.utcnow().year
     # Cache-busting version for static assets (update on deploy)
-    _static_ver = os.environ.get('APP_VERSION') or str(int(time.time() // 86400))
+    _static_ver = (
+        os.environ.get('APP_VERSION')
+        or (os.environ.get('RAILWAY_GIT_COMMIT_SHA') or '')[:12]
+        or str(int(time.time() // 86400))
+    )
     app.jinja_env.globals['static_ver'] = _static_ver
     # Canonical site URL for templates (sitemap, OG tags, canonical links)
     DEFAULT_SITE_URL = 'https://web-production-2ebe9.up.railway.app'
@@ -297,9 +317,9 @@ def create_app() -> Flask:
         if not photo:
             return url_for('static', filename='img/nanny_placeholder.jpg')
         photo = str(photo)
-        # data URL — use directly (stored in DB as base64)
-        if photo.startswith('data:'):
-            return photo
+        # Data URL photos are served through /media so HTML stays small.
+        if photo.startswith('data:image/'):
+            return url_for('data_image_media', digest=_data_image_digest(photo))
         if photo.startswith('http://') or photo.startswith('https://'):
             return photo
         if photo.startswith('uploads/'):
@@ -307,6 +327,14 @@ def create_app() -> Flask:
         return url_for('static', filename=photo)
 
     app.jinja_env.globals['nanny_photo_src'] = nanny_photo_src
+
+    def data_image_src(value: str | None) -> str:
+        value = str(value or '')
+        if value.startswith('data:image/'):
+            return url_for('data_image_media', digest=_data_image_digest(value))
+        return value
+
+    app.jinja_env.globals['data_image_src'] = data_image_src
 
     @app.before_request
     def _force_https():
@@ -5413,6 +5441,49 @@ def create_app() -> Flask:
         arts = _read_json(ARTICLES_FILE, [])
         return [a for a in arts if a.get('published')]
 
+    @app.route('/media/data-image/<digest>')
+    def data_image_media(digest: str):
+        if not re.fullmatch(r'[0-9a-f]{32}', digest or ''):
+            return render_template('404.html'), 404
+        cached = _DATA_IMAGE_RESPONSE_CACHE.get(digest)
+        if cached:
+            raw, mimetype = cached
+        else:
+            raw = b''
+            mimetype = 'image/jpeg'
+
+            def consider(value: str | None) -> bool:
+                nonlocal raw, mimetype
+                value = str(value or '')
+                if not value.startswith('data:image/') or _data_image_digest(value) != digest:
+                    return False
+                decoded = _decode_data_image(value)
+                if not decoded:
+                    return False
+                raw, mimetype = decoded
+                _DATA_IMAGE_RESPONSE_CACHE[digest] = decoded
+                return True
+
+            found = any(consider(n.get('photo')) for n in load_nannies())
+            if not found:
+                for art in _articles_published():
+                    if consider(art.get('cover_url')):
+                        found = True
+                        break
+                    for img in art.get('gallery') or []:
+                        if consider(img):
+                            found = True
+                            break
+                    if found:
+                        break
+            if not found:
+                return render_template('404.html'), 404
+
+        resp = Response(raw, mimetype=mimetype)
+        resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        resp.set_etag(digest)
+        return resp
+
     @app.route('/sitemap.xml')
     def sitemap_xml():
         import html as _html
@@ -5625,7 +5696,7 @@ def create_app() -> Flask:
     def api_articles_latest():
         arts = _articles_published()[:3]
         resp = jsonify([{'slug': a['slug'], 'title': a['title'],
-                         'excerpt': a.get('excerpt',''), 'cover_url': _article_cover_preview(a.get('cover_url','')),
+                         'excerpt': a.get('excerpt',''), 'cover_url': data_image_src(a.get('cover_url','')),
                          'created_at': a.get('created_at','')} for a in arts])
         resp.headers['Cache-Control'] = 'public, max-age=60, stale-while-revalidate=300'
         return resp

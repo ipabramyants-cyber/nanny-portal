@@ -122,7 +122,7 @@
         {% for article in articles %}
           <a href="/blog/{{ article.slug }}" target="_blank" class="agent-article">
             {% if article.cover_url %}
-              <img src="{{ article.cover_url }}" alt="" loading="lazy" onerror="this.style.display='none'">
+              <img src="{{ data_image_src(article.cover_url) }}" alt="" loading="lazy" onerror="this.style.display='none'">
             {% else %}
               <span>📝</span>
             {% endif %}
