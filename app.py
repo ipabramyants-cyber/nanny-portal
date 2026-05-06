@@ -3926,7 +3926,10 @@ def create_app() -> Flask:
                 for b in blocks
                 if str(b.get('nanny_id')) == str(nanny.get('id')) and b.get('kind', 'dayoff') == 'dayoff'
             ]
-        return render_template('nanny_portal_public.html', nanny=nanny, clients=clients,
+        nanny_js = dict(nanny)
+        if nanny_js.get('photo'):
+            nanny_js['photo'] = nanny_photo_src(nanny_js.get('photo'))
+        return render_template('nanny_portal_public.html', nanny=nanny, nanny_js=nanny_js, clients=clients,
                                events=events_with_rate, today=today,
                                default_nanny_rate=DEFAULT_NANNY_RATE_VND,
                                nanny_dayoffs=nanny_dayoffs_list,
